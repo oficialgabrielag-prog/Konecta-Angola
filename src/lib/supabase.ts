@@ -52,10 +52,10 @@ export function isSchemaCacheError(err: any): boolean {
 export function getFriendlyErrorMessage(err: any, defaultMsg = 'Ocorreu um erro ao processar. Tente novamente.'): string {
   if (!err) return defaultMsg;
   if (isGatewayOrNetworkError(err)) {
-    return 'Os servidores externos da base de dados estão temporariamente lentos (HTTP 504). A KONECTA ativou a salvaguarda local dos teus dados para navegação contínua.';
+    return 'Os servidores da base de dados estão temporariamente com alta latência ou inacessíveis (HTTP 504). Por favor, verifique a sua ligação e tente novamente.';
   }
   if (isSchemaCacheError(err)) {
-    return 'A base de dados do Supabase está temporariamente a sincronizar o cache de esquemas (PGRST002). Os teus dados foram preservados.';
+    return 'A base de dados do Supabase está temporariamente a sincronizar o cache de esquemas (PGRST002). Por favor, tente novamente em instantes.';
   }
   return err.message || defaultMsg;
 }

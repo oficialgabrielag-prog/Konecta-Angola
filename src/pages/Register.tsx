@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ArrowLeft, AlertCircle } from 'lucide-react';
+import { ArrowLeft, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
 interface RegisterProps {
@@ -16,6 +16,7 @@ export const Register: React.FC<RegisterProps> = ({ onSuccess, onNavigateLogin, 
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   const provinces = ['Luanda', 'Benguela', 'Huíla', 'Cabinda', 'Huambo', 'Bié', 'Uíge', 'Cuanza Sul', 'Namibe', 'Malanje', 'Zaire', 'Lunda Norte', 'Lunda Sul', 'Moxico', 'Cuando Cubango', 'Cuanza Norte', 'Bengo', 'Cunene'];
 
@@ -23,6 +24,7 @@ export const Register: React.FC<RegisterProps> = ({ onSuccess, onNavigateLogin, 
     e.preventDefault();
     setLoading(true);
     setError(null);
+    setSuccessMessage(null);
 
     const cleanEmail = email.trim().toLowerCase();
     const cleanFullName = fullName.trim() || cleanEmail.split('@')[0];
@@ -53,10 +55,12 @@ export const Register: React.FC<RegisterProps> = ({ onSuccess, onNavigateLogin, 
       }
 
       if (data?.user) {
-        if (data.user.identities?.length === 0) {
-          setError('Este e-mail já está registado.');
+        if (data.user.identities && data.user.identities.length === 0) {
+          setError('Este e-mail já está registado. Por favor, tente iniciar sessão.');
+        } else if (data.session) {
+          onSuccess(data.user);
         } else {
-          setError('Registo realizado com sucesso! Verifique o seu e-mail para confirmar a conta.');
+          setSuccessMessage('Registo realizado com sucesso! Enviámos um link de confirmação para o teu e-mail. Por favor, verifica a tua caixa de entrada para ativares a conta.');
         }
       }
     } catch (err: any) {
@@ -84,11 +88,30 @@ export const Register: React.FC<RegisterProps> = ({ onSuccess, onNavigateLogin, 
         </div>
 
         {error && (
-          <div className="p-4 bg-red-50 border border-black/10 rounded-lg text-[12px] text-red-700">
+          <div className="p-4 bg-red-50 border border-red-200 rounded-lg text-[12px] text-red-700">
             <p className="font-bold flex items-center gap-2">
-              <AlertCircle className="w-4 h-4 shrink-0" />
+              <AlertCircle className="w-4 h-4 shrink-0 text-red-600" />
               {error}
             </p>
+          </div>
+        )}
+
+        {successMessage && (
+          <div className="p-5 bg-emerald-50 border border-emerald-200 rounded-xl text-[13px] text-emerald-900 space-y-3">
+            <div className="flex items-start gap-3">
+              <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
+              <div className="space-y-1">
+                <p className="font-bold text-emerald-950">Conta Criada com Sucesso!</p>
+                <p className="text-emerald-800 leading-relaxed text-[12px]">{successMessage}</p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={onNavigateLogin}
+              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 px-4 rounded-lg text-xs transition-colors flex items-center justify-center gap-1.5"
+            >
+              Ir para Iniciar Sessão →
+            </button>
           </div>
         )}
 

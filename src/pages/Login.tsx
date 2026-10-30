@@ -47,7 +47,7 @@ export const Login: React.FC<LoginProps> = ({ onSuccess, onNavigateRegister, onB
     }
 
     try {
-      // 1. Try Supabase auth with 3.5s timeout for network resilience (HTTP 504 protection)
+      // Try Supabase auth with 7s timeout for network resilience
       const signInPromise = supabase.auth.signInWithPassword({
         email: cleanEmail,
         password,
@@ -57,7 +57,7 @@ export const Login: React.FC<LoginProps> = ({ onSuccess, onNavigateRegister, onB
         setTimeout(() => resolve({ 
           data: { user: null }, 
           error: { status: 504, message: '504 Gateway Timeout' } 
-        }), 3500)
+        }), 7000)
       );
 
       const { data, error: signInError } = await Promise.race([signInPromise, timeoutPromise]);
@@ -68,6 +68,8 @@ export const Login: React.FC<LoginProps> = ({ onSuccess, onNavigateRegister, onB
           setShowResend(true);
         } else if (signInError.message?.includes('Invalid login credentials') || signInError.message?.includes('invalid')) {
           setError('E-mail ou palavra-passe incorretos.');
+        } else if (signInError.status === 504 || signInError.message?.includes('504')) {
+          setError('Os servidores da base de dados estão temporariamente com alta latência ou inacessíveis (HTTP 504). Por favor, tente novamente.');
         } else {
           setError(signInError.message || 'Erro ao realizar login.');
         }
@@ -78,7 +80,7 @@ export const Login: React.FC<LoginProps> = ({ onSuccess, onNavigateRegister, onB
       if (data?.user) {
         onSuccess(data.user);
       } else {
-        setError('Erro desconhecido ao autenticar.');
+        setError('Não foi possível autenticar o utilizador. Verifique as suas credenciais.');
       }
     } catch (err: any) {
       setError('Erro de conexão com o servidor. Tente novamente.');

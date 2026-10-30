@@ -32,15 +32,8 @@ export default function App() {
   const [currentTab, setCurrentTab] = useState<string>('home');
   const [selectedPost, setSelectedPost] = useState<Idea | null>(null);
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
-  const [user, setUser] = useState<any>(() => {
-    try {
-      const saved = localStorage.getItem('konecta_demo_user');
-      return saved ? JSON.parse(saved) : null;
-    } catch {
-      return null;
-    }
-  });
-  const [loading, setLoading] = useState(false);
+  const [user, setUser] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [fullscreenImage, setFullscreenImage] = useState<string | null>(null);
 
@@ -88,13 +81,27 @@ export default function App() {
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null);
+      const currentUser = session?.user ?? null;
+      setUser(currentUser);
+      setLoading(false);
+      fetchInitialData();
+      if (currentUser && !currentUser.user_metadata?.province) {
+        setShowOnboarding(true);
+      }
+    }).catch(() => {
+      setUser(null);
       setLoading(false);
       fetchInitialData();
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      setUser(session?.user ?? null);
+      const currentUser = session?.user ?? null;
+      setUser(currentUser);
+      if (event === 'SIGNED_OUT' || !currentUser) {
+        setUser(null);
+        setNotifications([]);
+        setUserRole(null);
+      }
     });
 
     return () => subscription.unsubscribe();
@@ -194,13 +201,13 @@ export default function App() {
 
   const handleSignOut = async () => {
     try {
-      await Promise.race([
-        supabase.auth.signOut(),
-        new Promise(resolve => setTimeout(resolve, 800))
-      ]);
-    } catch (e) {}
-    localStorage.removeItem('konecta_demo_user');
+      await supabase.auth.signOut();
+    } catch (e) {
+      console.warn('Aviso ao terminar sessão:', e);
+    }
     setUser(null);
+    setNotifications([]);
+    setUserRole(null);
     setCurrentTab('home');
   };
 
