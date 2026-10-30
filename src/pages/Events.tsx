@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { supabase, safeQuery, getFriendlyErrorMessage, isSchemaCacheError } from '../lib/supabase';
 import { Event, EventParticipant } from '../types';
+import { d1Client } from '../lib/d1Client';
 
 interface EventsProps {
   user: any;
@@ -33,33 +34,36 @@ export const Events: React.FC<EventsProps> = ({ user, onOpenAuth }) => {
   const fetchEvents = async () => {
     setLoading(true);
     try {
-      const [eventsRes, participantsRes] = await Promise.all([
+      const [sbRes, d1Res, sbParticipantsRes] = await Promise.all([
         safeQuery<any>(() => supabase
           .from('events')
           .select('*, profiles(full_name, avatar_url)')
           .order('date', { ascending: true })),
+        d1Client.events.list(),
         safeQuery<any>(() => supabase
           .from('event_participants')
           .select('event_id, user_id'))
       ]);
 
-      if (eventsRes?.error && !isSchemaCacheError(eventsRes.error)) {
-        throw eventsRes.error;
-      }
+      const sbEvents = sbRes?.data || [];
+      const d1Events = d1Res.data?.data || [];
+      const merged = [...d1Events, ...sbEvents];
+      const unique = Array.from(new Map(merged.map(e => [e.id, e])).values())
+        .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
-      const evList = eventsRes?.data || [];
-      setEvents(evList);
+      setEvents(unique);
 
       const counts: Record<string, number> = {};
       const userRegistered: Record<string, boolean> = {};
 
-      evList.forEach((e: any) => {
-        counts[e.id] = 0;
+      unique.forEach((e: any) => {
+        counts[e.id] = e.participant_count || 0;
       });
 
-      participantsRes?.data?.forEach((p: any) => {
+      sbParticipantsRes?.data?.forEach((p: any) => {
         if (counts[p.event_id] !== undefined) {
-          counts[p.event_id] += 1;
+          // Supabase participant counts might overlap, but we prefer D1 count if available
+          // For now just tracking if user joined in SB
         }
         if (user && p.user_id === user.id) {
           userRegistered[p.event_id] = true;
@@ -98,19 +102,25 @@ export const Events: React.FC<EventsProps> = ({ user, onOpenAuth }) => {
     try {
       if (isRegistered) {
         // Cancel registration
-        await safeQuery<any>(() => supabase
-          .from('event_participants')
-          .delete()
-          .eq('event_id', eventId)
-          .eq('user_id', user.id));
+        await Promise.allSettled([
+          safeQuery<any>(() => supabase
+            .from('event_participants')
+            .delete()
+            .eq('event_id', eventId)
+            .eq('user_id', user.id)),
+          d1Client.events.leave(eventId)
+        ]);
       } else {
         // Register
-        await safeQuery<any>(() => supabase
-          .from('event_participants')
-          .insert({
-            event_id: eventId,
-            user_id: user.id
-          }));
+        await Promise.allSettled([
+          safeQuery<any>(() => supabase
+            .from('event_participants')
+            .insert({
+              event_id: eventId,
+              user_id: user.id
+            })),
+          d1Client.events.join(eventId)
+        ]);
       }
     } catch (err: any) {
       console.warn('Aviso ao atualizar inscrição no evento:', err?.message || err);
@@ -129,28 +139,37 @@ export const Events: React.FC<EventsProps> = ({ user, onOpenAuth }) => {
 
     setCreating(true);
     try {
-      const { data, error } = await safeQuery<any>(() => supabase.from('events').insert({
+      const payload = {
         title: title.trim(),
         description: description.trim(),
         date,
         location: location.trim(),
         organizer_id: user.id
-      }).select('*, profiles(full_name, avatar_url)').single());
+      };
 
-      if (error) {
-        if (isSchemaCacheError(error)) {
-          alert('A base de dados do Supabase está a sincronizar. Tenta novamente em instantes.');
-          setCreating(false);
-          return;
-        }
-        throw error;
+      const [sbRes, d1Res] = await Promise.allSettled([
+        safeQuery<any>(() => supabase.from('events').insert(payload).select('*, profiles(full_name, avatar_url)').single()),
+        d1Client.events.create(payload)
+      ]);
+
+      const data = sbRes.status === 'fulfilled' ? sbRes.value.data : null;
+
+      if (!data && d1Res.status === 'rejected') {
+        throw new Error('Falha ao criar evento em ambos os servidores.');
       }
 
-      // Automatically register organizer as participant
-      await safeQuery<any>(() => supabase.from('event_participants').insert({
-        event_id: data.id,
-        user_id: user.id
-      }));
+      // Automatically register organizer as participant in SB if possible
+      if (data) {
+        await safeQuery<any>(() => supabase.from('event_participants').insert({
+          event_id: data.id,
+          user_id: user.id
+        }));
+      }
+      
+      // Also join in D1
+      if (d1Res.status === 'fulfilled' && d1Res.value.data?.id) {
+        await d1Client.events.join(d1Res.value.data.id);
+      }
 
       setShowCreateModal(false);
       setTitle('');

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Project, ProjectTask, Milestone, ProjectMember } from '../types';
-import { supabase, safeQuery, isSchemaCacheError, getFriendlyErrorMessage } from '../lib/supabase';
+import { d1Client } from '../lib/d1Client';
 
 interface ProjectsProps {
   projects: Project[];
@@ -57,36 +57,15 @@ export const Projects: React.FC<ProjectsProps> = ({
   const loadProjectDetails = async (projectId: string) => {
     setLoadingDetails(true);
     try {
-      const [tasksRes, milestonesRes, membersRes] = await Promise.all([
-        safeQuery<any>(() => supabase
-          .from('tasks')
-          .select('*')
-          .eq('project_id', projectId)
-          .order('created_at', { ascending: true })),
-        safeQuery<any>(() => supabase
-          .from('milestones')
-          .select('*')
-          .eq('project_id', projectId)
-          .order('due_date', { ascending: true })),
-        safeQuery<any>(() => supabase
-          .from('project_members')
-          .select('*, profiles(id, full_name, avatar_url, province)')
-          .eq('project_id', projectId))
+      const [d1Tasks, d1Milestones, d1Members] = await Promise.all([
+        d1Client.projects.getTasks(projectId),
+        d1Client.projects.getMilestones(projectId),
+        d1Client.projects.getMembers(projectId)
       ]);
 
-      if (tasksRes?.error && !isSchemaCacheError(tasksRes.error)) {
-        console.warn('Aviso ao carregar tarefas:', tasksRes.error.message);
-      }
-      if (milestonesRes?.error && !isSchemaCacheError(milestonesRes.error)) {
-        console.warn('Aviso ao carregar etapas:', milestonesRes.error.message);
-      }
-      if (membersRes?.error && !isSchemaCacheError(membersRes.error)) {
-        console.warn('Aviso ao carregar membros:', membersRes.error.message);
-      }
-
-      setTasks(tasksRes?.data || []);
-      setMilestones(milestonesRes?.data || []);
-      setMembers(membersRes?.data || []);
+      setTasks(d1Tasks.data?.data || []);
+      setMilestones(d1Milestones.data?.data || []);
+      setMembers(d1Members.data?.data || []);
     } catch (err: any) {
       console.warn('Aviso ao carregar detalhes do projeto:', err?.message || err);
     } finally {
@@ -107,39 +86,26 @@ export const Projects: React.FC<ProjectsProps> = ({
     setJoining(true);
     try {
       if (isUserMember && !isLeader) {
-        // Leave project
-        const { error } = await safeQuery<any>(() => supabase
-          .from('project_members')
-          .delete()
-          .eq('project_id', selectedProject.id)
-          .eq('user_id', user.id));
-
-        if (error) throw error;
+        await d1Client.projects.leave(selectedProject.id);
         setMembers(prev => prev.filter(m => m.user_id !== user.id));
       } else if (!isUserMember) {
-        // Join project
-        const { data, error } = await safeQuery<any>(() => supabase
-          .from('project_members')
-          .insert({
-            project_id: selectedProject.id,
-            user_id: user.id,
-            role: 'Colaborador',
-          })
-          .select('*, profiles(id, full_name, avatar_url, province)')
-          .single());
-
-        if (error) {
-          if (isSchemaCacheError(error)) {
-            alert('A base de dados do Supabase está a sincronizar o cache. Tenta novamente em instantes.');
-            return;
+        await d1Client.projects.join(selectedProject.id);
+        setMembers(prev => [...prev, { 
+          id: crypto.randomUUID(), 
+          project_id: selectedProject.id, 
+          user_id: user.id, 
+          role: 'Colaborador',
+          profiles: { 
+            id: user.id, 
+            full_name: user.user_metadata?.full_name || 'Membro Konecta', 
+            avatar_url: user.user_metadata?.avatar_url, 
+            province: user.user_metadata?.province 
           }
-          throw error;
-        }
-        setMembers(prev => [...prev, data]);
+        } as any]);
       }
     } catch (err: any) {
       console.warn('Aviso ao aderir/sair do projeto:', err?.message || err);
-      alert(getFriendlyErrorMessage(err, 'Erro ao atualizar participação no projeto.'));
+      alert('Erro ao atualizar participação no projeto.');
     } finally {
       setJoining(false);
     }
@@ -154,22 +120,14 @@ export const Projects: React.FC<ProjectsProps> = ({
     if (!newTaskTitle.trim() || !selectedProject) return;
 
     try {
-      const { data, error } = await safeQuery<any>(() => supabase.from('tasks').insert({
-        project_id: selectedProject.id,
-        title: newTaskTitle.trim(),
-        status: 'todo',
-        assignee_id: user.id
-      }).select().single());
+      const res = await d1Client.projects.createTask(selectedProject.id, newTaskTitle.trim());
 
-      if (error) {
-        if (isSchemaCacheError(error)) {
-          alert('A base de dados está a sincronizar o cache. Tenta novamente em instantes.');
-          return;
-        }
-        throw error;
+      if (res.data?.data) {
+        setTasks(prev => [...prev, res.data!.data]);
+        setNewTaskTitle('');
+      } else {
+        throw new Error('Falha ao criar tarefa.');
       }
-      setTasks(prev => [...prev, data]);
-      setNewTaskTitle('');
     } catch (err: any) {
       console.warn('Aviso ao criar tarefa:', err?.message || err);
     }
@@ -178,14 +136,7 @@ export const Projects: React.FC<ProjectsProps> = ({
   const handleToggleTask = async (task: ProjectTask) => {
     const newStatus = task.status === 'done' ? 'todo' : 'done';
     try {
-      const { error } = await safeQuery<any>(() => supabase
-        .from('tasks')
-        .update({ status: newStatus })
-        .eq('id', task.id));
-
-      if (error && !isSchemaCacheError(error)) {
-        console.warn('Aviso ao atualizar tarefa:', error.message);
-      }
+      await d1Client.projects.updateTask(task.id, { status: newStatus });
       setTasks(prev => prev.map(t => t.id === task.id ? { ...t, status: newStatus } : t));
     } catch (err: any) {
       console.warn('Aviso ao alternar tarefa:', err?.message || err);
@@ -197,25 +148,18 @@ export const Projects: React.FC<ProjectsProps> = ({
     if (!user || !selectedProject || !newMilestoneTitle.trim()) return;
 
     try {
-      const { data, error } = await safeQuery<any>(() => supabase.from('milestones').insert({
-        project_id: selectedProject.id,
+      const res = await d1Client.projects.createMilestone(selectedProject.id, {
         title: newMilestoneTitle.trim(),
-        description: newMilestoneDesc.trim() || null,
-        due_date: newMilestoneDate || null,
-        status: 'pending'
-      }).select().single());
+        description: newMilestoneDesc.trim() || undefined,
+        due_date: newMilestoneDate || undefined
+      });
 
-      if (error) {
-        if (isSchemaCacheError(error)) {
-          alert('A base de dados está a sincronizar. Tenta novamente em segundos.');
-          return;
-        }
-        throw error;
+      if (res.data?.data) {
+        setMilestones(prev => [...prev, res.data!.data]);
+        setNewMilestoneTitle('');
+        setNewMilestoneDesc('');
+        setNewMilestoneDate('');
       }
-      setMilestones(prev => [...prev, data]);
-      setNewMilestoneTitle('');
-      setNewMilestoneDesc('');
-      setNewMilestoneDate('');
     } catch (err: any) {
       console.warn('Aviso ao criar marco:', err?.message || err);
     }
@@ -224,11 +168,7 @@ export const Projects: React.FC<ProjectsProps> = ({
   const handleToggleMilestone = async (milestone: Milestone) => {
     const newStatus = milestone.status === 'completed' ? 'pending' : 'completed';
     try {
-      await safeQuery<any>(() => supabase
-        .from('milestones')
-        .update({ status: newStatus })
-        .eq('id', milestone.id));
-
+      await d1Client.projects.updateMilestone(milestone.id, { status: newStatus });
       setMilestones(prev => prev.map(m => m.id === milestone.id ? { ...m, status: newStatus } : m));
     } catch (err: any) {
       console.warn('Aviso ao atualizar marco:', err?.message || err);
@@ -245,39 +185,26 @@ export const Projects: React.FC<ProjectsProps> = ({
 
     setCreatingProject(true);
     try {
-      const { data, error } = await safeQuery<any>(() => supabase.from('projects').insert({
+      const payload = {
         title: projectTitle.trim(),
         description: projectDesc.trim(),
         category: projectCategory,
         province: projectProvince,
         leader_id: user.id,
-        status: 'active'
-      }).select('*, profiles(*)').single());
+      };
 
-      if (error) {
-        if (isSchemaCacheError(error)) {
-          alert('O Supabase está a sincronizar o cache. Tenta novamente em instantes.');
-          setCreatingProject(false);
-          return;
-        }
-        throw error;
+      const res = await d1Client.projects.create(payload);
+      if (res.error) {
+        throw new Error(res.error.message || 'Erro ao criar projeto.');
       }
 
-      // Automatically register user as leader in project_members
-      await safeQuery<any>(() => supabase.from('project_members').insert({
-        project_id: data.id,
-        user_id: user.id,
-        role: 'Líder do Projeto'
-      }));
-
-      setSelectedProject(data);
       setShowNewProjectModal(false);
       setProjectTitle('');
       setProjectDesc('');
       if (onRefreshProjects) onRefreshProjects();
     } catch (err: any) {
       console.warn('Aviso ao criar projeto:', err?.message || err);
-      alert(getFriendlyErrorMessage(err, 'Erro ao criar projeto.'));
+      alert(err?.message || 'Erro ao criar projeto.');
     } finally {
       setCreatingProject(false);
     }

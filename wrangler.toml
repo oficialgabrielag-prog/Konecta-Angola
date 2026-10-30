@@ -1,0 +1,14 @@
+name = "konecta-worker"
+main = "src/worker/index.ts"
+compatibility_date = "2024-10-01"
+compatibility_flags = ["nodejs_compat"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "konectaangola"
+database_id = "9735a337-c6c3-416e-ab8a-c51ca4038b2e"
+
+[[r2_buckets]]
+binding = "STORAGE"
+bucket_name = "konectaangola"
+

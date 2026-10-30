@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { ArrowLeft, AlertCircle } from 'lucide-react';
-import { supabase } from '../lib/supabase';
+import { d1Client } from '../lib/d1Client';
 
 interface LoginProps {
   onSuccess: (user: any) => void;
@@ -13,30 +13,11 @@ export const Login: React.FC<LoginProps> = ({ onSuccess, onNavigateRegister, onB
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [showResend, setShowResend] = useState(false);
-
-  const resendConfirmation = async () => {
-    setLoading(true);
-    try {
-      const { error } = await supabase.auth.resend({
-        type: 'signup',
-        email: email,
-      });
-      if (error) throw error;
-      setError('Email de confirmação reenviado com sucesso.');
-      setShowResend(false);
-    } catch (err: any) {
-      setError(err.message || 'Erro ao reenviar email.');
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
-    setShowResend(false);
 
     const cleanEmail = email.trim().toLowerCase();
 
@@ -47,43 +28,23 @@ export const Login: React.FC<LoginProps> = ({ onSuccess, onNavigateRegister, onB
     }
 
     try {
-      // Try Supabase auth with 7s timeout for network resilience
-      const signInPromise = supabase.auth.signInWithPassword({
-        email: cleanEmail,
-        password,
-      });
-
-      const timeoutPromise = new Promise<{ data: any; error: any }>((resolve) => 
-        setTimeout(() => resolve({ 
-          data: { user: null }, 
-          error: { status: 504, message: '504 Gateway Timeout' } 
-        }), 7000)
-      );
-
-      const { data, error: signInError } = await Promise.race([signInPromise, timeoutPromise]);
-
-      if (signInError) {
-        if (signInError.message?.includes('Email not confirmed')) {
-          setError('A sua conta ainda não foi confirmada. Verifique o seu email.');
-          setShowResend(true);
-        } else if (signInError.message?.includes('Invalid login credentials') || signInError.message?.includes('invalid')) {
-          setError('E-mail ou palavra-passe incorretos.');
-        } else if (signInError.status === 504 || signInError.message?.includes('504')) {
-          setError('Os servidores da base de dados estão temporariamente com alta latência ou inacessíveis (HTTP 504). Por favor, tente novamente.');
-        } else {
-          setError(signInError.message || 'Erro ao realizar login.');
-        }
+      console.log('[Auth] Autenticação Cloudflare D1...');
+      const d1Res = await d1Client.auth.login({ email: cleanEmail, password });
+      
+      if (d1Res.data?.user) {
+        console.log('[Auth] Sessão iniciada com Cloudflare D1');
+        onSuccess(d1Res.data.user);
         setLoading(false);
         return;
       }
 
-      if (data?.user) {
-        onSuccess(data.user);
+      if (d1Res.error) {
+        setError(d1Res.error.message || 'E-mail ou palavra-passe incorretos.');
       } else {
         setError('Não foi possível autenticar o utilizador. Verifique as suas credenciais.');
       }
     } catch (err: any) {
-      setError('Erro de conexão com o servidor. Tente novamente.');
+      setError(err?.message || 'Erro de conexão com o Cloudflare Worker. Tente novamente.');
     } finally {
       setLoading(false);
     }
@@ -107,14 +68,11 @@ export const Login: React.FC<LoginProps> = ({ onSuccess, onNavigateRegister, onB
         </div>
 
         {error && (
-          <div className={`p-4 border border-black/10 rounded-lg text-[12px] ${showResend ? 'bg-amber-50' : 'bg-red-50 text-red-700'}`}>
-            <p className="font-bold mb-2 flex items-center gap-2">
-              <AlertCircle className="w-4 h-4 shrink-0" />
+          <div className="p-4 border border-red-200 rounded-lg text-[12px] bg-red-50 text-red-700">
+            <p className="font-bold flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0 text-red-600" />
               {error}
             </p>
-            {showResend && (
-              <button onClick={resendConfirmation} className="underline font-black">Reenviar email de confirmação</button>
-            )}
           </div>
         )}
 

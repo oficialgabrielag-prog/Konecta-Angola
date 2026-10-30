@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { supabase, safeQuery, getFriendlyErrorMessage } from '../lib/supabase';
+import { d1Client } from '../lib/d1Client';
 import { useWebPush } from '../hooks/useWebPush';
 
 interface OnboardingModalProps {
@@ -35,6 +36,15 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
 
     setSaving(true);
     try {
+      // 1. Update D1
+      await d1Client.profiles.update(user.id, {
+        full_name: fullName.trim(),
+        province,
+        municipality: municipality.trim() || null,
+        bio: bio.trim() || null
+      });
+
+      // 2. Update Supabase
       await safeQuery(() => supabase.auth.updateUser({
         data: {
           full_name: fullName.trim(),

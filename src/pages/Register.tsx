@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { ArrowLeft, AlertCircle, CheckCircle2 } from 'lucide-react';
-import { supabase } from '../lib/supabase';
+import { d1Client } from '../lib/d1Client';
 
 interface RegisterProps {
   onSuccess: (user: any) => void;
@@ -36,35 +36,33 @@ export const Register: React.FC<RegisterProps> = ({ onSuccess, onNavigateLogin, 
     }
 
     try {
-      const { data, error: signUpError } = await supabase.auth.signUp({
+      console.log('[Auth] Registo oficial Cloudflare D1...');
+      const d1Res = await d1Client.auth.register({
         email: cleanEmail,
         password,
-        options: {
-          data: {
-            full_name: cleanFullName,
-            province,
-            municipality,
-          }
-        }
+        full_name: cleanFullName,
+        province,
+        municipality
       });
 
-      if (signUpError) {
-        setError(signUpError.message || 'Erro ao realizar registo.');
+      if (d1Res.data?.user) {
+        console.log('[Auth] Conta registada com sucesso no D1');
+        onSuccess(d1Res.data.user);
         setLoading(false);
         return;
       }
 
-      if (data?.user) {
-        if (data.user.identities && data.user.identities.length === 0) {
+      if (d1Res.error) {
+        if (d1Res.error.status === 409 || d1Res.error.message?.includes('já está registado')) {
           setError('Este e-mail já está registado. Por favor, tente iniciar sessão.');
-        } else if (data.session) {
-          onSuccess(data.user);
         } else {
-          setSuccessMessage('Registo realizado com sucesso! Enviámos um link de confirmação para o teu e-mail. Por favor, verifica a tua caixa de entrada para ativares a conta.');
+          setError(d1Res.error.message || 'Erro ao realizar registo no Cloudflare D1.');
         }
+      } else {
+        setError('Não foi possível concluir o registo. Tente novamente.');
       }
     } catch (err: any) {
-      setError('Erro de conexão com o servidor. Tente novamente.');
+      setError(err?.message || 'Erro de conexão com o Cloudflare Worker. Tente novamente.');
     } finally {
       setLoading(false);
     }

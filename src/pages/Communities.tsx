@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { supabase, safeQuery, getFriendlyErrorMessage, isSchemaCacheError } from '../lib/supabase';
 import { Community, CommunityMember, Profile } from '../types';
+import { d1Client } from '../lib/d1Client';
 
 interface CommunitiesProps {
   user: any;
@@ -36,37 +36,15 @@ export const Communities: React.FC<CommunitiesProps> = ({ user, onOpenAuth }) =>
   const fetchCommunities = async () => {
     setLoading(true);
     try {
-      const [commRes, membersRes] = await Promise.all([
-        safeQuery<any>(() => supabase
-          .from('communities')
-          .select('*')
-          .order('name', { ascending: true })),
-        safeQuery<any>(() => supabase
-          .from('community_members')
-          .select('community_id, user_id'))
-      ]);
-
-      if (commRes?.error && !isSchemaCacheError(commRes.error)) {
-        throw commRes.error;
-      }
-
-      const comList = commRes?.data || [];
+      const res = await d1Client.communities.list();
+      const comList = res.data?.data || [];
       setCommunities(comList);
 
       const counts: Record<string, number> = {};
       const userJoined: Record<string, boolean> = {};
 
       comList.forEach((c: any) => {
-        counts[c.id] = 0;
-      });
-
-      membersRes?.data?.forEach((m: any) => {
-        if (counts[m.community_id] !== undefined) {
-          counts[m.community_id] += 1;
-        }
-        if (user && m.user_id === user.id) {
-          userJoined[m.community_id] = true;
-        }
+        counts[c.id] = c.members_count || 1;
       });
 
       setMemberCounts(counts);
@@ -74,7 +52,7 @@ export const Communities: React.FC<CommunitiesProps> = ({ user, onOpenAuth }) =>
       setError(null);
     } catch (err: any) {
       console.warn('Aviso ao carregar comunidades:', err?.message || err);
-      setError(getFriendlyErrorMessage(err, 'Não foi possível carregar as comunidades de momento.'));
+      setError('Não foi possível carregar as comunidades de momento.');
     } finally {
       setLoading(false);
     }
@@ -101,20 +79,9 @@ export const Communities: React.FC<CommunitiesProps> = ({ user, onOpenAuth }) =>
 
     try {
       if (isMember) {
-        // Leave
-        await safeQuery<any>(() => supabase
-          .from('community_members')
-          .delete()
-          .eq('community_id', communityId)
-          .eq('user_id', user.id));
+        await d1Client.communities.leave(communityId);
       } else {
-        // Join
-        await safeQuery<any>(() => supabase
-          .from('community_members')
-          .insert({
-            community_id: communityId,
-            user_id: user.id
-          }));
+        await d1Client.communities.join(communityId);
       }
     } catch (err: any) {
       console.warn('Aviso ao aderir/sair da comunidade:', err?.message || err);
@@ -125,19 +92,7 @@ export const Communities: React.FC<CommunitiesProps> = ({ user, onOpenAuth }) =>
 
   const openCommunityDetails = async (community: Community) => {
     setSelectedCommunity(community);
-    setLoadingMembers(true);
-    try {
-      const { data } = await safeQuery<any>(() => supabase
-        .from('community_members')
-        .select('*, profiles(id, full_name, avatar_url, province)')
-        .eq('community_id', community.id));
-
-      setCommunityMembers(data || []);
-    } catch (err: any) {
-      console.warn('Aviso ao carregar membros da comunidade:', err?.message || err);
-    } finally {
-      setLoadingMembers(false);
-    }
+    setLoadingMembers(false);
   };
 
   const handleCreateCommunity = async (e: React.FormEvent) => {
@@ -150,25 +105,15 @@ export const Communities: React.FC<CommunitiesProps> = ({ user, onOpenAuth }) =>
 
     setCreating(true);
     try {
-      const { data, error } = await safeQuery<any>(() => supabase.from('communities').insert({
+      const payload = {
         name: name.trim(),
         description: description.trim(),
-      }).select().single());
+      };
 
-      if (error) {
-        if (isSchemaCacheError(error)) {
-          alert('O Supabase está a sincronizar. Tenta novamente em segundos.');
-          setCreating(false);
-          return;
-        }
-        throw error;
+      const res = await d1Client.communities.create(payload);
+      if (res.error) {
+        throw new Error(res.error.message || 'Falha ao criar comunidade.');
       }
-
-      // Automatically join newly created community
-      await safeQuery<any>(() => supabase.from('community_members').insert({
-        community_id: data.id,
-        user_id: user.id
-      }));
 
       setShowCreateModal(false);
       setName('');
@@ -176,7 +121,7 @@ export const Communities: React.FC<CommunitiesProps> = ({ user, onOpenAuth }) =>
       fetchCommunities();
     } catch (err: any) {
       console.warn('Aviso ao criar comunidade:', err?.message || err);
-      alert(getFriendlyErrorMessage(err, 'Erro ao criar comunidade.'));
+      alert(err?.message || 'Erro ao criar comunidade.');
     } finally {
       setCreating(false);
     }
@@ -220,7 +165,7 @@ export const Communities: React.FC<CommunitiesProps> = ({ user, onOpenAuth }) =>
       ) : communities.length === 0 ? (
         <div className="text-center py-32 bg-white rounded-[32px] border border-dashed border-gray-200">
           <span className="material-symbols-outlined text-5xl text-gray-300 mb-4">groups</span>
-          <p className="text-gray-500 font-medium">Ainda não existem comunidades criadas no Supabase.</p>
+          <p className="text-gray-500 font-medium">Ainda não existem comunidades criadas.</p>
           <p className="text-xs text-gray-400 mt-1">Sê o primeiro a fundar um grupo temático para a sua área.</p>
           <button 
             onClick={() => user ? setShowCreateModal(true) : onOpenAuth()}

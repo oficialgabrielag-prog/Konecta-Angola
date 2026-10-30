@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Idea, CommentItem } from '../types';
-import { supabase, safeQuery, isSchemaCacheError, getFriendlyErrorMessage } from '../lib/supabase';
+import { d1Client } from '../lib/d1Client';
 import { shareContent } from '../lib/share';
 import { CommentCard } from '../components/CommentCard';
 
@@ -62,30 +62,19 @@ export const PostDetail: React.FC<PostDetailProps> = ({
   const fetchComments = async () => {
     if (comments.length === 0) setLoading(true);
     try {
-      // Try querying comments by idea_id first
-      let res = await safeQuery<any>(() => supabase
-        .from('comments')
-        .select('*, profiles(id, full_name, avatar_url, province)')
-        .eq('idea_id', idea.id)
-        .order('created_at', { ascending: true }));
-
-      // If no data or error, also check by post_id
-      if (!res?.data || res.data.length === 0) {
-        const altRes = await safeQuery<any>(() => supabase
-          .from('comments')
-          .select('*, profiles(id, full_name, avatar_url, province)')
-          .eq('post_id', idea.id)
-          .order('created_at', { ascending: true }));
-        if (altRes?.data && altRes.data.length > 0) {
-          res = altRes;
+      let res = await d1Client.ideas.getComments(idea.id);
+      if (!res.data?.data || res.data.data.length === 0) {
+        const alt = await d1Client.posts.getComments(idea.id);
+        if (alt.data?.data && alt.data.data.length > 0) {
+          res = alt;
         }
       }
 
-      if (res?.data && Array.isArray(res.data)) {
+      if (res.data?.data && Array.isArray(res.data.data)) {
         setComments(prev => {
           const map = new Map<string, CommentItem>();
           prev.forEach(c => map.set(c.id, c));
-          res.data.forEach((c: CommentItem) => map.set(c.id, c));
+          res.data!.data.forEach((c: CommentItem) => map.set(c.id, c));
           const merged = Array.from(map.values()).sort(
             (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
           );
@@ -96,7 +85,7 @@ export const PostDetail: React.FC<PostDetailProps> = ({
         });
       }
     } catch (err: any) {
-      console.warn('Aviso ao carregar comentários:', err?.message || err);
+      console.warn('Aviso ao carregar comentários (D1):', err?.message || err);
     } finally {
       setLoading(false);
     }
@@ -105,14 +94,11 @@ export const PostDetail: React.FC<PostDetailProps> = ({
   const checkFollowStatus = async () => {
     if (!user || user.id === idea.user_id) return;
     try {
-      const { data } = await safeQuery<any>(() => supabase
-        .from('follows')
-        .select('id')
-        .eq('follower_id', user.id)
-        .eq('following_id', idea.user_id)
-        .maybeSingle());
-
-      setIsFollowing(!!data);
+      const res = await d1Client.profiles.getFollowing(user.id);
+      if (res.data?.data) {
+        const following = res.data.data.some((f: any) => f.id === idea.user_id);
+        setIsFollowing(following);
+      }
     } catch (err: any) {
       console.warn('Aviso ao verificar status de seguidor:', err?.message || err);
     }
@@ -130,22 +116,7 @@ export const PostDetail: React.FC<PostDetailProps> = ({
     setIsFollowing(nextState);
 
     try {
-      if (!nextState) {
-        // Unfollow
-        await safeQuery<any>(() => supabase
-          .from('follows')
-          .delete()
-          .eq('follower_id', user.id)
-          .eq('following_id', idea.user_id));
-      } else {
-        // Follow
-        await safeQuery<any>(() => supabase
-          .from('follows')
-          .insert({
-            follower_id: user.id,
-            following_id: idea.user_id
-          }));
-      }
+      await d1Client.profiles.toggleFollow(idea.user_id, !nextState);
     } catch (err: any) {
       console.warn('Aviso ao atualizar seguidor:', err?.message || err);
     } finally {
@@ -179,7 +150,6 @@ export const PostDetail: React.FC<PostDetailProps> = ({
       }
     };
 
-    // Instant UI update
     setComments(prev => {
       const updated = [...prev, optimisticComment];
       try {
@@ -189,36 +159,10 @@ export const PostDetail: React.FC<PostDetailProps> = ({
     });
     setNewComment('');
 
-    // Ensure profile exists in Supabase
     try {
-      await supabase.from('profiles').upsert({
-        id: user.id,
-        full_name: user.user_metadata?.full_name || 'Utilizador Konecta',
-        avatar_url: user.user_metadata?.avatar_url || null,
-        province: user.user_metadata?.province || 'Luanda'
-      });
-    } catch (profErr) {
-      console.warn('Aviso ao sincronizar perfil:', profErr);
-    }
-
-    try {
-      // Try inserting with idea_id first
-      const res = await safeQuery<any>(() => supabase.from('comments').insert({
-        idea_id: idea.id,
-        user_id: user.id,
-        content: contentText
-      }).select());
-
-      if (res?.error) {
-        // If idea_id failed, try post_id
-        await safeQuery<any>(() => supabase.from('comments').insert({
-          post_id: idea.id,
-          user_id: user.id,
-          content: contentText
-        }).select());
-      }
+      await d1Client.ideas.addComment(idea.id, contentText);
     } catch (err: any) {
-      console.warn('Comentário guardado na cache local:', err?.message || err);
+      console.warn('Comentário guardado na cache local (D1 error):', err?.message || err);
     } finally {
       setSubmittingComment(false);
     }
@@ -234,20 +178,14 @@ export const PostDetail: React.FC<PostDetailProps> = ({
 
     setSubmittingReport(true);
     try {
-      const { error } = await safeQuery<any>(() => supabase.from('reports').insert({
-        reporter_id: user.id,
+      const res = await d1Client.reports.create({
         target_type: 'idea',
         target_id: idea.id,
-        reason: reportReason.trim(),
-        status: 'pending'
-      }));
+        reason: reportReason.trim()
+      });
 
-      if (error) {
-        if (isSchemaCacheError(error)) {
-          alert('A base de dados do Supabase está a sincronizar. Tenta novamente em instantes.');
-          return;
-        }
-        throw error;
+      if (res.error) {
+        throw new Error(res.error.message || 'Erro ao submeter denúncia.');
       }
 
       setReportSuccess(true);
@@ -258,7 +196,7 @@ export const PostDetail: React.FC<PostDetailProps> = ({
       }, 1500);
     } catch (err: any) {
       console.warn('Aviso ao submeter denúncia:', err?.message || err);
-      alert(getFriendlyErrorMessage(err, 'Erro ao submeter denúncia.'));
+      alert(err?.message || 'Erro ao submeter denúncia.');
     } finally {
       setSubmittingReport(false);
     }

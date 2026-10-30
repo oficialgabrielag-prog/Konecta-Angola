@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Challenge } from '../types';
-import { supabase, safeQuery, isSchemaCacheError, getFriendlyErrorMessage } from '../lib/supabase';
+import { d1Client } from '../lib/d1Client';
 
 interface ChallengesProps {
   challenges: Challenge[];
@@ -39,52 +39,23 @@ export const Challenges: React.FC<ChallengesProps> = ({
     if (challenges.length === 0) return;
 
     try {
-      // 1. Fetch total participants and votes count for each challenge
-      const challengeIds = challenges.map(c => c.id);
-
-      const [partRes, votesRes] = await Promise.all([
-        safeQuery<any>(() => supabase
-          .from('challenge_participants')
-          .select('challenge_id, user_id')),
-        safeQuery<any>(() => supabase
-          .from('challenge_votes')
-          .select('challenge_id, user_id'))
-      ]);
+      const d1ChallengesRes = await d1Client.challenges.list();
 
       const pCount: Record<string, number> = {};
       const vCount: Record<string, number> = {};
       const userPMap: Record<string, boolean> = {};
-      const userVMap: Record<string, boolean> = {};
 
       challenges.forEach(c => {
-        pCount[c.id] = 0;
-        vCount[c.id] = 0;
-      });
-
-      partRes?.data?.forEach((p: any) => {
-        if (pCount[p.challenge_id] !== undefined) {
-          pCount[p.challenge_id] += 1;
-        }
-        if (user && p.user_id === user.id) {
-          userPMap[p.challenge_id] = true;
-        }
-      });
-
-      votesRes?.data?.forEach((v: any) => {
-        if (vCount[v.challenge_id] !== undefined) {
-          vCount[v.challenge_id] += 1;
-        }
-        if (user && v.user_id === user.id) {
-          userVMap[v.challenge_id] = true;
-        }
+        const d1Challenge = d1ChallengesRes.data?.data?.find((dc: any) => dc.id === c.id);
+        pCount[c.id] = d1Challenge?.participants_count || c.participants_count || 0;
+        vCount[c.id] = d1Challenge?.votes_count || 0;
       });
 
       setParticipantsCountMap(pCount);
       setVotesCountMap(vCount);
       setParticipatedMap(userPMap);
-      setVotesMap(userVMap);
     } catch (err: any) {
-      console.warn('Aviso ao carregar participações e votos de desafios:', err?.message || err);
+      console.warn('Aviso ao carregar participações de desafios (D1):', err?.message || err);
     }
   };
 
@@ -108,18 +79,9 @@ export const Challenges: React.FC<ChallengesProps> = ({
 
     try {
       if (isParticipating) {
-        await safeQuery<any>(() => supabase
-          .from('challenge_participants')
-          .delete()
-          .eq('challenge_id', challengeId)
-          .eq('user_id', user.id));
+        await d1Client.challenges.leave(challengeId);
       } else {
-        await safeQuery<any>(() => supabase
-          .from('challenge_participants')
-          .insert({
-            challenge_id: challengeId,
-            user_id: user.id
-          }));
+        await d1Client.challenges.join(challengeId);
       }
       onParticipateChallenge();
     } catch (err: any) {
@@ -136,7 +98,6 @@ export const Challenges: React.FC<ChallengesProps> = ({
     }
 
     const hasVoted = votesMap[challengeId];
-    // Optimistic UI update
     setVotesMap(prev => ({ ...prev, [challengeId]: !hasVoted }));
     setVotesCountMap(prev => ({
       ...prev,
@@ -144,25 +105,6 @@ export const Challenges: React.FC<ChallengesProps> = ({
         ? Math.max(0, (prev[challengeId] || 1) - 1) 
         : (prev[challengeId] || 0) + 1
     }));
-
-    try {
-      if (hasVoted) {
-        await safeQuery<any>(() => supabase
-          .from('challenge_votes')
-          .delete()
-          .eq('challenge_id', challengeId)
-          .eq('user_id', user.id));
-      } else {
-        await safeQuery<any>(() => supabase
-          .from('challenge_votes')
-          .insert({
-            challenge_id: challengeId,
-            user_id: user.id
-          }));
-      }
-    } catch (err: any) {
-      console.warn('Aviso ao votar no desafio:', err?.message || err);
-    }
   };
 
   const handleCreateChallenge = async (e: React.FormEvent) => {
@@ -175,23 +117,19 @@ export const Challenges: React.FC<ChallengesProps> = ({
 
     setCreating(true);
     try {
-      const { error } = await safeQuery<any>(() => supabase.from('challenges').insert({
+      const payload = {
         title: title.trim(),
         description: desc.trim(),
         category,
-        goal: goal.trim() || null,
-        deadline: deadline || null,
+        goal: goal.trim() || undefined,
+        deadline: deadline || undefined,
         status: 'open',
         user_id: user.id
-      }));
+      };
 
-      if (error) {
-        if (isSchemaCacheError(error)) {
-          alert('A base de dados do Supabase está a sincronizar. Tenta novamente em instantes.');
-          setCreating(false);
-          return;
-        }
-        throw error;
+      const res = await d1Client.challenges.create(payload);
+      if (res.error) {
+        throw new Error(res.error.message || 'Erro ao criar desafio.');
       }
 
       setShowModal(false);
@@ -202,7 +140,7 @@ export const Challenges: React.FC<ChallengesProps> = ({
       onParticipateChallenge();
     } catch (err: any) {
       console.warn('Aviso ao criar desafio:', err?.message || err);
-      alert(getFriendlyErrorMessage(err, 'Erro ao criar desafio.'));
+      alert(err?.message || 'Erro ao criar desafio no Cloudflare D1.');
     } finally {
       setCreating(false);
     }

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { supabase, safeQuery, isSchemaCacheError } from '../lib/supabase';
+import { d1Client } from '../lib/d1Client';
 import { NotificationItem } from '../types';
 
 interface DashboardProps {
@@ -37,22 +38,36 @@ export const Dashboard: React.FC<DashboardProps> = ({
         challengesRes, 
         eventsRes, 
         bookmarksRes,
-        notifsRes
+        notifsRes,
+        d1StatsRes,
+        d1NotifsRes
       ] = await Promise.all([
         safeQuery<any>(() => supabase.from('ideas').select('id', { count: 'exact', head: true }).eq('user_id', user.id)),
         safeQuery<any>(() => supabase.from('projects').select('id', { count: 'exact', head: true }).eq('leader_id', user.id)),
         safeQuery<any>(() => supabase.from('challenge_participants').select('id', { count: 'exact', head: true }).eq('user_id', user.id)),
         safeQuery<any>(() => supabase.from('event_participants').select('id', { count: 'exact', head: true }).eq('user_id', user.id)),
         safeQuery<any>(() => supabase.from('post_bookmarks').select('id', { count: 'exact', head: true }).eq('user_id', user.id)),
-        safeQuery<any>(() => supabase.from('notifications').select('*').eq('user_id', user.id).order('created_at', { ascending: false }).limit(5))
+        safeQuery<any>(() => supabase.from('notifications').select('*').eq('user_id', user.id).order('created_at', { ascending: false }).limit(5)),
+        d1Client.stats.get(),
+        d1Client.notifications.list()
       ]);
 
-      setIdeasCount(ideasRes?.count || 0);
-      setProjectsCount(projectsRes?.count || 0);
-      setChallengesCount(challengesRes?.count || 0);
-      setEventsCount(eventsRes?.count || 0);
-      setBookmarksCount(bookmarksRes?.count || 0);
-      setRecentNotifications(notifsRes?.data || []);
+      const d1Stats = d1StatsRes.data?.data || { ideas: 0, projects: 0, challenges: 0, events: 0, bookmarks: 0 };
+
+      setIdeasCount((ideasRes?.count || 0) + d1Stats.ideas);
+      setProjectsCount((projectsRes?.count || 0) + d1Stats.projects);
+      setChallengesCount((challengesRes?.count || 0) + d1Stats.challenges);
+      setEventsCount((eventsRes?.count || 0) + d1Stats.events);
+      setBookmarksCount((bookmarksRes?.count || 0) + d1Stats.bookmarks);
+
+      const sbNotifs = notifsRes?.data || [];
+      const d1Notifs = (d1NotifsRes.data?.data || []).slice(0, 5);
+      const mergedNotifs = [...d1Notifs, ...sbNotifs];
+      const uniqueNotifs = Array.from(new Map(mergedNotifs.map(n => [n.id, n])).values())
+        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+        .slice(0, 5);
+
+      setRecentNotifications(uniqueNotifs);
     } catch (err: any) {
       console.warn('Aviso ao carregar estatísticas do painel:', err?.message || err);
     } finally {

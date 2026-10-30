@@ -21,7 +21,7 @@ import { Search } from './pages/Search';
 import { Pricing } from './pages/Pricing';
 import { Admin } from './pages/Admin';
 import { OnboardingModal } from './components/OnboardingModal';
-import { supabase, safeQuery } from './lib/supabase';
+import { d1Client } from './lib/d1Client';
 import { Idea, Challenge, Project, NotificationItem, ProfileUpdate } from './types';
 import { OfflineIndicator } from './components/PWAComponents';
 import { ImageViewerModal } from './components/ImageViewerModal';
@@ -36,6 +36,7 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [fullscreenImage, setFullscreenImage] = useState<string | null>(null);
+  const [userRole, setUserRole] = useState<string | null>(null);
 
   // App Data State (Strictly real data; fake/sample posts and records are removed)
   const [ideas, setIdeas] = useState<Idea[]>(() => {
@@ -80,66 +81,43 @@ export default function App() {
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      const currentUser = session?.user ?? null;
-      setUser(currentUser);
-      setLoading(false);
-      fetchInitialData();
-      if (currentUser && !currentUser.user_metadata?.province) {
-        setShowOnboarding(true);
-      }
-    }).catch(() => {
-      setUser(null);
-      setLoading(false);
-      fetchInitialData();
-    });
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      const currentUser = session?.user ?? null;
-      setUser(currentUser);
-      if (event === 'SIGNED_OUT' || !currentUser) {
+    const initAuth = async () => {
+      try {
+        const d1Res = await d1Client.auth.me();
+        if (d1Res.data?.user) {
+          setUser(d1Res.data.user);
+          setUserRole(d1Res.data.user.role || 'member');
+          if (!d1Res.data.user.user_metadata?.province) {
+            setShowOnboarding(true);
+          }
+        } else {
+          setUser(null);
+        }
+      } catch (err) {
         setUser(null);
-        setNotifications([]);
-        setUserRole(null);
+      } finally {
+        setLoading(false);
+        fetchInitialData();
       }
-    });
+    };
 
-    return () => subscription.unsubscribe();
+    initAuth();
   }, []);
 
-  // Realtime notification channel subscription for current user
+  // Realtime notification channel via polling
   useEffect(() => {
     if (!user) return;
 
     fetchNotifications();
+    const interval = setInterval(() => {
+      fetchNotifications();
+    }, 30000);
 
-    const notifChannel = supabase
-      .channel(`realtime:notifications:${user.id}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'notifications',
-          filter: `user_id=eq.${user.id}`
-        },
-        () => {
-          fetchNotifications();
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(notifChannel);
-    };
+    return () => clearInterval(interval);
   }, [user]);
 
-  const [userRole, setUserRole] = useState<string | null>(null);
-
-
-
   const fetchInitialData = async () => {
-    // 1. STALE: Read immediately from localStorage cache or fallback to canonical data so UI is instantly rendered without blank states
+    // 1. STALE: Read immediately from localStorage cache
     try {
       const cachedIdeas = localStorage.getItem('konecta_cached_ideas');
       if (cachedIdeas) {
@@ -158,42 +136,43 @@ export default function App() {
       }
     } catch (e) {}
 
-    // 2. REVALIDATE: Fetch fresh data from Supabase in the background
+    // 2. REVALIDATE: Fetch fresh data from Cloudflare D1
     try {
-      const [ideasRes, challengesRes, projectsRes] = await Promise.all([
-        safeQuery<any>(() => supabase.from('ideas').select('*, profiles(*)').order('created_at', { ascending: false }).limit(20), 1, 3500),
-        safeQuery<any>(() => supabase.from('challenges').select('*, profiles(*)').order('created_at', { ascending: false }).limit(10), 1, 3500),
-        safeQuery<any>(() => supabase.from('projects').select('*, profiles(*)').order('created_at', { ascending: false }).limit(10), 1, 3500)
+      const [d1IdeasRes, d1ChallengesRes, d1ProjectsRes] = await Promise.all([
+        d1Client.ideas.list(30),
+        d1Client.challenges.list(),
+        d1Client.projects.list()
       ]);
 
-      if (ideasRes?.data && Array.isArray(ideasRes.data) && ideasRes.data.length > 0) {
-        setIdeas(ideasRes.data);
-        try { localStorage.setItem('konecta_cached_ideas', JSON.stringify(ideasRes.data)); } catch (e) {}
+      if (d1IdeasRes.data?.data) {
+        const unique = d1IdeasRes.data.data;
+        setIdeas(unique);
+        try { localStorage.setItem('konecta_cached_ideas', JSON.stringify(unique)); } catch (e) {}
       }
-      if (challengesRes?.data && Array.isArray(challengesRes.data) && challengesRes.data.length > 0) {
-        setChallenges(challengesRes.data);
-        try { localStorage.setItem('konecta_cached_challenges', JSON.stringify(challengesRes.data)); } catch (e) {}
+
+      if (d1ChallengesRes.data?.data) {
+        const unique = d1ChallengesRes.data.data;
+        setChallenges(unique);
+        try { localStorage.setItem('konecta_cached_challenges', JSON.stringify(unique)); } catch (e) {}
       }
-      if (projectsRes?.data && Array.isArray(projectsRes.data) && projectsRes.data.length > 0) {
-        setProjects(projectsRes.data);
-        try { localStorage.setItem('konecta_cached_projects', JSON.stringify(projectsRes.data)); } catch (e) {}
+
+      if (d1ProjectsRes.data?.data) {
+        const unique = d1ProjectsRes.data.data;
+        setProjects(unique);
+        try { localStorage.setItem('konecta_cached_projects', JSON.stringify(unique)); } catch (e) {}
       }
     } catch (err: any) {
-      console.warn('Revalidação em segundo plano (Stale-While-Revalidate mantido):', err?.message || err);
+      console.warn('Revalidação em segundo plano (Cloudflare D1):', err?.message || err);
     }
   };
 
   const fetchNotifications = async () => {
     if (!user) return;
     try {
-      const { data } = await safeQuery<any>(() => supabase
-        .from('notifications')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false })
-        .limit(30));
-      
-      setNotifications(data || []);
+      const d1Res = await d1Client.notifications.list();
+      if (d1Res.data?.data) {
+        setNotifications(d1Res.data.data);
+      }
     } catch (err: any) {
       console.warn('Aviso ao carregar notificações:', err?.message || err);
     }
@@ -201,7 +180,7 @@ export default function App() {
 
   const handleSignOut = async () => {
     try {
-      await supabase.auth.signOut();
+      await d1Client.auth.logout();
     } catch (e) {
       console.warn('Aviso ao terminar sessão:', e);
     }
@@ -218,12 +197,11 @@ export default function App() {
     }
     
     try {
-      const target = ideas.find(i => i.id === id);
-      if (target) {
-        setIdeas(prev => prev.map(item => item.id === id ? { ...item, votes_count: (item.votes_count || 0) + 1 } : item));
-        await safeQuery<any>(() => supabase.from('ideas').update({ votes_count: (target.votes_count || 0) + 1 }).eq('id', id));
-        fetchInitialData();
-      }
+      // Optimistic update
+      setIdeas(prev => prev.map(item => item.id === id ? { ...item, votes_count: (item.votes_count || 0) + 1 } : item));
+
+      await d1Client.ideas.toggleVote(id, false);
+      fetchInitialData();
     } catch (err: any) {
       console.warn('Aviso ao apoiar ideia:', err?.message || err);
     }
@@ -430,7 +408,7 @@ export default function App() {
                 onUpdateProfile={handleUpdateProfile}
                 onIdeaCreated={fetchInitialData}
                 onDeleteIdea={async (id) => {
-                  await supabase.from('ideas').delete().eq('id', id);
+                  await d1Client.ideas.delete(id);
                   fetchInitialData();
                 }}
               />
@@ -440,7 +418,7 @@ export default function App() {
               <Notifications
                 notifications={notifications}
                 onMarkAsRead={async (id) => {
-                  await supabase.from('notifications').update({ read: true }).eq('id', id);
+                  await d1Client.notifications.markAsRead(id);
                   fetchNotifications();
                 }}
                 onRefreshNotifications={fetchNotifications}

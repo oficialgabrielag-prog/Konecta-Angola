@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Upload, X } from 'lucide-react';
-import { uploadToCloudinary } from '../lib/cloudinary';
-import { supabase, safeQuery, isSchemaCacheError, getFriendlyErrorMessage } from '../lib/supabase';
+import { uploadToCloudflare } from '../lib/cloudinary';
+import { d1Client } from '../lib/d1Client';
 
 interface CreateIdeaProps {
   user: any;
@@ -65,38 +65,29 @@ export const CreateIdea: React.FC<CreateIdeaProps> = ({ user, onOpenAuth, onIdea
       let imageUrl = '';
       if (imageFile) {
         try {
-          imageUrl = await uploadToCloudinary(imageFile, (progress) => {
+          imageUrl = await uploadToCloudflare(imageFile, (progress) => {
             setUploadProgress(progress);
           });
         } catch (imgErr: any) {
-          setError(imgErr?.message || 'Falha no envio da imagem para o Cloudinary. O título e descrição foram preservados.');
+          setError(imgErr?.message || 'Falha no envio da imagem para o Cloudflare R2. O título e descrição foram preservados.');
           setSubmitting(false);
           return;
         }
       }
 
-      // Ensure profile exists in non-blocking try...catch
-      try {
-        await supabase.from('profiles').upsert({
-          id: user.id,
-          full_name: user.user_metadata?.full_name || 'Utilizador Konecta',
-          avatar_url: user.user_metadata?.avatar_url || null,
-          province: province
-        });
-      } catch (profErr) {
-        console.warn('Aviso ao sincronizar perfil:', profErr);
-      }
-
-      // Insert idea into ideas table without .single()
-      await safeQuery<any>(() => supabase.from('ideas').insert({
+      // Insert idea into Cloudflare D1
+      const ideaPayload = {
         title: title.trim(),
         description: description.trim(),
         category,
         province,
-        image_url: imageUrl || null,
-        user_id: user.id,
-        votes_count: 0,
-      }).select(), 1, 300);
+        image_url: imageUrl || undefined,
+      };
+
+      const res = await d1Client.ideas.create(ideaPayload);
+      if (res.error) {
+        throw new Error(res.error.message || 'Erro ao guardar ideia no Cloudflare D1.');
+      }
 
       setSuccess(true);
       if (imagePreview) URL.revokeObjectURL(imagePreview);

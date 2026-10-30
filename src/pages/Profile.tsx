@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Idea, Project, Post, Follow, PostBookmark, Profile as ProfileType } from '../types';
 import { uploadToCloudinary } from '../lib/cloudinary';
 import { supabase, safeQuery, isSchemaCacheError, getFriendlyErrorMessage } from '../lib/supabase';
+import { d1Client } from '../lib/d1Client';
 
 interface ProfileProps {
   user: any;
@@ -62,6 +63,18 @@ export const Profile: React.FC<ProfileProps> = ({
 
   const initEditProfileForm = async () => {
     try {
+      // 1. Try D1 first
+      const d1Res = await d1Client.profiles.get(user.id);
+      if (d1Res.data?.data) {
+        const profile = d1Res.data.data;
+        setEditFullName(profile.full_name || user.user_metadata?.full_name || '');
+        setEditBio(profile.bio || '');
+        setEditProvince(profile.province || 'Luanda');
+        setEditMunicipality(profile.municipality || '');
+        return;
+      }
+
+      // 2. Fallback to Supabase
       const { data } = await safeQuery<any>(() => supabase
         .from('profiles')
         .select('*')
@@ -138,7 +151,9 @@ export const Profile: React.FC<ProfileProps> = ({
 
   const fetchFollowData = async () => {
     try {
-      const [followersRes, followingRes] = await Promise.all([
+      const [d1Followers, d1Following, sbFollowers, sbFollowing] = await Promise.all([
+        d1Client.profiles.getFollowers(user.id),
+        d1Client.profiles.getFollowing(user.id),
         safeQuery<any>(() => supabase
           .from('follows')
           .select('*, profiles:follower_id(id, full_name, avatar_url, province)')
@@ -149,8 +164,14 @@ export const Profile: React.FC<ProfileProps> = ({
           .eq('follower_id', user.id))
       ]);
 
-      setFollowers(followersRes?.data || []);
-      setFollowing(followingRes?.data || []);
+      const followersMerged = [...(d1Followers.data?.data || []), ...(sbFollowers?.data || [])];
+      const uniqueFollowers = Array.from(new Map(followersMerged.map(f => [f.follower_id || f.id, f])).values());
+
+      const followingMerged = [...(d1Following.data?.data || []), ...(sbFollowing?.data || [])];
+      const uniqueFollowing = Array.from(new Map(followingMerged.map(f => [f.following_id || f.id, f])).values());
+
+      setFollowers(uniqueFollowers);
+      setFollowing(uniqueFollowing);
     } catch (err: any) {
       console.warn('Aviso ao carregar seguidores:', err?.message || err);
     }
@@ -164,6 +185,10 @@ export const Profile: React.FC<ProfileProps> = ({
     try {
       const url = await uploadToCloudinary(file);
       
+      // 1. Update D1
+      await d1Client.profiles.update(user.id, { avatar_url: url });
+
+      // 2. Update Supabase
       await safeQuery<any>(() => supabase.auth.updateUser({
         data: { avatar_url: url }
       }));
@@ -257,6 +282,17 @@ export const Profile: React.FC<ProfileProps> = ({
 
     setSavingProfile(true);
     try {
+      // 1. Update D1
+      console.log('[Profile] Updating D1 Profile...');
+      await d1Client.profiles.update(user.id, {
+        full_name: editFullName.trim(),
+        bio: editBio.trim() || null,
+        province: editProvince,
+        municipality: editMunicipality.trim() || null
+      });
+
+      // 2. Update Supabase (Fallback/Parallel)
+      console.log('[Profile] Updating Supabase Profile (Parallel Sync)...');
       await safeQuery<any>(() => supabase.auth.updateUser({
         data: { 
           full_name: editFullName.trim(),

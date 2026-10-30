@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Post, Profile, CommentItem } from '../types';
-import { supabase, safeQuery, isSchemaCacheError, getFriendlyErrorMessage } from '../lib/supabase';
-import { uploadToCloudinary } from '../lib/cloudinary';
+import { d1Client } from '../lib/d1Client';
+import { uploadToCloudflare as uploadToCloudinary } from '../lib/cloudinary';
 import { PostCardSkeleton } from '../components/Skeletons';
 import { CANONICAL_POSTS } from '../lib/canonicalData';
 
@@ -64,36 +64,21 @@ export const Community: React.FC<CommunityProps> = ({
   const fetchPosts = async () => {
     if (posts.length === 0) setLoading(true);
     try {
-      const [postsRes, likesRes] = await Promise.all([
-        safeQuery<any>(() => supabase
-          .from('posts')
-          .select('*, profiles(full_name, avatar_url, province)')
-          .order('created_at', { ascending: false })),
-        user ? safeQuery<any>(() => supabase.from('post_likes').select('post_id').eq('user_id', user.id)) : Promise.resolve(null)
-      ]);
+      const d1Res = await d1Client.posts.list(30);
 
-      if (postsRes?.error && !isSchemaCacheError(postsRes.error)) {
-        console.warn('Aviso ao carregar posts:', postsRes.error.message);
-      }
+      const d1Posts = d1Res.data?.data || [];
 
-      if (postsRes?.data && Array.isArray(postsRes.data)) {
-        setPosts(prev => {
-          const map = new Map<string, Post>();
-          prev.forEach(p => map.set(p.id, p));
-          postsRes.data.forEach((p: Post) => map.set(p.id, p));
-          const merged = Array.from(map.values()).sort(
-            (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-          );
-          savePostsToCache(merged);
-          return merged;
-        });
-      }
+      setPosts(prev => {
+        const map = new Map<string, Post>();
+        prev.forEach(p => map.set(p.id, p));
+        d1Posts.forEach((p: Post) => map.set(p.id, p));
 
-      if (likesRes?.data) {
-        const likesMap: Record<string, boolean> = {};
-        likesRes.data.forEach((l: any) => { likesMap[l.post_id] = true; });
-        setUserLikes(likesMap);
-      }
+        const merged = Array.from(map.values()).sort(
+          (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        );
+        savePostsToCache(merged);
+        return merged;
+      });
     } catch (err: any) {
       console.warn('Aviso ao carregar posts:', err?.message || err);
     } finally {
@@ -103,12 +88,10 @@ export const Community: React.FC<CommunityProps> = ({
 
   const fetchActiveMembers = async () => {
     try {
-      const { data } = await safeQuery<any>(() => supabase
-        .from('profiles')
-        .select('*')
-        .limit(12));
-
-      setActiveMembers(data || []);
+      const d1Res = await d1Client.profiles.list(12);
+      if (d1Res.data?.data) {
+        setActiveMembers(d1Res.data.data);
+      }
     } catch (err: any) {
       console.warn('Aviso ao carregar membros ativos:', err?.message || err);
     }
@@ -152,25 +135,22 @@ export const Community: React.FC<CommunityProps> = ({
         }
       }
 
-      // Ensure profile exists in non-blocking try...catch
-      try {
-        await supabase.from('profiles').upsert({
-          id: user.id,
-          full_name: user.user_metadata?.full_name || 'Membro Konecta',
-          avatar_url: user.user_metadata?.avatar_url || null,
-          province: user.user_metadata?.province || 'Luanda'
-        });
-      } catch (profErr) {
-        console.warn('Aviso ao sincronizar perfil:', profErr);
-      }
+      // 1. Sync Profile to D1 and Supabase
+      console.log('[Community] Syncing profile...');
+      // 1. Sync Profile to D1
+      await d1Client.profiles.update(user.id, {
+        full_name: user.user_metadata?.full_name || 'Membro Konecta',
+        avatar_url: user.user_metadata?.avatar_url || null,
+        province: user.user_metadata?.province || 'Luanda'
+      }).catch(err => console.warn('Aviso ao sincronizar perfil no D1:', err));
 
-      const { data: insertedList } = await safeQuery<any>(() => supabase.from('posts').insert({
-        user_id: user.id,
+      // 2. Insert Post to D1
+      const d1PostRes = await d1Client.posts.create({
         content: content.trim(),
-        image_url: imageUrl || null
-      }).select(), 1, 300);
+        image_url: imageUrl || undefined
+      });
 
-      const inserted = (insertedList && insertedList[0]) ? insertedList[0] : {
+      const inserted = d1PostRes.data?.data || {
         id: crypto.randomUUID(),
         user_id: user.id,
         content: content.trim(),
@@ -244,11 +224,7 @@ export const Community: React.FC<CommunityProps> = ({
     }));
 
     try {
-      if (isLiked) {
-        await safeQuery<any>(() => supabase.from('post_likes').delete().eq('post_id', postId).eq('user_id', user.id));
-      } else {
-        await safeQuery<any>(() => supabase.from('post_likes').insert({ post_id: postId, user_id: user.id }));
-      }
+      await d1Client.posts.toggleLike(postId, isLiked);
     } catch (err: any) {
       console.warn('Aviso ao gostar do post:', err?.message || err);
     }
@@ -265,20 +241,17 @@ export const Community: React.FC<CommunityProps> = ({
           setPostComments(prev => ({ ...prev, [postId]: JSON.parse(cached) }));
         }
       } catch (e) {}
-
-      // Fetch from Supabase
+ 
+      // Fetch from D1
       setLoadingPostComments(prev => ({ ...prev, [postId]: true }));
       try {
-        const res = await safeQuery<any>(() => supabase
-          .from('comments')
-          .select('*, profiles(id, full_name, avatar_url, province)')
-          .eq('post_id', postId)
-          .order('created_at', { ascending: true }));
+        const d1Res = await d1Client.posts.getComments(postId);
+        const d1Comments = d1Res.data?.data || [];
 
-        if (res?.data && Array.isArray(res.data)) {
+        if (d1Comments.length > 0) {
           setPostComments(prev => {
-            const next = { ...prev, [postId]: res.data };
-            try { localStorage.setItem(`konecta_post_comments_${postId}`, JSON.stringify(res.data)); } catch (e) {}
+            const next = { ...prev, [postId]: d1Comments };
+            try { localStorage.setItem(`konecta_post_comments_${postId}`, JSON.stringify(d1Comments)); } catch (e) {}
             return next;
           });
         }
@@ -328,22 +301,9 @@ export const Community: React.FC<CommunityProps> = ({
     }));
 
     try {
-      await supabase.from('profiles').upsert({
-        id: user.id,
-        full_name: user.user_metadata?.full_name || 'Membro Konecta',
-        avatar_url: user.user_metadata?.avatar_url || null,
-        province: user.user_metadata?.province || 'Luanda'
-      });
-    } catch (e) {}
-
-    try {
-      await safeQuery<any>(() => supabase.from('comments').insert({
-        post_id: postId,
-        user_id: user.id,
-        content: text
-      }));
+      await d1Client.posts.addComment(postId, text);
     } catch (err: any) {
-      console.warn('Comentário guardado na cache:', err?.message || err);
+      console.warn('Comentário guardado na cache (D1 error):', err?.message || err);
     }
   };
 

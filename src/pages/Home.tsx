@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Idea, Challenge, Post, CommentItem } from '../types';
-import { supabase, safeQuery, isSchemaCacheError, getFriendlyErrorMessage } from '../lib/supabase';
-import { uploadToCloudinary } from '../lib/cloudinary';
+import { d1Client } from '../lib/d1Client';
+import { uploadToCloudflare as uploadToCloudinary } from '../lib/cloudinary';
 import { PostCardSkeleton, IdeaCardSkeleton } from '../components/Skeletons';
 
 interface HomeProps {
@@ -75,22 +75,13 @@ export const Home: React.FC<HomeProps> = ({
   const fetchCommunityPosts = async () => {
     if (posts.length === 0) setLoadingPosts(true);
     try {
-      const { data, error } = await safeQuery<any>(() => supabase
-        .from('posts')
-        .select('*, profiles(full_name, avatar_url, province)')
-        .order('created_at', { ascending: false })
-        .limit(30));
+      const res = await d1Client.posts.list(30);
 
-      if (error && !isSchemaCacheError(error)) {
-        console.warn('Aviso ao carregar publicações:', error.message);
-      }
-
-      if (data && Array.isArray(data)) {
+      if (res.data?.data && Array.isArray(res.data.data)) {
         setPosts(prev => {
-          // Merge remote data with existing local posts (avoiding duplicates)
           const map = new Map<string, Post>();
           prev.forEach(p => map.set(p.id, p));
-          data.forEach(p => map.set(p.id, p));
+          res.data!.data.forEach((p: Post) => map.set(p.id, p));
           const merged = Array.from(map.values()).sort(
             (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
           );
@@ -99,7 +90,7 @@ export const Home: React.FC<HomeProps> = ({
         });
       }
     } catch (err: any) {
-      console.warn('Aviso ao carregar publicações:', err?.message || err);
+      console.warn('Aviso ao carregar publicações (Cloudflare D1):', err?.message || err);
     } finally {
       setLoadingPosts(false);
     }
@@ -107,20 +98,10 @@ export const Home: React.FC<HomeProps> = ({
 
   const fetchUserReactions = async () => {
     try {
-      const [likesRes, bookmarksRes] = await Promise.all([
-        safeQuery<any>(() => supabase.from('post_likes').select('post_id').eq('user_id', user.id)),
-        safeQuery<any>(() => supabase.from('post_bookmarks').select('post_id').eq('user_id', user.id)),
-      ]);
-
-      const likesMap: Record<string, boolean> = {};
-      likesRes?.data?.forEach((item: any) => {
-        likesMap[item.post_id] = true;
-      });
-      setUserLikes(likesMap);
-
+      const res = await d1Client.posts.getBookmarks();
       const bookmarksMap: Record<string, boolean> = {};
-      bookmarksRes?.data?.forEach((item: any) => {
-        bookmarksMap[item.post_id] = true;
+      res.data?.data?.forEach((item: any) => {
+        bookmarksMap[item.id] = true;
       });
       setUserBookmarks(bookmarksMap);
     } catch (err: any) {
@@ -160,31 +141,18 @@ export const Home: React.FC<HomeProps> = ({
         try {
           imageUrl = await uploadToCloudinary(newPostImage, (p) => setUploadProgress(p));
         } catch (imgErr: any) {
-          alert(imgErr?.message || 'Falha no envio da imagem para o Cloudinary. O texto foi preservado no editor.');
+          alert(imgErr?.message || 'Falha no envio da imagem para o Cloudflare R2. O texto foi preservado no editor.');
           setPublishing(false);
           return;
         }
       }
 
-      // Ensure profile exists in non-blocking try...catch
-      try {
-        await supabase.from('profiles').upsert({
-          id: user.id,
-          full_name: user.user_metadata?.full_name || 'Utilizador Konecta',
-          avatar_url: user.user_metadata?.avatar_url || null,
-          province: user.user_metadata?.province || 'Luanda'
-        });
-      } catch (profErr) {
-        console.warn('Aviso ao sincronizar perfil:', profErr);
-      }
-
-      const { data: insertedList } = await safeQuery<any>(() => supabase.from('posts').insert({
-        user_id: user.id,
+      const postRes = await d1Client.posts.create({
         content: newPostContent.trim(),
-        image_url: imageUrl || null
-      }).select(), 1, 300);
+        image_url: imageUrl || undefined
+      });
 
-      const inserted = (insertedList && insertedList[0]) ? insertedList[0] : {
+      const inserted = postRes.data?.data || {
         id: crypto.randomUUID(),
         user_id: user.id,
         content: newPostContent.trim(),
@@ -258,11 +226,7 @@ export const Home: React.FC<HomeProps> = ({
     }));
 
     try {
-      if (isLiked) {
-        await safeQuery<any>(() => supabase.from('post_likes').delete().eq('post_id', postId).eq('user_id', user.id));
-      } else {
-        await safeQuery<any>(() => supabase.from('post_likes').insert({ post_id: postId, user_id: user.id }));
-      }
+      await d1Client.posts.toggleLike(postId, isLiked);
     } catch (err: any) {
       console.warn('Aviso ao registar gosto:', err?.message || err);
     }
@@ -278,11 +242,7 @@ export const Home: React.FC<HomeProps> = ({
     setUserBookmarks(prev => ({ ...prev, [postId]: !isBookmarked }));
 
     try {
-      if (isBookmarked) {
-        await safeQuery<any>(() => supabase.from('post_bookmarks').delete().eq('post_id', postId).eq('user_id', user.id));
-      } else {
-        await safeQuery<any>(() => supabase.from('post_bookmarks').insert({ post_id: postId, user_id: user.id }));
-      }
+      await d1Client.posts.toggleBookmark(postId, isBookmarked);
     } catch (err: any) {
       console.warn('Aviso ao guardar favorito:', err?.message || err);
     }
@@ -300,19 +260,15 @@ export const Home: React.FC<HomeProps> = ({
         }
       } catch (e) {}
 
-      // Fetch from Supabase
+      // Fetch from Cloudflare D1
       setLoadingPostComments(prev => ({ ...prev, [postId]: true }));
       try {
-        const res = await safeQuery<any>(() => supabase
-          .from('comments')
-          .select('*, profiles(id, full_name, avatar_url, province)')
-          .eq('post_id', postId)
-          .order('created_at', { ascending: true }));
+        const res = await d1Client.posts.getComments(postId);
 
-        if (res?.data && Array.isArray(res.data)) {
+        if (res?.data?.data && Array.isArray(res.data.data)) {
           setPostComments(prev => {
-            const next = { ...prev, [postId]: res.data };
-            try { localStorage.setItem(`konecta_post_comments_${postId}`, JSON.stringify(res.data)); } catch (e) {}
+            const next = { ...prev, [postId]: res.data!.data };
+            try { localStorage.setItem(`konecta_post_comments_${postId}`, JSON.stringify(res.data!.data)); } catch (e) {}
             return next;
           });
         }
@@ -362,23 +318,9 @@ export const Home: React.FC<HomeProps> = ({
       return p;
     }));
 
-    // Ensure profile exists in Supabase
+    // Save to Cloudflare D1
     try {
-      await supabase.from('profiles').upsert({
-        id: user.id,
-        full_name: user.user_metadata?.full_name || 'Utilizador Konecta',
-        avatar_url: user.user_metadata?.avatar_url || null,
-        province: user.user_metadata?.province || 'Luanda'
-      });
-    } catch (e) {}
-
-    // Non-blocking write to Supabase
-    try {
-      await safeQuery<any>(() => supabase.from('comments').insert({
-        post_id: postId,
-        user_id: user.id,
-        content: text
-      }));
+      await d1Client.posts.addComment(postId, text);
     } catch (err: any) {
       console.warn('Comentário guardado na cache local:', err?.message || err);
     }
