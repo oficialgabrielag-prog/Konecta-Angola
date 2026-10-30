@@ -1,0 +1,6 @@
+{
+  "name": "KONECTA",
+  "description": "A maior rede de inovação de Angola. Ideias que unem, pessoas que realizam. Conectamos mentes brilhantes para construir o futuro do país.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

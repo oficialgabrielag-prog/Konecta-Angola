@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="pt-AO">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>KONECTA — Ideias que unem. Pessoas que realizam.</title>
+    <meta name="description" content="Plataforma de inovação, desafios, projetos e comunidade em Angola." />
+    <meta property="og:title" content="KONECTA — Ideias que unem. Pessoas que realizam." />
+    <meta property="og:description" content="Plataforma de inovação, desafios, projetos e comunidade em Angola." />
+    <meta property="og:type" content="website" />
+    <meta property="og:image" content="/icon-512.png" />
+    <meta name="twitter:image" content="/icon-512.png" />
+    <meta name="theme-color" content="#102D57" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="KONECTA" />
+    <link rel="manifest" href="/manifest.json" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="icon" type="image/png" href="/icon-192.png" />
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebApplication",
+      "name": "KONECTA",
+      "applicationCategory": "SocialNetworkingApplication",
+      "operatingSystem": "All",
+      "description": "Plataforma de inovação, desafios, projetos e comunidade em Angola.",
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "AOA"
+      }
+    }
+    </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&display=swap" rel="stylesheet" />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js').catch(err => {
+            console.warn('Aviso de Service Worker:', err);
+          });
+        });
+      }
+    </script>
+  </body>
+</html>
