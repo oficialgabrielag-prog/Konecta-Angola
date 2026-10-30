@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { supabase, safeQuery } from '../lib/supabase';
+import { d1Client } from '../lib/d1Client';
 
 export function useWebPush(user: any) {
   const [isSupported, setIsSupported] = useState(false);
@@ -44,7 +44,6 @@ export function useWebPush(user: any) {
         let sub = await reg.pushManager.getSubscription();
 
         if (!sub) {
-          // Public VAPID key or fallback key
           const vapidKey = import.meta.env.VITE_VAPID_PUBLIC_KEY || 'BEl62iUYgUivxIkv69yViEuiBIa42p8-Pz6fS16K438H87J6Yy385I666eHj';
           
           try {
@@ -59,25 +58,10 @@ export function useWebPush(user: any) {
 
         setIsSubscribed(true);
 
-        if (user && sub) {
-          const subJson = sub.toJSON();
-          const keysObj = subJson.keys || {};
-          // Store subscription endpoint and keys in Supabase push_subscriptions table
-          await safeQuery(() => supabase.from('push_subscriptions').upsert({
-            user_id: user.id,
-            endpoint: sub.endpoint,
-            p256dh: keysObj.p256dh || null,
-            auth: keysObj.auth || null,
-            keys: keysObj,
-            updated_at: new Date().toISOString()
-          }, { onConflict: 'endpoint' }));
-
-          // Store push preference safely in profile
-          await safeQuery(() => supabase.from('profiles').upsert({
-            id: user.id,
-            push_enabled: true,
-            updated_at: new Date().toISOString()
-          }));
+        if (user) {
+          await d1Client.profiles.update(user.id, {
+            push_enabled: true
+          });
         }
 
         return true;
@@ -107,11 +91,9 @@ export function useWebPush(user: any) {
       setIsSubscribed(false);
 
       if (user) {
-        await safeQuery(() => supabase.from('profiles').upsert({
-          id: user.id,
-          push_enabled: false,
-          updated_at: new Date().toISOString()
-        }));
+        await d1Client.profiles.update(user.id, {
+          push_enabled: false
+        });
       }
 
       return true;

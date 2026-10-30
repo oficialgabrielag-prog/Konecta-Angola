@@ -132,7 +132,7 @@ export const CreateIdea: React.FC<CreateIdeaProps> = ({ user, onOpenAuth, onIdea
             <span className="material-symbols-outlined text-3xl">check</span>
           </div>
           <h2 className="text-2xl font-bold text-green-900">Ideia Publicada com Sucesso!</h2>
-          <p className="text-sm text-green-700">A tua iniciativa foi guardada no Supabase e já está visível para toda a rede.</p>
+          <p className="text-sm text-green-700">A tua iniciativa foi guardada no Cloudflare D1 e já está visível para toda a rede.</p>
         </div>
       ) : (
         <form onSubmit={handleSubmit} className="grid grid-cols-1 lg:grid-cols-2 gap-12">
@@ -216,7 +216,7 @@ export const CreateIdea: React.FC<CreateIdeaProps> = ({ user, onOpenAuth, onIdea
 
           <div className="space-y-8">
             <div className="space-y-2">
-              <label className="text-xs font-bold uppercase tracking-widest text-konecta-navy">Imagem de Capa (Opcional - Cloudinary)</label>
+              <label className="text-xs font-bold uppercase tracking-widest text-konecta-navy">Imagem de Capa (Opcional - Cloudflare R2)</label>
               
               {imagePreview ? (
                 <div className="relative rounded-3xl overflow-hidden bg-gray-50 border border-gray-200 aspect-square flex items-center justify-center group shadow-xs">
@@ -241,7 +241,7 @@ export const CreateIdea: React.FC<CreateIdeaProps> = ({ user, onOpenAuth, onIdea
                     <Upload className="w-6 h-6" />
                   </div>
                   <span className="text-xs font-bold text-gray-400 uppercase tracking-widest group-hover:text-konecta-navy transition-colors">Carregar Fotografia</span>
-                  <p className="text-[10px] text-gray-400 mt-2">PNG, JPG até 10MB via Cloudinary</p>
+                  <p className="text-[10px] text-gray-400 mt-2">PNG, JPG até 10MB via Cloudflare R2</p>
                   <input type="file" accept="image/*" onChange={handleImageChange} className="hidden" />
                 </label>
               )}
@@ -266,7 +266,7 @@ export const CreateIdea: React.FC<CreateIdeaProps> = ({ user, onOpenAuth, onIdea
               disabled={submitting}
               className="btn-gold w-full py-4 text-sm font-extrabold uppercase tracking-widest shadow-lg hover:brightness-105 transition-all"
             >
-              {submitting ? 'A Publicar no Supabase...' : 'Publicar na Rede KONECTA'}
+              {submitting ? 'A Publicar no Cloudflare...' : 'Publicar na Rede KONECTA'}
             </button>
           </div>
         </form>

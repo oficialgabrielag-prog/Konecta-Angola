@@ -449,7 +449,7 @@ export const Home: React.FC<HomeProps> = ({
                         className="flex items-center gap-2 text-xs font-bold text-gray-500 hover:text-konecta-navy transition-colors px-3 py-1.5 rounded-lg hover:bg-gray-100"
                       >
                         <span className="material-symbols-outlined text-[20px] text-konecta-gold">add_photo_alternate</span>
-                        Anexar Imagem (Cloudinary)
+                        Anexar Imagem (Cloudflare R2)
                       </button>
                       <input 
                         type="file" 
@@ -506,7 +506,7 @@ export const Home: React.FC<HomeProps> = ({
               </div>
 
               <span className="text-xs text-gray-400 font-medium hidden sm:inline">
-                Dados reais sincronizados com o Supabase
+                Dados reais sincronizados com o Cloudflare D1
               </span>
             </div>
 
@@ -773,7 +773,7 @@ export const Home: React.FC<HomeProps> = ({
             <section className="bg-konecta-navy rounded-[32px] p-8 text-white shadow-xl">
               <h3 className="text-xs font-bold uppercase tracking-[0.2em] text-konecta-gold mb-8 flex items-center gap-2">
                 <span className="w-2 h-2 rounded-full bg-konecta-gold animate-pulse"></span>
-                Estado da Rede (Supabase)
+                Estado da Rede (Cloudflare D1)
               </h3>
               <div className="space-y-6">
                 <div className="flex items-baseline justify-between border-b border-white/10 pb-4">

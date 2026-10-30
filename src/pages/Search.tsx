@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { supabase, safeQuery } from '../lib/supabase';
 import { Idea, Profile, Project, Community, Event } from '../types';
 import { d1Client } from '../lib/d1Client';
 
@@ -42,31 +41,16 @@ export const Search: React.FC<SearchProps> = ({ onSelectIdea, onSelectUser, onNa
 
   const handleSearch = async () => {
     setLoading(true);
-    const searchTerm = `%${query.trim()}%`;
-
     try {
-      const [sbIdeas, sbProfiles, sbProjects, sbComm, sbEvents, d1Res] = await Promise.all([
-        safeQuery<any>(() => supabase.from('ideas').select('*, profiles(*)').or(`title.ilike.${searchTerm},description.ilike.${searchTerm}`).limit(6)),
-        safeQuery<any>(() => supabase.from('profiles').select('*').ilike('full_name', searchTerm).limit(6)),
-        safeQuery<any>(() => supabase.from('projects').select('*, profiles(*)').or(`title.ilike.${searchTerm},description.ilike.${searchTerm}`).limit(6)),
-        safeQuery<any>(() => supabase.from('communities').select('*').or(`name.ilike.${searchTerm},description.ilike.${searchTerm}`).limit(6)),
-        safeQuery<any>(() => supabase.from('events').select('*, profiles(*)').or(`title.ilike.${searchTerm},location.ilike.${searchTerm}`).limit(6)),
-        d1Client.search.global(query.trim())
-      ]);
-
-      const d1 = d1Res.data?.data || { ideas: [], profiles: [], projects: [], communities: [], events: [] };
-
-      const merge = (sb: any[], d1Arr: any[]) => {
-        const combined = [...d1Arr, ...(sb || [])];
-        return Array.from(new Map(combined.map(item => [item.id, item])).values());
-      };
+      const d1Res = await d1Client.search.global(query.trim());
+      const data = d1Res.data?.data || { ideas: [], profiles: [], projects: [], communities: [], events: [] };
 
       setResults({
-        ideas: merge(sbIdeas?.data, d1.ideas) as Idea[],
-        profiles: merge(sbProfiles?.data, d1.profiles) as Profile[],
-        projects: merge(sbProjects?.data, d1.projects) as Project[],
-        communities: merge(sbComm?.data, d1.communities) as Community[],
-        events: merge(sbEvents?.data, d1.events) as Event[]
+        ideas: data.ideas || [],
+        profiles: data.profiles || [],
+        projects: data.projects || [],
+        communities: data.communities || [],
+        events: data.events || []
       });
     } catch (err: any) {
       console.warn('Aviso de pesquisa global:', err?.message || err);

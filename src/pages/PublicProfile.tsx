@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { Profile, Idea, Project, Post, Follow } from '../types';
-import { supabase, safeQuery, isSchemaCacheError, getFriendlyErrorMessage } from '../lib/supabase';
+import { Profile, Idea, Project, Post } from '../types';
 import { d1Client } from '../lib/d1Client';
 import { shareContent } from '../lib/share';
 
@@ -46,39 +45,33 @@ export const PublicProfile: React.FC<PublicProfileProps> = ({
     try {
       const [
         d1Profile,
-        profileRes,
-        ideasRes,
-        postsRes,
-        projectsRes,
+        d1Ideas,
+        d1Posts,
+        d1Projects,
         d1Followers,
-        d1Following,
-        followersRes,
-        followingRes
+        d1Following
       ] = await Promise.all([
         d1Client.profiles.get(userId),
-        safeQuery<any>(() => supabase.from('profiles').select('*').eq('id', userId).single()),
-        safeQuery<any>(() => supabase.from('ideas').select('*, profiles(*)').eq('user_id', userId).order('created_at', { ascending: false })),
-        safeQuery<any>(() => supabase.from('posts').select('*, profiles(*)').eq('user_id', userId).order('created_at', { ascending: false })),
-        safeQuery<any>(() => supabase.from('projects').select('*, profiles(*)').eq('leader_id', userId).order('created_at', { ascending: false })),
+        d1Client.ideas.list(30, userId),
+        d1Client.posts.list(30, userId),
+        d1Client.projects.list(userId),
         d1Client.profiles.getFollowers(userId),
-        d1Client.profiles.getFollowing(userId),
-        safeQuery<any>(() => supabase.from('follows').select('id, follower_id').eq('following_id', userId)),
-        safeQuery<any>(() => supabase.from('follows').select('id').eq('follower_id', userId))
+        d1Client.profiles.getFollowing(userId)
       ]);
 
-      setProfile(d1Profile.data?.data || profileRes?.data || null);
-      setUserIdeas(ideasRes?.data || []);
-      setUserPosts(postsRes?.data || []);
-      setUserProjects(projectsRes?.data || []);
+      setProfile(d1Profile.data?.data || null);
+      setUserIdeas(d1Ideas.data?.data || []);
+      setUserPosts(d1Posts.data?.data || []);
+      setUserProjects(d1Projects.data?.data || []);
 
-      const followersMerged = [...(d1Followers.data?.data || []), ...(followersRes?.data || [])];
-      const uniqueFollowers = Array.from(new Map(followersMerged.map(f => [f.follower_id || f.id, f])).values());
+      const followers = d1Followers.data?.data || [];
+      const following = d1Following.data?.data || [];
       
-      setFollowersCount(uniqueFollowers.length);
-      setFollowingCount((d1Following.data?.data?.length || 0) + (followingRes?.data?.length || 0));
+      setFollowersCount(followers.length);
+      setFollowingCount(following.length);
 
       if (currentUser) {
-        setIsFollowing(uniqueFollowers.some((f: any) => f.follower_id === currentUser.id));
+        setIsFollowing(followers.some((f: any) => f.id === currentUser.id));
       }
     } catch (err: any) {
       console.warn('Aviso ao carregar perfil público:', err?.message || err);
@@ -100,28 +93,7 @@ export const PublicProfile: React.FC<PublicProfileProps> = ({
     setFollowersCount(prev => (nextState ? prev + 1 : Math.max(0, prev - 1)));
 
     try {
-      if (!nextState) {
-        // Unfollow D1 and Supabase
-        await Promise.all([
-          d1Client.profiles.toggleFollow(userId, true),
-          safeQuery<any>(() => supabase
-            .from('follows')
-            .delete()
-            .eq('follower_id', currentUser.id)
-            .eq('following_id', userId))
-        ]);
-      } else {
-        // Follow D1 and Supabase
-        await Promise.all([
-          d1Client.profiles.toggleFollow(userId, false),
-          safeQuery<any>(() => supabase
-            .from('follows')
-            .insert({
-              follower_id: currentUser.id,
-              following_id: userId
-            }))
-        ]);
-      }
+      await d1Client.profiles.toggleFollow(userId, !nextState);
     } catch (err: any) {
       console.warn('Aviso ao atualizar seguidor:', err?.message || err);
     } finally {

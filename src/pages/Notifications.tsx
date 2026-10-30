@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { NotificationItem } from '../types';
-import { supabase, safeQuery } from '../lib/supabase';
+import { d1Client } from '../lib/d1Client';
 import { useWebPush } from '../hooks/useWebPush';
 
 interface NotificationsProps {
@@ -48,11 +48,7 @@ export const Notifications: React.FC<NotificationsProps> = ({
     if (markingAll || notifications.length === 0) return;
     setMarkingAll(true);
     try {
-      await safeQuery<any>(() => supabase
-        .from('notifications')
-        .update({ read: true })
-        .eq('user_id', user.id));
-
+      await d1Client.notifications.markAllAsRead();
       if (onRefreshNotifications) onRefreshNotifications();
     } catch (err: any) {
       console.warn('Aviso ao marcar notificações como lidas:', err?.message || err);

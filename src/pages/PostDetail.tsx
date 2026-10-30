@@ -356,7 +356,7 @@ export const PostDetail: React.FC<PostDetailProps> = ({
             <h3 className="text-xl font-extrabold text-konecta-navy">
               Discussão da Comunidade ({comments.length})
             </h3>
-            <span className="text-xs text-gray-400">Comentários reais armazenados no Supabase</span>
+            <span className="text-xs text-gray-400">Comentários reais armazenados no Cloudflare D1</span>
           </div>
           
           {/* Add Comment Box */}

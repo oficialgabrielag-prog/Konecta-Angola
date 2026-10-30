@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { supabase, safeQuery, getFriendlyErrorMessage, isSchemaCacheError } from '../lib/supabase';
-import { Event, EventParticipant } from '../types';
+import { Event } from '../types';
 import { d1Client } from '../lib/d1Client';
 
 interface EventsProps {
@@ -34,40 +33,15 @@ export const Events: React.FC<EventsProps> = ({ user, onOpenAuth }) => {
   const fetchEvents = async () => {
     setLoading(true);
     try {
-      const [sbRes, d1Res, sbParticipantsRes] = await Promise.all([
-        safeQuery<any>(() => supabase
-          .from('events')
-          .select('*, profiles(full_name, avatar_url)')
-          .order('date', { ascending: true })),
-        d1Client.events.list(),
-        safeQuery<any>(() => supabase
-          .from('event_participants')
-          .select('event_id, user_id'))
-      ]);
-
-      const sbEvents = sbRes?.data || [];
+      const d1Res = await d1Client.events.list();
       const d1Events = d1Res.data?.data || [];
-      const merged = [...d1Events, ...sbEvents];
-      const unique = Array.from(new Map(merged.map(e => [e.id, e])).values())
-        .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-
-      setEvents(unique);
+      setEvents(d1Events);
 
       const counts: Record<string, number> = {};
       const userRegistered: Record<string, boolean> = {};
 
-      unique.forEach((e: any) => {
+      d1Events.forEach((e: any) => {
         counts[e.id] = e.participant_count || 0;
-      });
-
-      sbParticipantsRes?.data?.forEach((p: any) => {
-        if (counts[p.event_id] !== undefined) {
-          // Supabase participant counts might overlap, but we prefer D1 count if available
-          // For now just tracking if user joined in SB
-        }
-        if (user && p.user_id === user.id) {
-          userRegistered[p.event_id] = true;
-        }
       });
 
       setParticipantCounts(counts);
@@ -75,7 +49,7 @@ export const Events: React.FC<EventsProps> = ({ user, onOpenAuth }) => {
       setError(null);
     } catch (err: any) {
       console.warn('Aviso ao carregar eventos:', err?.message || err);
-      setError(getFriendlyErrorMessage(err, 'Não foi possível carregar os eventos de momento.'));
+      setError('Não foi possível carregar os eventos de momento.');
     } finally {
       setLoading(false);
     }
@@ -101,26 +75,9 @@ export const Events: React.FC<EventsProps> = ({ user, onOpenAuth }) => {
 
     try {
       if (isRegistered) {
-        // Cancel registration
-        await Promise.allSettled([
-          safeQuery<any>(() => supabase
-            .from('event_participants')
-            .delete()
-            .eq('event_id', eventId)
-            .eq('user_id', user.id)),
-          d1Client.events.leave(eventId)
-        ]);
+        await d1Client.events.leave(eventId);
       } else {
-        // Register
-        await Promise.allSettled([
-          safeQuery<any>(() => supabase
-            .from('event_participants')
-            .insert({
-              event_id: eventId,
-              user_id: user.id
-            })),
-          d1Client.events.join(eventId)
-        ]);
+        await d1Client.events.join(eventId);
       }
     } catch (err: any) {
       console.warn('Aviso ao atualizar inscrição no evento:', err?.message || err);
@@ -147,28 +104,13 @@ export const Events: React.FC<EventsProps> = ({ user, onOpenAuth }) => {
         organizer_id: user.id
       };
 
-      const [sbRes, d1Res] = await Promise.allSettled([
-        safeQuery<any>(() => supabase.from('events').insert(payload).select('*, profiles(full_name, avatar_url)').single()),
-        d1Client.events.create(payload)
-      ]);
-
-      const data = sbRes.status === 'fulfilled' ? sbRes.value.data : null;
-
-      if (!data && d1Res.status === 'rejected') {
-        throw new Error('Falha ao criar evento em ambos os servidores.');
+      const res = await d1Client.events.create(payload);
+      if (res.error) {
+        throw new Error(res.error.message || 'Erro ao criar evento.');
       }
 
-      // Automatically register organizer as participant in SB if possible
-      if (data) {
-        await safeQuery<any>(() => supabase.from('event_participants').insert({
-          event_id: data.id,
-          user_id: user.id
-        }));
-      }
-      
-      // Also join in D1
-      if (d1Res.status === 'fulfilled' && d1Res.value.data?.id) {
-        await d1Client.events.join(d1Res.value.data.id);
+      if (res.data?.id) {
+        await d1Client.events.join(res.data.id);
       }
 
       setShowCreateModal(false);
@@ -179,7 +121,7 @@ export const Events: React.FC<EventsProps> = ({ user, onOpenAuth }) => {
       fetchEvents();
     } catch (err: any) {
       console.warn('Aviso ao criar evento:', err?.message || err);
-      alert(getFriendlyErrorMessage(err, 'Erro ao criar evento.'));
+      alert(err?.message || 'Erro ao criar evento.');
     } finally {
       setCreating(false);
     }
@@ -223,7 +165,7 @@ export const Events: React.FC<EventsProps> = ({ user, onOpenAuth }) => {
       ) : events.length === 0 ? (
         <div className="text-center py-32 bg-white rounded-[32px] border border-dashed border-gray-200">
           <span className="material-symbols-outlined text-5xl text-gray-300 mb-4">event_busy</span>
-          <p className="text-gray-500 font-medium">Ainda não existem eventos agendados no Supabase.</p>
+          <p className="text-gray-500 font-medium">Ainda não existem eventos agendados.</p>
           <p className="text-xs text-gray-400 mt-1">Organiza o primeiro workshop ou encontro para a tua comunidade.</p>
           <button 
             onClick={() => user ? setShowCreateModal(true) : onOpenAuth()}

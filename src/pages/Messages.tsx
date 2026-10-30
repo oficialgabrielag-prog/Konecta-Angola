@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { supabase, safeQuery, isSchemaCacheError, getFriendlyErrorMessage } from '../lib/supabase';
 import { d1Client } from '../lib/d1Client';
 import { Conversation, Message, Profile } from '../types';
 
@@ -30,43 +29,17 @@ export const Messages: React.FC<MessagesProps> = ({ user, onOpenAuth }) => {
     }
   }, [user]);
 
-  // Realtime subscription for messages in selected conversation
+  // Periodic poll for messages in selected conversation
   useEffect(() => {
     if (!selectedConv) return;
 
     fetchMessages(selectedConv.id);
 
-    const channel = supabase
-      .channel(`realtime:messages:${selectedConv.id}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'messages',
-          filter: `conversation_id=eq.${selectedConv.id}`
-        },
-        (payload) => {
-          const newMsg = payload.new as Message;
-          setMessages(prev => {
-            if (prev.some(m => m.id === newMsg.id)) return prev;
-            return [...prev, newMsg];
-          });
-        }
-      )
-      .subscribe((status) => {
-        if (status === 'SUBSCRIBED') {
-          // Connected
-        }
-      });
-
-    // Fallback periodic poll in case Realtime WebSocket is limited
     const pollInterval = setInterval(() => {
       fetchMessages(selectedConv.id, true);
-    }, 6000);
+    }, 4000);
 
     return () => {
-      supabase.removeChannel(channel);
       clearInterval(pollInterval);
     };
   }, [selectedConv]);
@@ -74,45 +47,11 @@ export const Messages: React.FC<MessagesProps> = ({ user, onOpenAuth }) => {
   const fetchConversations = async () => {
     setLoading(true);
     try {
-      // 1. Fetch from D1
       const d1Res = await d1Client.messages.listConversations();
-      const d1Convs = d1Res.data?.data || [];
-
-      // 2. Fetch from Supabase
-      const { data: memberEntries } = await safeQuery<any>(() => supabase
-        .from('conversation_members')
-        .select('conversation_id')
-        .eq('user_id', user.id));
-
-      const convIds = memberEntries?.map((m: any) => m.conversation_id) || [];
-      let sbConvs: any[] = [];
-
-      if (convIds.length > 0) {
-        const { data } = await safeQuery<any>(() => supabase
-          .from('conversations')
-          .select(`
-            *,
-            participants:conversation_members(
-              profiles(id, full_name, avatar_url, province)
-            )
-          `)
-          .in('id', convIds)
-          .order('last_message_at', { ascending: false }));
-        
-        sbConvs = data?.map((conv: any) => ({
-          ...conv,
-          participants: conv.participants?.map((p: any) => p.profiles).filter(Boolean)
-        })) || [];
-      }
-
-      // 3. Merge and deduplicate
-      const merged = [...d1Convs, ...sbConvs];
-      const unique = Array.from(new Map(merged.map(c => [c.id, c])).values())
-        .sort((a, b) => new Date(b.last_message_at).getTime() - new Date(a.last_message_at).getTime());
-
-      setConversations(unique);
-      if (!selectedConv && unique.length > 0) {
-        setSelectedConv(unique[0]);
+      const list = d1Res.data?.data || [];
+      setConversations(list);
+      if (!selectedConv && list.length > 0) {
+        setSelectedConv(list[0]);
       }
     } catch (err: any) {
       console.warn('Aviso ao carregar conversas:', err?.message || err);
@@ -123,23 +62,9 @@ export const Messages: React.FC<MessagesProps> = ({ user, onOpenAuth }) => {
 
   const fetchMessages = async (convId: string, background = false) => {
     try {
-      // 1. Fetch from D1
       const d1Res = await d1Client.messages.getMessages(convId);
-      const d1Msgs = d1Res.data?.data || [];
-
-      // 2. Fetch from Supabase
-      const { data: sbMsgs } = await safeQuery<any>(() => supabase
-        .from('messages')
-        .select('*')
-        .eq('conversation_id', convId)
-        .order('created_at', { ascending: true }));
-
-      // 3. Merge and deduplicate
-      const merged = [...d1Msgs, ...(sbMsgs || [])];
-      const unique = Array.from(new Map(merged.map(m => [m.id, m])).values())
-        .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
-
-      setMessages(unique);
+      const list = d1Res.data?.data || [];
+      setMessages(list);
     } catch (err: any) {
       if (!background) console.warn('Aviso ao carregar mensagens:', err?.message || err);
     }
@@ -153,32 +78,11 @@ export const Messages: React.FC<MessagesProps> = ({ user, onOpenAuth }) => {
     setSending(true);
 
     try {
-      // Dual-send
-      const [d1Res, sbRes] = await Promise.allSettled([
-        d1Client.messages.sendMessage(selectedConv.id, contentText),
-        safeQuery<any>(() => supabase.from('messages').insert({
-          conversation_id: selectedConv.id,
-          sender_id: user.id,
-          content: contentText
-        }).select().single())
-      ]);
-
-      const insertedMsg = d1Res.status === 'fulfilled' ? d1Res.value.data?.data : 
-                         (sbRes.status === 'fulfilled' ? sbRes.value.data : null);
-
-      if (insertedMsg) {
-        setMessages(prev => {
-          if (prev.some(m => m.id === insertedMsg.id)) return prev;
-          return [...prev, insertedMsg];
-        });
+      const res = await d1Client.messages.sendMessage(selectedConv.id, contentText);
+      const msg = res.data?.data;
+      if (msg) {
+        setMessages(prev => [...prev, msg]);
       }
-      
-      // Update last message in conversation (D1 does this internally in the batch, but let's do it for SB)
-      await safeQuery<any>(() => supabase.from('conversations').update({
-        last_message: contentText,
-        last_message_at: new Date().toISOString()
-      }).eq('id', selectedConv.id));
-
       setNewMessage('');
       fetchConversations();
     } catch (err: any) {
@@ -197,23 +101,8 @@ export const Messages: React.FC<MessagesProps> = ({ user, onOpenAuth }) => {
 
     setSearchingMembers(true);
     try {
-      // Dual search for members
-      const [sbRes, d1Res] = await Promise.all([
-        safeQuery<any>(() => supabase
-          .from('profiles')
-          .select('*')
-          .neq('id', user.id)
-          .ilike('full_name', `%${queryText.trim()}%`)
-          .limit(10)),
-        d1Client.search.global(queryText.trim())
-      ]);
-
-      const sbMembers = sbRes?.data || [];
-      const d1Members = d1Res.data?.data?.profiles || [];
-      const merged = [...d1Members, ...sbMembers];
-      const unique = Array.from(new Map(merged.map(m => [m.id, m])).values());
-
-      setMembersList(unique);
+      const d1Res = await d1Client.search.global(queryText.trim());
+      setMembersList(d1Res.data?.data?.profiles || []);
     } catch (err: any) {
       console.warn('Aviso ao pesquisar membros:', err?.message || err);
     } finally {
@@ -235,40 +124,12 @@ export const Messages: React.FC<MessagesProps> = ({ user, onOpenAuth }) => {
         return;
       }
 
-      // Dual-start conversation
-      const [d1Res, sbRes] = await Promise.allSettled([
-        d1Client.messages.startConversation(targetUser.id),
-        (async () => {
-          const { data: newConv, error: convErr } = await safeQuery<any>(() => supabase
-            .from('conversations')
-            .insert({
-              last_message: 'Conversa iniciada',
-              last_message_at: new Date().toISOString()
-            })
-            .select()
-            .single());
+      const res = await d1Client.messages.startConversation(targetUser.id);
+      if (!res.data?.data) {
+        throw new Error(res.error?.message || 'Falha ao iniciar conversa no Cloudflare D1.');
+      }
 
-          if (convErr) throw convErr;
-
-          await Promise.all([
-            safeQuery<any>(() => supabase.from('conversation_members').insert({
-              conversation_id: newConv.id,
-              user_id: user.id
-            })),
-            safeQuery<any>(() => supabase.from('conversation_members').insert({
-              conversation_id: newConv.id,
-              user_id: targetUser.id
-            }))
-          ]);
-          return newConv;
-        })()
-      ]);
-
-      const newConv = d1Res.status === 'fulfilled' ? d1Res.value.data?.data : 
-                     (sbRes.status === 'fulfilled' ? sbRes.value : null);
-
-      if (!newConv) throw new Error('Falha ao iniciar conversa em ambos os servidores.');
-
+      const newConv = res.data.data;
       setShowNewConvModal(false);
       setSearchMember('');
       setMembersList([]);
@@ -279,7 +140,7 @@ export const Messages: React.FC<MessagesProps> = ({ user, onOpenAuth }) => {
       });
     } catch (err: any) {
       console.warn('Aviso ao iniciar conversa:', err?.message || err);
-      alert(getFriendlyErrorMessage(err, 'Erro ao criar conversa.'));
+      alert(err?.message || 'Erro ao criar conversa.');
     } finally {
       setStartingConv(false);
     }

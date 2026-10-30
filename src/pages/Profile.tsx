@@ -1,8 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Idea, Project, Post, Follow, PostBookmark, Profile as ProfileType } from '../types';
-import { uploadToCloudinary } from '../lib/cloudinary';
-import { supabase, safeQuery, isSchemaCacheError, getFriendlyErrorMessage } from '../lib/supabase';
+import { Idea, Project, Post, Follow } from '../types';
+import { uploadToCloudflare } from '../lib/cloudinary';
 import { d1Client } from '../lib/d1Client';
 
 interface ProfileProps {
@@ -63,31 +62,15 @@ export const Profile: React.FC<ProfileProps> = ({
 
   const initEditProfileForm = async () => {
     try {
-      // 1. Try D1 first
       const d1Res = await d1Client.profiles.get(user.id);
       if (d1Res.data?.data) {
         const profile = d1Res.data.data;
-        setEditFullName(profile.full_name || user.user_metadata?.full_name || '');
+        setEditFullName(profile.full_name || user.user_metadata?.full_name || user.full_name || '');
         setEditBio(profile.bio || '');
         setEditProvince(profile.province || 'Luanda');
         setEditMunicipality(profile.municipality || '');
-        return;
-      }
-
-      // 2. Fallback to Supabase
-      const { data } = await safeQuery<any>(() => supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', user.id)
-        .maybeSingle());
-
-      if (data) {
-        setEditFullName(data.full_name || user.user_metadata?.full_name || '');
-        setEditBio(data.bio || '');
-        setEditProvince(data.province || 'Luanda');
-        setEditMunicipality(data.municipality || '');
       } else {
-        setEditFullName(user.user_metadata?.full_name || '');
+        setEditFullName(user.user_metadata?.full_name || user.full_name || '');
       }
     } catch (err: any) {
       console.warn('Aviso ao carregar perfil:', err?.message || err);
@@ -97,16 +80,8 @@ export const Profile: React.FC<ProfileProps> = ({
   const fetchUserPosts = async () => {
     setLoadingPosts(true);
     try {
-      const { data, error } = await safeQuery<any>(() => supabase
-        .from('posts')
-        .select('*, profiles(full_name, avatar_url, province)')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false }));
-      
-      if (error && !isSchemaCacheError(error)) {
-        console.warn('Aviso ao carregar publicações do perfil:', error.message);
-      }
-      setUserPosts(data || []);
+      const { data } = await d1Client.posts.list(50, user.id);
+      setUserPosts(data?.data || []);
     } catch (err: any) {
       console.warn('Aviso ao carregar posts:', err?.message || err);
     } finally {
@@ -117,31 +92,8 @@ export const Profile: React.FC<ProfileProps> = ({
   const fetchBookmarkedPosts = async () => {
     setLoadingBookmarks(true);
     try {
-      const { data, error } = await safeQuery<any>(() => supabase
-        .from('post_bookmarks')
-        .select(`
-          id,
-          post_id,
-          created_at,
-          posts:post_id(
-            id,
-            content,
-            image_url,
-            likes_count,
-            comments_count,
-            created_at,
-            profiles(full_name, avatar_url, province)
-          )
-        `)
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false }));
-
-      if (error && !isSchemaCacheError(error)) {
-        console.warn('Aviso ao carregar favoritos:', error.message);
-      }
-      
-      const cleaned = data?.map((b: any) => b.posts).filter(Boolean) || [];
-      setBookmarkedPosts(cleaned);
+      const { data } = await d1Client.posts.getBookmarks();
+      setBookmarkedPosts(data?.data || []);
     } catch (err: any) {
       console.warn('Aviso ao carregar favoritos:', err?.message || err);
     } finally {
@@ -151,27 +103,13 @@ export const Profile: React.FC<ProfileProps> = ({
 
   const fetchFollowData = async () => {
     try {
-      const [d1Followers, d1Following, sbFollowers, sbFollowing] = await Promise.all([
+      const [d1Followers, d1Following] = await Promise.all([
         d1Client.profiles.getFollowers(user.id),
-        d1Client.profiles.getFollowing(user.id),
-        safeQuery<any>(() => supabase
-          .from('follows')
-          .select('*, profiles:follower_id(id, full_name, avatar_url, province)')
-          .eq('following_id', user.id)),
-        safeQuery<any>(() => supabase
-          .from('follows')
-          .select('*, profiles:following_id(id, full_name, avatar_url, province)')
-          .eq('follower_id', user.id))
+        d1Client.profiles.getFollowing(user.id)
       ]);
 
-      const followersMerged = [...(d1Followers.data?.data || []), ...(sbFollowers?.data || [])];
-      const uniqueFollowers = Array.from(new Map(followersMerged.map(f => [f.follower_id || f.id, f])).values());
-
-      const followingMerged = [...(d1Following.data?.data || []), ...(sbFollowing?.data || [])];
-      const uniqueFollowing = Array.from(new Map(followingMerged.map(f => [f.following_id || f.id, f])).values());
-
-      setFollowers(uniqueFollowers);
-      setFollowing(uniqueFollowing);
+      setFollowers(d1Followers.data?.data || []);
+      setFollowing(d1Following.data?.data || []);
     } catch (err: any) {
       console.warn('Aviso ao carregar seguidores:', err?.message || err);
     }
@@ -183,29 +121,15 @@ export const Profile: React.FC<ProfileProps> = ({
 
     setUploading(true);
     try {
-      const url = await uploadToCloudinary(file);
-      
-      // 1. Update D1
+      const url = await uploadToCloudflare(file);
       await d1Client.profiles.update(user.id, { avatar_url: url });
-
-      // 2. Update Supabase
-      await safeQuery<any>(() => supabase.auth.updateUser({
-        data: { avatar_url: url }
-      }));
-
-      await safeQuery<any>(() => supabase.from('profiles').upsert({
-        id: user.id,
-        avatar_url: url,
-        full_name: user.user_metadata?.full_name,
-        updated_at: new Date().toISOString()
-      }));
 
       onUpdateProfile({ ...user.user_metadata, avatar_url: url });
       onIdeaCreated();
       fetchUserPosts();
     } catch (err: any) {
       console.warn('Aviso ao atualizar fotografia de perfil:', err?.message || err);
-      alert(getFriendlyErrorMessage(err, 'Erro ao atualizar fotografia.'));
+      alert(err?.message || 'Erro ao atualizar fotografia.');
     } finally {
       setUploading(false);
     }
@@ -226,32 +150,27 @@ export const Profile: React.FC<ProfileProps> = ({
     try {
       let imageUrl = '';
       if (pendingImage) {
-        imageUrl = await uploadToCloudinary(pendingImage);
+        imageUrl = await uploadToCloudflare(pendingImage);
       }
 
-      const { data, error } = await safeQuery<any>(() => supabase.from('posts').insert({
+      const res = await d1Client.posts.create({
         content: newPostText.trim(),
-        image_url: imageUrl || null,
-        user_id: user.id,
-      }).select('*, profiles(full_name, avatar_url, province)').single());
+        image_url: imageUrl || undefined,
+      });
 
-      if (error) {
-        if (isSchemaCacheError(error)) {
-          alert('A base de dados do Supabase está a sincronizar. O teu texto foi mantido. Tenta novamente em instantes.');
-          setPublishing(false);
-          return;
-        }
-        throw error;
+      const createdPost = res.data?.data;
+      if (createdPost) {
+        setUserPosts(prev => [createdPost, ...prev]);
       }
       
-      setUserPosts(prev => [data, ...prev]);
       setNewPostText('');
       setPendingImage(null);
       if (pendingImagePreview) URL.revokeObjectURL(pendingImagePreview);
       setPendingImagePreview(null);
+      fetchUserPosts();
     } catch (err: any) {
       console.warn('Aviso ao publicar post:', err?.message || err);
-      alert(getFriendlyErrorMessage(err, 'Erro ao publicar.'));
+      alert(err?.message || 'Erro ao publicar.');
     } finally {
       setPublishing(false);
     }
@@ -261,18 +180,11 @@ export const Profile: React.FC<ProfileProps> = ({
     if (!window.confirm('Tens a certeza que queres eliminar esta publicação?')) return;
     
     try {
-      const { error } = await safeQuery<any>(() => supabase.from('posts').delete().eq('id', id));
-      if (error) {
-        if (isSchemaCacheError(error)) {
-          alert('A base de dados do Supabase está a sincronizar. Tenta novamente em instantes.');
-          return;
-        }
-        throw error;
-      }
+      await d1Client.posts.delete(id);
       setUserPosts(prev => prev.filter(p => p.id !== id));
     } catch (err: any) {
       console.warn('Aviso ao eliminar post:', err?.message || err);
-      alert(getFriendlyErrorMessage(err, 'Erro ao eliminar publicação.'));
+      alert(err?.message || 'Erro ao eliminar publicação.');
     }
   };
 
@@ -282,33 +194,12 @@ export const Profile: React.FC<ProfileProps> = ({
 
     setSavingProfile(true);
     try {
-      // 1. Update D1
-      console.log('[Profile] Updating D1 Profile...');
       await d1Client.profiles.update(user.id, {
         full_name: editFullName.trim(),
         bio: editBio.trim() || null,
         province: editProvince,
         municipality: editMunicipality.trim() || null
       });
-
-      // 2. Update Supabase (Fallback/Parallel)
-      console.log('[Profile] Updating Supabase Profile (Parallel Sync)...');
-      await safeQuery<any>(() => supabase.auth.updateUser({
-        data: { 
-          full_name: editFullName.trim(),
-          province: editProvince,
-          municipality: editMunicipality.trim()
-        }
-      }));
-
-      await safeQuery<any>(() => supabase.from('profiles').upsert({
-        id: user.id,
-        full_name: editFullName.trim(),
-        bio: editBio.trim() || null,
-        province: editProvince,
-        municipality: editMunicipality.trim() || null,
-        updated_at: new Date().toISOString()
-      }));
 
       onUpdateProfile({
         ...user.user_metadata,
@@ -321,7 +212,7 @@ export const Profile: React.FC<ProfileProps> = ({
       onIdeaCreated();
     } catch (err: any) {
       console.warn('Aviso ao guardar perfil:', err?.message || err);
-      alert(getFriendlyErrorMessage(err, 'Erro ao atualizar dados do perfil.'));
+      alert(err?.message || 'Erro ao atualizar dados do perfil.');
     } finally {
       setSavingProfile(false);
     }
@@ -337,8 +228,8 @@ export const Profile: React.FC<ProfileProps> = ({
     );
   }
 
-  const avatarUrl = user.user_metadata?.avatar_url;
-  const fullName = editFullName || user.user_metadata?.full_name || 'Membro Konecta';
+  const avatarUrl = user.user_metadata?.avatar_url || user.avatar_url;
+  const fullName = editFullName || user.user_metadata?.full_name || user.full_name || 'Membro Konecta';
 
   return (
     <div className="bg-konecta-bg min-h-screen pb-20">
@@ -705,7 +596,7 @@ export const Profile: React.FC<ProfileProps> = ({
                       <option value="Bié">Bié</option>
                       <option value="Moxico">Moxico</option>
                       <option value="Cunene">Cunene</option>
-                      <option value="Cuando Cubango">Cuando Cubango</option>
+                      <option value="Quando Cubango">Quando Cubango</option>
                       <option value="Lunda Norte">Lunda Norte</option>
                       <option value="Lunda Sul">Lunda Sul</option>
                       <option value="Bengo">Bengo</option>

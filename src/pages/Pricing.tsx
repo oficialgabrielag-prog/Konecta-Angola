@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion } from 'motion/react';
-import { supabase, safeQuery, getFriendlyErrorMessage } from '../lib/supabase';
+import { d1Client } from '../lib/d1Client';
 
 interface PricingProps {
   user: any;
@@ -90,22 +90,15 @@ export const Pricing: React.FC<PricingProps> = ({ user, onOpenAuth, onNavigateTa
     setMessage(null);
 
     try {
-      // Record pending subscription interest in Supabase without fake charge
-      const { error } = await safeQuery<any>(() => supabase
-        .from('profiles')
-        .update({
-          subscription_plan: planId,
-          subscription_status: 'pending',
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', user.id));
+      await d1Client.profiles.update(user.id, {
+        subscription_plan: planId,
+        subscription_status: 'pending'
+      });
 
-      if (error) throw error;
-
-      setMessage(`O teu pedido para o plano ${planId.toUpperCase()} foi registado com o estado "Pendente". A nossa equipa entrará em contacto com as instruções de pagamento seguro.`);
+      setMessage(`O teu pedido para o plano ${planId.toUpperCase()} foi registado no Cloudflare D1 com o estado "Pendente". A nossa equipa entrará em contacto com as instruções de pagamento seguro.`);
     } catch (err: any) {
       console.warn('Aviso ao solicitar plano:', err?.message || err);
-      setMessage(getFriendlyErrorMessage(err, 'Erro ao registar intenção de subscrição.'));
+      setMessage(err?.message || 'Erro ao registar intenção de subscrição.');
     } finally {
       setSubmitting(false);
     }

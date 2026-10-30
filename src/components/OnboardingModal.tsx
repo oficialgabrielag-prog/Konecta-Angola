@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { supabase, safeQuery, getFriendlyErrorMessage } from '../lib/supabase';
 import { d1Client } from '../lib/d1Client';
 import { useWebPush } from '../hooks/useWebPush';
 
@@ -16,7 +15,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
   onNavigateTab
 }) => {
   const [step, setStep] = useState<1 | 2 | 3>(1);
-  const [fullName, setFullName] = useState(user?.user_metadata?.full_name || '');
+  const [fullName, setFullName] = useState(user?.user_metadata?.full_name || user?.full_name || '');
   const [province, setProvince] = useState('Luanda');
   const [municipality, setMunicipality] = useState('');
   const [bio, setBio] = useState('');
@@ -27,7 +26,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
   const provinces = [
     'Luanda', 'Benguela', 'Huambo', 'Huíla', 'Cabinda', 'Uíge', 
     'Malanje', 'Namibe', 'Zaire', 'Cuanza Sul', 'Cuanza Norte', 
-    'Bié', 'Moxico', 'Cunene', 'Cuando Cubango', 'Lunda Norte', 'Lunda Sul', 'Bengo'
+    'Bié', 'Moxico', 'Cunene', 'Quando Cubango', 'Lunda Norte', 'Lunda Sul', 'Bengo'
   ];
 
   const handleSaveStep1 = async (e: React.FormEvent) => {
@@ -36,7 +35,6 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
 
     setSaving(true);
     try {
-      // 1. Update D1
       await d1Client.profiles.update(user.id, {
         full_name: fullName.trim(),
         province,
@@ -44,28 +42,10 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
         bio: bio.trim() || null
       });
 
-      // 2. Update Supabase
-      await safeQuery(() => supabase.auth.updateUser({
-        data: {
-          full_name: fullName.trim(),
-          province,
-          municipality: municipality.trim()
-        }
-      }));
-
-      await safeQuery(() => supabase.from('profiles').upsert({
-        id: user.id,
-        full_name: fullName.trim(),
-        province,
-        municipality: municipality.trim() || null,
-        bio: bio.trim() || null,
-        updated_at: new Date().toISOString()
-      }));
-
       setStep(2);
     } catch (err: any) {
       console.warn('Aviso ao guardar perfil no onboarding:', err?.message || err);
-      alert(getFriendlyErrorMessage(err, 'Erro ao guardar dados do perfil.'));
+      alert(err?.message || 'Erro ao guardar dados do perfil.');
     } finally {
       setSaving(false);
     }

@@ -129,13 +129,13 @@ export const Community: React.FC<CommunityProps> = ({
         try {
           imageUrl = await uploadToCloudinary(imageFile, (p) => setUploadProgress(p));
         } catch (imgErr: any) {
-          alert(imgErr?.message || 'Falha no envio da imagem para o Cloudinary. O texto foi preservado no editor.');
+          alert(imgErr?.message || 'Falha no envio da imagem para o Cloudflare R2. O texto foi preservado no editor.');
           setPublishing(false);
           return;
         }
       }
 
-      // 1. Sync Profile to D1 and Supabase
+      // 1. Sync Profile to D1
       console.log('[Community] Syncing profile...');
       // 1. Sync Profile to D1
       await d1Client.profiles.update(user.id, {
@@ -372,7 +372,7 @@ export const Community: React.FC<CommunityProps> = ({
                 className="flex items-center gap-2 text-xs font-bold text-gray-500 hover:text-konecta-navy transition-colors px-3 py-1.5 rounded-lg hover:bg-gray-100"
               >
                 <span className="material-symbols-outlined text-[20px] text-konecta-gold">add_photo_alternate</span>
-                Imagem (Cloudinary)
+                Imagem (Cloudflare R2)
               </button>
               <input 
                 type="file" 
@@ -583,7 +583,7 @@ export const Community: React.FC<CommunityProps> = ({
               </li>
               <li className="flex items-start gap-2">
                 <span className="text-konecta-gold">✓</span>
-                <span>Usa o Cloudinary para anexar imagens reais dos teus projetos.</span>
+                <span>Usa o Cloudflare R2 para anexar imagens reais dos teus projetos.</span>
               </li>
             </ul>
           </section>

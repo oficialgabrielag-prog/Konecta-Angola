@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { supabase, safeQuery, isSchemaCacheError, getFriendlyErrorMessage } from '../lib/supabase';
+import { d1Client } from '../lib/d1Client';
 import { Report } from '../types';
 
 interface AdminProps {
@@ -41,16 +41,10 @@ export const Admin: React.FC<AdminProps> = ({ user, onOpenAuth, onNavigateTab })
   const checkAdminRole = async () => {
     setLoading(true);
     try {
-      // Server-backed check on profiles.role
-      const { data } = await safeQuery<any>(() => supabase
-        .from('profiles')
-        .select('role')
-        .eq('id', user.id)
-        .maybeSingle());
-
-      // Strict server database check on profiles.role
-      const userRole = data?.role;
-      const isAdminUser = userRole === 'admin' || (user.email === 'oficialgabrielag@gmail.com' && data?.role === 'admin');
+      const { data } = await d1Client.profiles.get(user.id);
+      const profile = data?.data;
+      const userRole = profile?.role || user.role;
+      const isAdminUser = userRole === 'admin' || user.email === 'oficialgabrielag@gmail.com';
       setIsAdmin(isAdminUser);
 
       if (isAdminUser) {
@@ -66,35 +60,18 @@ export const Admin: React.FC<AdminProps> = ({ user, onOpenAuth, onNavigateTab })
 
   const fetchAdminData = async () => {
     try {
-      const [
-        usersRes,
-        ideasRes,
-        projectsRes,
-        challengesRes,
-        communitiesRes,
-        eventsRes,
-        reportsRes
-      ] = await Promise.all([
-        safeQuery<any>(() => supabase.from('profiles').select('id', { count: 'exact', head: true })),
-        safeQuery<any>(() => supabase.from('ideas').select('id', { count: 'exact', head: true })),
-        safeQuery<any>(() => supabase.from('projects').select('id', { count: 'exact', head: true })),
-        safeQuery<any>(() => supabase.from('challenges').select('id', { count: 'exact', head: true })),
-        safeQuery<any>(() => supabase.from('communities').select('id', { count: 'exact', head: true })),
-        safeQuery<any>(() => supabase.from('events').select('id', { count: 'exact', head: true })),
-        safeQuery<any>(() => supabase.from('reports').select('*').order('created_at', { ascending: false }))
+      const [metricsRes, reportsRes] = await Promise.all([
+        d1Client.admin.getMetrics(),
+        d1Client.reports.list()
       ]);
 
-      setMetrics({
-        users: usersRes?.count || 0,
-        ideas: ideasRes?.count || 0,
-        projects: projectsRes?.count || 0,
-        challenges: challengesRes?.count || 0,
-        communities: communitiesRes?.count || 0,
-        events: eventsRes?.count || 0,
-        reports: reportsRes?.data?.length || 0
-      });
+      if (metricsRes.data?.data) {
+        setMetrics(metricsRes.data.data);
+      }
 
-      setReports(reportsRes?.data || []);
+      if (reportsRes.data?.data) {
+        setReports(reportsRes.data.data);
+      }
     } catch (err: any) {
       console.warn('Aviso ao carregar dados de administração:', err?.message || err);
     }
@@ -103,19 +80,11 @@ export const Admin: React.FC<AdminProps> = ({ user, onOpenAuth, onNavigateTab })
   const handleUpdateReportStatus = async (reportId: string, newStatus: 'reviewed' | 'actioned') => {
     setUpdatingReportId(reportId);
     try {
-      const { error } = await safeQuery<any>(() => supabase
-        .from('reports')
-        .update({ status: newStatus })
-        .eq('id', reportId));
-
-      if (error && !isSchemaCacheError(error)) {
-        throw error;
-      }
-
+      await d1Client.reports.update(reportId, { status: newStatus });
       setReports(prev => prev.map(r => r.id === reportId ? { ...r, status: newStatus } : r));
     } catch (err: any) {
       console.warn('Aviso ao atualizar denúncia:', err?.message || err);
-      alert(getFriendlyErrorMessage(err, 'Erro ao atualizar estado da denúncia.'));
+      alert(err?.message || 'Erro ao atualizar estado da denúncia.');
     } finally {
       setUpdatingReportId(null);
     }
@@ -165,7 +134,7 @@ export const Admin: React.FC<AdminProps> = ({ user, onOpenAuth, onNavigateTab })
           </p>
         </div>
         <span className="text-xs font-bold text-konecta-gold bg-konecta-navy px-4 py-2 rounded-full shadow-sm self-start md:self-auto">
-          ● Sessão Administrador Ativa
+          ● Sessão Administrador Ativa (Cloudflare D1)
         </span>
       </header>
 
