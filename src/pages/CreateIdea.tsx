@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Upload, X } from 'lucide-react';
-import { uploadToCloudflare } from '../lib/cloudinary';
+import { uploadToCloudflare } from '../lib/cloudflareStorage';
 import { d1Client } from '../lib/d1Client';
 
 interface CreateIdeaProps {

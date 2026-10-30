@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Idea, Project, Post, Follow } from '../types';
-import { uploadToCloudflare } from '../lib/cloudinary';
+import { uploadToCloudflare } from '../lib/cloudflareStorage';
 import { d1Client } from '../lib/d1Client';
 
 interface ProfileProps {

@@ -1,6 +1,5 @@
 /**
- * Cloudflare R2 Image Upload Adapter for KONECTA
- * (Replaces legacy Cloudinary integration completely)
+ * Cloudflare R2 Image Storage Adapter for KONECTA
  * Storage: Cloudflare R2 bucket konectaangola
  */
 
@@ -17,9 +16,6 @@ export async function uploadToCloudflare(file: File, onProgress?: (progress: num
 
   return url;
 }
-
-// Backward-compatible alias for existing callers
-export const uploadToCloudinary = uploadToCloudflare;
 
 export function getOptimizedImageUrl(url?: string | null, _width = 800): string {
   if (!url) return '';

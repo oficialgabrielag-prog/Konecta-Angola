@@ -4,7 +4,15 @@
  * Worker Binding: env.DB
  */
 
-const WORKER_BASE_URL = import.meta.env.VITE_D1_WORKER_URL || '';
+const OFFICIAL_WORKER_URL = 'https://konecta-worker.oficialgabrielag.workers.dev';
+
+function getWorkerUrl(): string {
+  const envUrl = import.meta.env.VITE_D1_WORKER_URL;
+  if (typeof envUrl === 'string' && envUrl.trim().length > 0) {
+    return envUrl.trim().replace(/\/+$/, '');
+  }
+  return OFFICIAL_WORKER_URL;
+}
 
 function getToken(): string | null {
   try {
@@ -34,7 +42,9 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<{ da
     headers.set('Authorization', `Bearer ${token}`);
   }
 
-  const url = WORKER_BASE_URL ? `${WORKER_BASE_URL}${path}` : path;
+  const baseUrl = getWorkerUrl();
+  const cleanPath = path.startsWith('/') ? path : `/${path}`;
+  const url = `${baseUrl}${cleanPath}`;
 
   try {
     const res = await fetch(url, { 
@@ -383,7 +393,8 @@ export const d1Client = {
         headers.set('Authorization', `Bearer ${token}`);
       }
 
-      const url = WORKER_BASE_URL ? `${WORKER_BASE_URL}/api/upload` : '/api/upload';
+      const baseUrl = getWorkerUrl();
+      const url = `${baseUrl}/api/upload`;
       const res = await fetch(url, {
         method: 'POST',
         headers,

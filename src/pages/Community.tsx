@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Post, Profile, CommentItem } from '../types';
 import { d1Client } from '../lib/d1Client';
-import { uploadToCloudflare as uploadToCloudinary } from '../lib/cloudinary';
+import { uploadToCloudflare } from '../lib/cloudflareStorage';
 import { PostCardSkeleton } from '../components/Skeletons';
 import { CANONICAL_POSTS } from '../lib/canonicalData';
 
@@ -127,7 +127,7 @@ export const Community: React.FC<CommunityProps> = ({
       let imageUrl = '';
       if (imageFile) {
         try {
-          imageUrl = await uploadToCloudinary(imageFile, (p) => setUploadProgress(p));
+          imageUrl = await uploadToCloudflare(imageFile, (p) => setUploadProgress(p));
         } catch (imgErr: any) {
           alert(imgErr?.message || 'Falha no envio da imagem para o Cloudflare R2. O texto foi preservado no editor.');
           setPublishing(false);
