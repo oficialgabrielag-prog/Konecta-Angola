@@ -34,7 +34,7 @@ export const Register: React.FC<RegisterProps> = ({ onSuccess, onNavigateLogin, 
     }
 
     try {
-      const signUpPromise = supabase.auth.signUp({
+      const { data, error: signUpError } = await supabase.auth.signUp({
         email: cleanEmail,
         password,
         options: {
@@ -46,57 +46,21 @@ export const Register: React.FC<RegisterProps> = ({ onSuccess, onNavigateLogin, 
         }
       });
 
-      const timeoutPromise = new Promise<{ data: any; error: any }>((resolve) =>
-        setTimeout(() => resolve({
-          data: { user: null },
-          error: { status: 504, message: '504 Gateway Timeout' }
-        }), 3500)
-      );
-
-      const { data, error: signUpError } = await Promise.race([signUpPromise, timeoutPromise]);
-
-      if (signUpError && !signUpError.status && !signUpError.message?.includes('504')) {
-        console.warn('Supabase registo aviso:', signUpError.message);
+      if (signUpError) {
+        setError(signUpError.message || 'Erro ao realizar registo.');
+        setLoading(false);
+        return;
       }
 
-      const registeredUser = {
-        id: data?.user?.id || ('user-' + Date.now()),
-        email: cleanEmail,
-        password, // saved securely in local registry for offline 504 resilience verification
-        user_metadata: {
-          full_name: cleanFullName,
-          province,
-          municipality,
+      if (data?.user) {
+        if (data.user.identities?.length === 0) {
+          setError('Este e-mail já está registado.');
+        } else {
+          setError('Registo realizado com sucesso! Verifique o seu e-mail para confirmar a conta.');
         }
-      };
-
-      try {
-        const existing = JSON.parse(localStorage.getItem('konecta_registered_users') || '[]');
-        const updated = [...existing.filter((u: any) => u.email !== cleanEmail), registeredUser];
-        localStorage.setItem('konecta_registered_users', JSON.stringify(updated));
-      } catch (e) {}
-
-      localStorage.setItem('konecta_demo_user', JSON.stringify(registeredUser));
-      onSuccess(registeredUser);
+      }
     } catch (err: any) {
-      console.warn('Aviso de registo:', err?.message || err);
-      const fallbackUser = {
-        id: 'user-' + Date.now(),
-        email: cleanEmail,
-        password,
-        user_metadata: {
-          full_name: cleanFullName,
-          province,
-          municipality,
-        }
-      };
-      try {
-        const existing = JSON.parse(localStorage.getItem('konecta_registered_users') || '[]');
-        const updated = [...existing.filter((u: any) => u.email !== cleanEmail), fallbackUser];
-        localStorage.setItem('konecta_registered_users', JSON.stringify(updated));
-      } catch (e) {}
-      localStorage.setItem('konecta_demo_user', JSON.stringify(fallbackUser));
-      onSuccess(fallbackUser);
+      setError('Erro de conexão com o servidor. Tente novamente.');
     } finally {
       setLoading(false);
     }

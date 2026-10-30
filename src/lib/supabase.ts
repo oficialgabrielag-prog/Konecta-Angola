@@ -1,10 +1,11 @@
 import { createClient } from '@supabase/supabase-js';
 
-const storedUrl = typeof window !== 'undefined' ? localStorage.getItem('konecta_supabase_url') : null;
-const SUPABASE_URL = storedUrl || import.meta.env.VITE_SUPABASE_URL || 'https://gzipmbloqalmkgvugnrk.supabase.co';
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || '';
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 
-const storedAnonKey = typeof window !== 'undefined' ? localStorage.getItem('konecta_supabase_anon_key') : null;
-const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || storedAnonKey || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imd6aXBtYmxvcWFsbWtndnVnbnJrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDEyMzQ1NjcsImV4cCI6MjA1NjgxMDU2N30.mock_key_konecta_angola';
+if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+  console.error('Supabase configuration missing. Check VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY environment variables.');
+}
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   auth: {
@@ -14,7 +15,7 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
 });
 
 export function isSupabaseConfigured(): boolean {
-  return Boolean(SUPABASE_ANON_KEY && !SUPABASE_ANON_KEY.includes('mock_key'));
+  return Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
 }
 
 export function isGatewayOrNetworkError(err: any): boolean {

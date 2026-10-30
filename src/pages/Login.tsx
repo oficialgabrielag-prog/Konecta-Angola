@@ -63,76 +63,25 @@ export const Login: React.FC<LoginProps> = ({ onSuccess, onNavigateRegister, onB
       const { data, error: signInError } = await Promise.race([signInPromise, timeoutPromise]);
 
       if (signInError) {
-        // If 504 timeout, allow resilient entry instantly so user is never blocked by gateway timeouts
-        if (signInError.status === 504 || signInError.message?.includes('504')) {
-          const registeredUsers = JSON.parse(localStorage.getItem('konecta_registered_users') || '[]');
-          let matchedUser = registeredUsers.find((u: any) => u.email?.toLowerCase() === cleanEmail);
-          
-          if (!matchedUser) {
-            // Auto-register resilient session on 504 timeout so user is never blocked
-            matchedUser = {
-              id: 'user-' + Date.now(),
-              email: cleanEmail,
-              password,
-              user_metadata: {
-                full_name: cleanEmail.split('@')[0],
-                province: 'Luanda'
-              }
-            };
-            registeredUsers.push(matchedUser);
-            try { localStorage.setItem('konecta_registered_users', JSON.stringify(registeredUsers)); } catch (e) {}
-          }
-
-          localStorage.setItem('konecta_demo_user', JSON.stringify(matchedUser));
-          onSuccess(matchedUser);
-          return;
-        }
-
-        // Handle specific Supabase Auth errors strictly
         if (signInError.message?.includes('Email not confirmed')) {
           setError('A sua conta ainda não foi confirmada. Verifique o seu email.');
           setShowResend(true);
-          setLoading(false);
-          return;
+        } else if (signInError.message?.includes('Invalid login credentials') || signInError.message?.includes('invalid')) {
+          setError('E-mail ou palavra-passe incorretos.');
+        } else {
+          setError(signInError.message || 'Erro ao realizar login.');
         }
-
-        if (signInError.message?.includes('Invalid login credentials') || signInError.message?.includes('invalid')) {
-          setError('E-mail ou palavra-passe incorretos. Acesso negado.');
-          setLoading(false);
-          return;
-        }
-
-        throw signInError;
+        setLoading(false);
+        return;
       }
 
       if (data?.user) {
-        localStorage.setItem('konecta_demo_user', JSON.stringify(data.user));
         onSuccess(data.user);
-        return;
       } else {
-        setError('E-mail ou palavra-passe incorretos.');
+        setError('Erro desconhecido ao autenticar.');
       }
     } catch (err: any) {
-      console.warn('Erro de autenticação:', err?.message || err);
-      
-      // Resilient fallback entry on network/server errors
-      const fallbackUser = {
-        id: 'user-' + Date.now(),
-        email: cleanEmail,
-        password,
-        user_metadata: {
-          full_name: cleanEmail.split('@')[0],
-          province: 'Luanda'
-        }
-      };
-      try {
-        const registeredUsers = JSON.parse(localStorage.getItem('konecta_registered_users') || '[]');
-        const updated = [...registeredUsers.filter((u: any) => u.email !== cleanEmail), fallbackUser];
-        localStorage.setItem('konecta_registered_users', JSON.stringify(updated));
-      } catch (e) {}
-
-      localStorage.setItem('konecta_demo_user', JSON.stringify(fallbackUser));
-      onSuccess(fallbackUser);
+      setError('Erro de conexão com o servidor. Tente novamente.');
     } finally {
       setLoading(false);
     }

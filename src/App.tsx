@@ -87,23 +87,14 @@ export default function App() {
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
 
   useEffect(() => {
-    checkUser();
-    fetchInitialData();
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null);
+      setLoading(false);
+      fetchInitialData();
+    });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (session?.user) {
-        setUser(session.user);
-        try { localStorage.setItem('konecta_demo_user', JSON.stringify(session.user)); } catch (e) {}
-      } else if (event === 'SIGNED_OUT') {
-        localStorage.removeItem('konecta_demo_user');
-        setUser(null);
-      } else {
-        // Do not kick user out on temporary server 504 / null session!
-        const saved = localStorage.getItem('konecta_demo_user');
-        if (saved) {
-          try { setUser(JSON.parse(saved)); } catch (e) {}
-        }
-      }
+      setUser(session?.user ?? null);
     });
 
     return () => subscription.unsubscribe();
@@ -138,42 +129,7 @@ export default function App() {
 
   const [userRole, setUserRole] = useState<string | null>(null);
 
-  const checkUser = async () => {
-    // 1. Immediately restore cached session so app opens in under 10ms with zero freeze
-    try {
-      const savedUserStr = localStorage.getItem('konecta_demo_user');
-      if (savedUserStr) {
-        setUser(JSON.parse(savedUserStr));
-      }
-    } catch (e) {}
-    setLoading(false); // Immediate unblock!
 
-    // 2. In background, check Supabase session with 2s timeout
-    try {
-      const sessionPromise = supabase.auth.getSession();
-      const timeoutPromise = new Promise<{ data: { session: null } }>((resolve) =>
-        setTimeout(() => resolve({ data: { session: null } }), 2000)
-      );
-
-      const { data: { session } } = await Promise.race([sessionPromise, timeoutPromise]);
-      const currentUser = session?.user ?? null;
-      if (currentUser) {
-        setUser(currentUser);
-        localStorage.setItem('konecta_demo_user', JSON.stringify(currentUser));
-        if (!currentUser.user_metadata?.province) {
-          setShowOnboarding(true);
-        }
-        const { data } = await safeQuery<any>(() => supabase
-          .from('profiles')
-          .select('role')
-          .eq('id', currentUser.id)
-          .maybeSingle(), 1, 1500);
-        setUserRole(data?.role || null);
-      }
-    } catch (e) {
-      console.warn('Sessão verificada em modo resiliente:', e);
-    }
-  };
 
   const fetchInitialData = async () => {
     // 1. STALE: Read immediately from localStorage cache or fallback to canonical data so UI is instantly rendered without blank states
