@@ -15,14 +15,20 @@ import { Register } from './pages/Register';
 import { PostDetail } from './pages/PostDetail';
 import { Dashboard } from './pages/Dashboard';
 import { Communities } from './pages/Communities';
+import { CommunitySettings } from './pages/CommunitySettings';
+import { CommunityFeedPage } from './pages/CommunityFeedPage';
 import { Events } from './pages/Events';
 import { Messages } from './pages/Messages';
 import { Search } from './pages/Search';
 import { Pricing } from './pages/Pricing';
 import { Admin } from './pages/Admin';
+import { Reels } from './pages/Reels';
+import { CommunityDetail } from './pages/CommunityDetail';
+import { ProjectDetail } from './pages/ProjectDetail';
+import { IdeaDetail } from './pages/IdeaDetail';
 import { OnboardingModal } from './components/OnboardingModal';
 import { d1Client } from './lib/d1Client';
-import { Idea, Challenge, Project, NotificationItem, ProfileUpdate } from './types';
+import { Idea, Challenge, Project, NotificationItem, ProfileUpdate, Profile as UserProfile, Community } from './types';
 import { OfflineIndicator } from './components/PWAComponents';
 import { ImageViewerModal } from './components/ImageViewerModal';
 import { motion, AnimatePresence } from 'motion/react';
@@ -36,6 +42,10 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [fullscreenImage, setFullscreenImage] = useState<string | null>(null);
+  const [activeCommunitySlug, setActiveCommunitySlug] = useState<string | null>(null);
+  const [activeCommunityId, setActiveCommunityId] = useState<string | null>(null);
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
+  const [selectedIdeaId, setSelectedIdeaId] = useState<string | null>(null);
   const [userRole, setUserRole] = useState<string | null>(null);
 
   // App Data State (Strictly real data; fake/sample posts and records are removed)
@@ -78,6 +88,8 @@ export default function App() {
       return [];
     } catch { return []; }
   });
+  const [profiles, setProfiles] = useState<UserProfile[]>([]);
+  const [communities, setCommunities] = useState<Community[]>([]);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
 
   useEffect(() => {
@@ -136,33 +148,42 @@ export default function App() {
       }
     } catch (e) {}
 
-    // 2. REVALIDATE: Fetch fresh data from Cloudflare D1
+    // 2. REVALIDATE: Fetch fresh data from Supabase
     try {
-      const [d1IdeasRes, d1ChallengesRes, d1ProjectsRes] = await Promise.all([
+      const [d1IdeasRes, d1ChallengesRes, d1ProjectsRes, d1ProfilesRes, d1CommunitiesRes] = await Promise.all([
         d1Client.ideas.list(30),
         d1Client.challenges.list(),
-        d1Client.projects.list()
+        d1Client.projects.list(),
+        d1Client.profiles.list(),
+        d1Client.communities.list()
       ]);
 
-      if (d1IdeasRes.data?.data) {
-        const unique = d1IdeasRes.data.data;
-        setIdeas(unique);
-        try { localStorage.setItem('konecta_cached_ideas', JSON.stringify(unique)); } catch (e) {}
+      if (d1IdeasRes.data) {
+        const unique = Array.isArray(d1IdeasRes.data) ? d1IdeasRes.data : (d1IdeasRes.data.data || []);
+        if (unique.length > 0) setIdeas(unique);
       }
 
-      if (d1ChallengesRes.data?.data) {
-        const unique = d1ChallengesRes.data.data;
-        setChallenges(unique);
-        try { localStorage.setItem('konecta_cached_challenges', JSON.stringify(unique)); } catch (e) {}
+      if (d1ChallengesRes.data) {
+        const unique = Array.isArray(d1ChallengesRes.data) ? d1ChallengesRes.data : (d1ChallengesRes.data.data || []);
+        if (unique.length > 0) setChallenges(unique);
       }
 
-      if (d1ProjectsRes.data?.data) {
-        const unique = d1ProjectsRes.data.data;
-        setProjects(unique);
-        try { localStorage.setItem('konecta_cached_projects', JSON.stringify(unique)); } catch (e) {}
+      if (d1ProjectsRes.data) {
+        const unique = Array.isArray(d1ProjectsRes.data) ? d1ProjectsRes.data : (d1ProjectsRes.data.data || []);
+        if (unique.length > 0) setProjects(unique);
+      }
+      
+      if (d1ProfilesRes.data) {
+        const unique = Array.isArray(d1ProfilesRes.data) ? d1ProfilesRes.data : (d1ProfilesRes.data.data || []);
+        if (unique.length > 0) setProfiles(unique);
+      }
+
+      if (d1CommunitiesRes.data) {
+        const unique = Array.isArray(d1CommunitiesRes.data) ? d1CommunitiesRes.data : (d1CommunitiesRes.data.data || []);
+        if (unique.length > 0) setCommunities(unique);
       }
     } catch (err: any) {
-      console.warn('Revalidação em segundo plano (Cloudflare D1):', err?.message || err);
+      console.warn('Revalidação em segundo plano (Supabase):', err?.message || err);
     }
   };
 
@@ -233,6 +254,22 @@ export default function App() {
       setCurrentTab('public-profile');
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
+  };
+
+  const openProjectDetail = (projectId: string) => {
+    setSelectedProjectId(projectId);
+    navigateTab('project-detail');
+  };
+
+  const openCommunityDetail = (communityId: string, slug?: string) => {
+    setActiveCommunityId(communityId);
+    if (slug) setActiveCommunitySlug(slug);
+    navigateTab('community-detail');
+  };
+
+  const openIdeaDetail = (ideaId: string) => {
+    setSelectedIdeaId(ideaId);
+    navigateTab('idea-detail');
   };
 
   const navigateTab = (tab: string) => {
@@ -350,6 +387,25 @@ export default function App() {
                 user={user}
                 onOpenAuth={() => navigateTab('login')}
                 onRefreshProjects={fetchInitialData}
+                onSelectProject={openProjectDetail}
+              />
+            )}
+
+            {currentTab === 'project-detail' && selectedProjectId && (
+              <ProjectDetail
+                projectId={selectedProjectId}
+                user={user}
+                onOpenAuth={() => navigateTab('login')}
+                onBack={() => navigateTab('projects')}
+                onSelectUser={openPublicProfile}
+              />
+            )}
+
+            {currentTab === 'reels' && (
+              <Reels
+                user={user}
+                onOpenAuth={() => navigateTab('login')}
+                onSelectUser={openPublicProfile}
               />
             )}
 
@@ -362,10 +418,42 @@ export default function App() {
               />
             )}
 
+            {currentTab === 'community-detail' && activeCommunityId && (
+              <CommunityDetail
+                communityId={activeCommunityId}
+                user={user}
+                onOpenAuth={() => navigateTab('login')}
+                onBack={() => navigateTab('communities')}
+                onSelectUser={openPublicProfile}
+                onImageClick={setFullscreenImage}
+              />
+            )}
+
+            {currentTab === 'community-settings' && (
+              <CommunitySettings slug={activeCommunitySlug} onNavigateBack={() => navigateTab('communities')} />
+            )}
+
+            {currentTab === 'community-feed' && (
+              <CommunityFeedPage communityId={activeCommunityId || ''} />
+            )}
+
             {currentTab === 'communities' && (
               <Communities
                 user={user}
                 onOpenAuth={() => navigateTab('login')}
+                onNavigateTab={navigateTab}
+                setActiveCommunitySlug={setActiveCommunitySlug}
+                setActiveCommunityId={setActiveCommunityId}
+              />
+            )}
+
+            {currentTab === 'idea-detail' && selectedIdeaId && (
+              <IdeaDetail
+                ideaId={selectedIdeaId}
+                user={user}
+                onOpenAuth={() => navigateTab('login')}
+                onBack={() => navigateTab('explore')}
+                onSelectUser={openPublicProfile}
               />
             )}
 
@@ -385,6 +473,10 @@ export default function App() {
 
             {currentTab === 'search' && (
               <Search
+                ideas={ideas}
+                projects={projects}
+                profiles={profiles}
+                communities={communities}
                 onSelectIdea={openPostDetail}
                 onSelectUser={openPublicProfile}
                 onNavigateTab={navigateTab}

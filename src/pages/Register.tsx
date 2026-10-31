@@ -36,7 +36,7 @@ export const Register: React.FC<RegisterProps> = ({ onSuccess, onNavigateLogin, 
     }
 
     try {
-      console.log('[Auth] Registo oficial Cloudflare D1...');
+      console.log('[Auth] Registo oficial no Supabase...');
       const d1Res = await d1Client.auth.register({
         email: cleanEmail,
         password,
@@ -46,23 +46,29 @@ export const Register: React.FC<RegisterProps> = ({ onSuccess, onNavigateLogin, 
       });
 
       if (d1Res.data?.user) {
-        console.log('[Auth] Conta registada com sucesso no D1');
-        onSuccess(d1Res.data.user);
-        setLoading(false);
-        return;
+        console.log('[Auth] Conta registada no Supabase');
+        if (d1Res.data?.session) {
+          onSuccess(d1Res.data.user);
+          setLoading(false);
+          return;
+        } else {
+          setSuccessMessage('Conta criada com sucesso! Por favor, verifique o seu e-mail para confirmar o registo e em seguida inicie sessão.');
+          setLoading(false);
+          return;
+        }
       }
 
       if (d1Res.error) {
-        if (d1Res.error.status === 409 || d1Res.error.message?.includes('já está registado')) {
+        if (d1Res.error.status === 409 || d1Res.error.message?.includes('already registered') || d1Res.error.message?.includes('já está registado')) {
           setError('Este e-mail já está registado. Por favor, tente iniciar sessão.');
         } else {
-          setError(d1Res.error.message || 'Erro ao realizar registo no Cloudflare D1.');
+          setError(d1Res.error.message || 'Erro ao realizar registo no Supabase.');
         }
       } else {
         setError('Não foi possível concluir o registo. Tente novamente.');
       }
     } catch (err: any) {
-      setError(err?.message || 'Erro de conexão com o Cloudflare Worker. Tente novamente.');
+      setError(err?.message || 'Erro de conexão com o Supabase. Tente novamente.');
     } finally {
       setLoading(false);
     }

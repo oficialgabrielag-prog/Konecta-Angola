@@ -93,10 +93,16 @@ export interface CommentItem {
 export interface Community {
   id: string;
   name: string;
+  slug?: string;
   description: string;
+  owner_id?: string;
+  avatar_url?: string;
+  cover_url?: string;
+  visibility?: string;
   image_url?: string;
   member_count?: number;
   created_at: string;
+  updated_at?: string;
 }
 
 export interface Event {
@@ -232,3 +238,56 @@ export interface CommunityMember {
   joined_at: string;
   profiles?: Profile;
 }
+
+export interface Reel {
+  id: string;
+  author_id: string;
+  cloudinary_public_id: string;
+  caption: string;
+  video_url: string;
+  thumbnail_url?: string;
+  format?: string;
+  width?: number;
+  height?: number;
+  duration_seconds?: number;
+  bytes?: number;
+  visibility?: string;
+  status?: string;
+  likes_count?: number;
+  comments_count?: number;
+  saves_count?: number;
+  is_liked?: boolean;
+  is_saved?: boolean;
+  created_at: string;
+  profiles?: Profile;
+}
+
+export interface CommunityAnnouncement {
+  id: string;
+  community_id: string;
+  author_id: string;
+  title: string;
+  body: string;
+  created_at: string;
+  profiles?: Profile;
+}
+
+export interface CommunityRule {
+  id: string;
+  community_id: string;
+  title: string;
+  body: string;
+  position?: number;
+  created_at?: string;
+}
+
+export interface ProjectUpdate {
+  id: string;
+  project_id: string;
+  author_id: string;
+  title: string;
+  body: string;
+  created_at: string;
+  profiles?: Profile;
+}
+

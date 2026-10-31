@@ -78,13 +78,6 @@ export default defineConfig(() => {
       port: 3000,
       hmr: false,
       ws: false as const,
-      proxy: {
-        '/api': {
-          target: 'https://konecta-worker.oficialgabrielag.workers.dev',
-          changeOrigin: true,
-          secure: true,
-        },
-      },
     },
   };
 });

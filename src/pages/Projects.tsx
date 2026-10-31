@@ -8,6 +8,7 @@ interface ProjectsProps {
   user: any;
   onOpenAuth: () => void;
   onRefreshProjects?: () => void;
+  onSelectProject?: (projectId: string) => void;
 }
 
 export const Projects: React.FC<ProjectsProps> = ({
@@ -15,6 +16,7 @@ export const Projects: React.FC<ProjectsProps> = ({
   user,
   onOpenAuth,
   onRefreshProjects,
+  onSelectProject,
 }) => {
   const [selectedProject, setSelectedProject] = useState<Project | null>(projects[0] || null);
   const [activeTab, setActiveTab] = useState<'tasks' | 'milestones' | 'members'>('tasks');
@@ -311,8 +313,19 @@ export const Projects: React.FC<ProjectsProps> = ({
                       </span>
                     </div>
 
-                    {/* Join / Leave Team Button */}
-                    <div className="flex items-center gap-3">
+                    {/* Join / Leave Team Button & Full Page */}
+                    <div className="flex items-center gap-2">
+                      {onSelectProject && (
+                        <button
+                          onClick={() => onSelectProject(selectedProject.id)}
+                          className="btn-gold py-2 px-4 text-xs font-bold shadow-xs flex items-center gap-1.5"
+                          title="Abrir página individual do projeto com todas as abas"
+                        >
+                          <span className="material-symbols-outlined text-[16px]">open_in_new</span>
+                          Página Completa
+                        </button>
+                      )}
+
                       {isLeader ? (
                         <span className="text-xs font-bold text-konecta-gold bg-konecta-navy px-3 py-1.5 rounded-full">
                           És o Líder

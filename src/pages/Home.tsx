@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Idea, Challenge, Post, CommentItem } from '../types';
 import { d1Client } from '../lib/d1Client';
-import { uploadToCloudflare } from '../lib/cloudflareStorage';
+import { uploadToCloudinary } from '../lib/cloudinary';
 import { PostCardSkeleton, IdeaCardSkeleton } from '../components/Skeletons';
 
 interface HomeProps {
@@ -139,9 +139,9 @@ export const Home: React.FC<HomeProps> = ({
       let imageUrl = '';
       if (newPostImage) {
         try {
-          imageUrl = await uploadToCloudflare(newPostImage, (p) => setUploadProgress(p));
+          imageUrl = await uploadToCloudinary(newPostImage, (p) => setUploadProgress(p));
         } catch (imgErr: any) {
-          alert(imgErr?.message || 'Falha no envio da imagem para o Cloudflare R2. O texto foi preservado no editor.');
+          alert(imgErr?.message || 'Falha no envio da imagem para o Cloudinary. O texto foi preservado no editor.');
           setPublishing(false);
           return;
         }
@@ -152,19 +152,19 @@ export const Home: React.FC<HomeProps> = ({
         image_url: imageUrl || undefined
       });
 
-      const inserted = postRes.data?.data || {
-        id: crypto.randomUUID(),
-        user_id: user.id,
-        content: newPostContent.trim(),
-        image_url: imageUrl || null,
-        created_at: new Date().toISOString()
-      };
+      if (postRes.error || !postRes.data) {
+        throw new Error(postRes.error?.message || 'Falha ao gravar publicação no Supabase.');
+      }
+
+      const inserted = postRes.data;
 
       const newPostWithProfile: Post = {
         ...inserted,
-        profiles: {
+        profiles: inserted.profiles || {
           id: user.id,
+          user_id: user.id,
           full_name: user.user_metadata?.full_name || 'Membro Konecta',
+          display_name: user.user_metadata?.full_name || 'Membro Konecta',
           avatar_url: user.user_metadata?.avatar_url || undefined,
           province: user.user_metadata?.province || 'Angola'
         }

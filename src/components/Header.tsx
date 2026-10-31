@@ -16,10 +16,11 @@ export const Header: React.FC<HeaderProps> = ({ currentTab, setCurrentTab, user,
     { id: 'home', label: 'Início', icon: 'home' },
     { id: 'explore', label: 'Explorar', icon: 'explore' },
     { id: 'community', label: 'Feed Social', icon: 'dynamic_feed' },
+    { id: 'reels', label: 'Reels', icon: 'smart_display' },
     { id: 'communities', label: 'Comunidades', icon: 'groups' },
+    { id: 'projects', label: 'Projetos', icon: 'folder_special' },
     { id: 'events', label: 'Eventos', icon: 'event' },
     { id: 'challenges', label: 'Desafios', icon: 'emoji_events' },
-    { id: 'projects', label: 'Projetos', icon: 'folder_special' },
     { id: 'pricing', label: 'Planos', icon: 'payments' },
   ];
 

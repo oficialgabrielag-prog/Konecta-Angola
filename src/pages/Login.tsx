@@ -28,23 +28,29 @@ export const Login: React.FC<LoginProps> = ({ onSuccess, onNavigateRegister, onB
     }
 
     try {
-      console.log('[Auth] Autenticação Cloudflare D1...');
+      console.log('[Auth] Autenticação Supabase...');
       const d1Res = await d1Client.auth.login({ email: cleanEmail, password });
       
       if (d1Res.data?.user) {
-        console.log('[Auth] Sessão iniciada com Cloudflare D1');
+        console.log('[Auth] Sessão iniciada com Supabase Auth');
         onSuccess(d1Res.data.user);
         setLoading(false);
         return;
       }
 
       if (d1Res.error) {
-        setError(d1Res.error.message || 'E-mail ou palavra-passe incorretos.');
+        if (d1Res.error.message?.includes('Email not confirmed')) {
+          setError('Por favor, confirme o seu e-mail através da ligação enviada para a sua caixa de correio antes de iniciar sessão.');
+        } else if (d1Res.error.message?.includes('Invalid login credentials')) {
+          setError('E-mail ou palavra-passe incorretos.');
+        } else {
+          setError(d1Res.error.message || 'Erro na autenticação.');
+        }
       } else {
         setError('Não foi possível autenticar o utilizador. Verifique as suas credenciais.');
       }
     } catch (err: any) {
-      setError(err?.message || 'Erro de conexão com o Cloudflare Worker. Tente novamente.');
+      setError(err?.message || 'Erro de conexão com o Supabase. Tente novamente.');
     } finally {
       setLoading(false);
     }

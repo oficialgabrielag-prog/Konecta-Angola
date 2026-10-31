@@ -1,14 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Community, CommunityMember, Profile } from '../types';
-import { d1Client } from '../lib/d1Client';
+import { supabase } from '../lib/supabaseClient';
 
 interface CommunitiesProps {
   user: any;
   onOpenAuth: () => void;
+  onNavigateTab: (tab: string) => void;
+  setActiveCommunitySlug: (slug: string) => void;
+  setActiveCommunityId: (id: string) => void;
 }
 
-export const Communities: React.FC<CommunitiesProps> = ({ user, onOpenAuth }) => {
+export const Communities: React.FC<CommunitiesProps> = ({ user, onOpenAuth, onNavigateTab, setActiveCommunitySlug, setActiveCommunityId }) => {
   const [communities, setCommunities] = useState<Community[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -36,19 +39,25 @@ export const Communities: React.FC<CommunitiesProps> = ({ user, onOpenAuth }) =>
   const fetchCommunities = async () => {
     setLoading(true);
     try {
-      const res = await d1Client.communities.list();
-      const comList = res.data?.data || [];
+      const { data, error } = await supabase
+        .from('communities')
+        .select('*, community_members(count)')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+
+      const comList = (data || []).map(c => ({
+        ...c,
+        member_count: c.community_members?.length || 0
+      }));
       setCommunities(comList);
 
       const counts: Record<string, number> = {};
-      const userJoined: Record<string, boolean> = {};
-
       comList.forEach((c: any) => {
-        counts[c.id] = c.members_count || 1;
+        counts[c.id] = c.member_count;
       });
 
       setMemberCounts(counts);
-      setJoinedMap(userJoined);
       setError(null);
     } catch (err: any) {
       console.warn('Aviso ao carregar comunidades:', err?.message || err);
@@ -68,7 +77,6 @@ export const Communities: React.FC<CommunitiesProps> = ({ user, onOpenAuth }) =>
     const isMember = joinedMap[communityId];
     setActionLoading(prev => ({ ...prev, [communityId]: true }));
 
-    // Optimistic UI update
     setJoinedMap(prev => ({ ...prev, [communityId]: !isMember }));
     setMemberCounts(prev => ({
       ...prev,
@@ -79,20 +87,15 @@ export const Communities: React.FC<CommunitiesProps> = ({ user, onOpenAuth }) =>
 
     try {
       if (isMember) {
-        await d1Client.communities.leave(communityId);
+        await supabase.from('community_members').delete().match({ community_id: communityId, user_id: user.id });
       } else {
-        await d1Client.communities.join(communityId);
+        await supabase.from('community_members').insert({ community_id: communityId, user_id: user.id, joined_at: new Date().toISOString() });
       }
     } catch (err: any) {
       console.warn('Aviso ao aderir/sair da comunidade:', err?.message || err);
     } finally {
       setActionLoading(prev => ({ ...prev, [communityId]: false }));
     }
-  };
-
-  const openCommunityDetails = async (community: Community) => {
-    setSelectedCommunity(community);
-    setLoadingMembers(false);
   };
 
   const handleCreateCommunity = async (e: React.FormEvent) => {
@@ -105,15 +108,27 @@ export const Communities: React.FC<CommunitiesProps> = ({ user, onOpenAuth }) =>
 
     setCreating(true);
     try {
-      const payload = {
-        name: name.trim(),
-        description: description.trim(),
-      };
-
-      const res = await d1Client.communities.create(payload);
-      if (res.error) {
-        throw new Error(res.error.message || 'Falha ao criar comunidade.');
-      }
+      const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-') + '-' + Date.now().toString().slice(-4);
+      const { data, error } = await supabase
+        .from('communities')
+        .insert({
+          name: name.trim(),
+          description: description.trim(),
+          owner_id: user.id,
+          slug,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
+        .select()
+        .single();
+        
+      if (error) throw error;
+      
+      await supabase.from('community_members').insert({
+        community_id: data.id,
+        user_id: user.id,
+        joined_at: new Date().toISOString()
+      });
 
       setShowCreateModal(false);
       setName('');
@@ -130,7 +145,6 @@ export const Communities: React.FC<CommunitiesProps> = ({ user, onOpenAuth }) =>
   return (
     <div className="max-w-7xl mx-auto px-6 py-12 lg:py-20">
       
-      {/* Header */}
       <header className="mb-16 flex flex-col md:flex-row md:items-end justify-between gap-6">
         <div>
           <span className="feature-kicker">Hub de Conexão</span>
@@ -186,13 +200,17 @@ export const Communities: React.FC<CommunitiesProps> = ({ user, onOpenAuth }) =>
                 key={community.id}
                 initial={{ opacity: 0, scale: 0.98 }}
                 animate={{ opacity: 1, scale: 1 }}
-                onClick={() => openCommunityDetails(community)}
+                onClick={() => {
+                  setActiveCommunityId(community.id);
+                  if (community.slug) setActiveCommunitySlug(community.slug);
+                  onNavigateTab('community-detail');
+                }}
                 className="card-konecta flex flex-col justify-between h-full p-6 sm:p-8 cursor-pointer hover:border-konecta-gold/50 transition-all shadow-sm group"
               >
                 <div>
                   <div className="h-40 bg-gradient-to-br from-konecta-navy/10 to-konecta-gold/10 rounded-2xl mb-6 overflow-hidden relative flex items-center justify-center">
-                    {community.image_url ? (
-                      <img src={community.image_url} alt={community.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                    {community.avatar_url ? (
+                      <img src={community.avatar_url} alt={community.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
                     ) : (
                       <div className="w-16 h-16 rounded-2xl bg-white/80 shadow-sm flex items-center justify-center text-konecta-navy">
                         <span className="material-symbols-outlined text-3xl text-konecta-gold">groups</span>
@@ -212,9 +230,19 @@ export const Communities: React.FC<CommunitiesProps> = ({ user, onOpenAuth }) =>
                 </div>
                 
                 <div className="flex items-center justify-between pt-6 border-t border-gray-100">
-                  <span className="text-xs text-gray-400 group-hover:text-konecta-navy transition-colors font-medium">
-                    Ver detalhes →
-                  </span>
+                  {community.owner_id === user?.id ? (
+                    <button 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setActiveCommunitySlug(community.slug || '');
+                        setActiveCommunityId(community.id);
+                        onNavigateTab('community-settings');
+                      }}
+                      className="text-xs font-bold text-konecta-navy hover:text-konecta-gold"
+                    >
+                      Configurar
+                    </button>
+                  ) : <span />}
                   <button 
                     onClick={(e) => handleToggleMembership(e, community.id)}
                     disabled={isLoading}

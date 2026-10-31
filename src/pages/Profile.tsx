@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Idea, Project, Post, Follow } from '../types';
-import { uploadToCloudflare } from '../lib/cloudflareStorage';
+import { uploadToCloudinary } from '../lib/cloudinary';
 import { d1Client } from '../lib/d1Client';
 
 interface ProfileProps {
@@ -121,7 +121,7 @@ export const Profile: React.FC<ProfileProps> = ({
 
     setUploading(true);
     try {
-      const url = await uploadToCloudflare(file);
+      const url = await uploadToCloudinary(file);
       await d1Client.profiles.update(user.id, { avatar_url: url });
 
       onUpdateProfile({ ...user.user_metadata, avatar_url: url });
@@ -150,7 +150,7 @@ export const Profile: React.FC<ProfileProps> = ({
     try {
       let imageUrl = '';
       if (pendingImage) {
-        imageUrl = await uploadToCloudflare(pendingImage);
+        imageUrl = await uploadToCloudinary(pendingImage);
       }
 
       const res = await d1Client.posts.create({

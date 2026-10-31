@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Post, Profile, CommentItem } from '../types';
 import { d1Client } from '../lib/d1Client';
-import { uploadToCloudflare } from '../lib/cloudflareStorage';
+import { uploadToCloudinary } from '../lib/cloudinary';
 import { PostCardSkeleton } from '../components/Skeletons';
 import { CANONICAL_POSTS } from '../lib/canonicalData';
 
@@ -127,42 +127,41 @@ export const Community: React.FC<CommunityProps> = ({
       let imageUrl = '';
       if (imageFile) {
         try {
-          imageUrl = await uploadToCloudflare(imageFile, (p) => setUploadProgress(p));
+          imageUrl = await uploadToCloudinary(imageFile, (p) => setUploadProgress(p));
         } catch (imgErr: any) {
-          alert(imgErr?.message || 'Falha no envio da imagem para o Cloudflare R2. O texto foi preservado no editor.');
+          alert(imgErr?.message || 'Falha no envio da imagem para o Cloudinary. O texto foi preservado no editor.');
           setPublishing(false);
           return;
         }
       }
 
-      // 1. Sync Profile to D1
+      // 1. Sync Profile to Supabase
       console.log('[Community] Syncing profile...');
-      // 1. Sync Profile to D1
       await d1Client.profiles.update(user.id, {
         full_name: user.user_metadata?.full_name || 'Membro Konecta',
         avatar_url: user.user_metadata?.avatar_url || null,
         province: user.user_metadata?.province || 'Luanda'
-      }).catch(err => console.warn('Aviso ao sincronizar perfil no D1:', err));
+      }).catch((err: any) => console.warn('Aviso ao sincronizar perfil:', err));
 
-      // 2. Insert Post to D1
+      // 2. Insert Post to Supabase
       const d1PostRes = await d1Client.posts.create({
         content: content.trim(),
         image_url: imageUrl || undefined
       });
 
-      const inserted = d1PostRes.data?.data || {
-        id: crypto.randomUUID(),
-        user_id: user.id,
-        content: content.trim(),
-        image_url: imageUrl || null,
-        created_at: new Date().toISOString()
-      };
+      if (d1PostRes.error || !d1PostRes.data) {
+        throw new Error(d1PostRes.error?.message || 'Falha ao gravar publicação no Supabase.');
+      }
+
+      const inserted = d1PostRes.data;
 
       const newPostWithProfile: Post = {
         ...inserted,
-        profiles: {
+        profiles: inserted.profiles || {
           id: user.id,
+          user_id: user.id,
           full_name: user.user_metadata?.full_name || 'Membro Konecta',
+          display_name: user.user_metadata?.full_name || 'Membro Konecta',
           avatar_url: user.user_metadata?.avatar_url || undefined,
           province: user.user_metadata?.province || 'Angola'
         }

@@ -4,12 +4,16 @@ import { Idea, Profile, Project, Community, Event } from '../types';
 import { d1Client } from '../lib/d1Client';
 
 interface SearchProps {
+  ideas: Idea[];
+  projects: Project[];
+  profiles: Profile[];
+  communities: Community[];
   onSelectIdea: (idea: Idea) => void;
   onSelectUser: (userId: string) => void;
   onNavigateTab?: (tab: string) => void;
 }
 
-export const Search: React.FC<SearchProps> = ({ onSelectIdea, onSelectUser, onNavigateTab }) => {
+export const Search: React.FC<SearchProps> = ({ ideas, projects, profiles, communities, onSelectIdea, onSelectUser, onNavigateTab }) => {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<{
     ideas: Idea[];
@@ -24,47 +28,34 @@ export const Search: React.FC<SearchProps> = ({ onSelectIdea, onSelectUser, onNa
     communities: [],
     events: []
   });
-  const [loading, setLoading] = useState(false);
   const [activeFilter, setActiveFilter] = useState<'all' | 'ideas' | 'people' | 'projects' | 'communities' | 'events'>('all');
 
   useEffect(() => {
-    const delayDebounceFn = setTimeout(() => {
-      if (query.trim().length >= 2) {
-        handleSearch();
-      } else {
-        setResults({ ideas: [], profiles: [], projects: [], communities: [], events: [] });
-      }
-    }, 400);
-
-    return () => clearTimeout(delayDebounceFn);
-  }, [query]);
-
-  const handleSearch = async () => {
-    setLoading(true);
-    try {
-      const d1Res = await d1Client.search.global(query.trim());
-      const data = d1Res.data?.data || { ideas: [], profiles: [], projects: [], communities: [], events: [] };
+    if (query.trim().length >= 2) {
+      const q = query.toLowerCase();
+      
+      const filteredIdeas = ideas.filter(i => i.title?.toLowerCase().includes(q) || i.description?.toLowerCase().includes(q));
+      const filteredProjects = projects.filter(p => p.title?.toLowerCase().includes(q) || p.description?.toLowerCase().includes(q));
+      const filteredProfiles = profiles.filter(p => p.full_name?.toLowerCase().includes(q) || p.bio?.toLowerCase().includes(q));
+      const filteredCommunities = communities.filter(c => c.name?.toLowerCase().includes(q) || c.description?.toLowerCase().includes(q));
 
       setResults({
-        ideas: data.ideas || [],
-        profiles: data.profiles || [],
-        projects: data.projects || [],
-        communities: data.communities || [],
-        events: data.events || []
+        ideas: filteredIdeas,
+        projects: filteredProjects,
+        profiles: filteredProfiles,
+        communities: filteredCommunities,
+        events: []
       });
-    } catch (err: any) {
-      console.warn('Aviso de pesquisa global:', err?.message || err);
-    } finally {
-      setLoading(false);
+    } else {
+      setResults({ ideas: [], profiles: [], projects: [], communities: [], events: [] });
     }
-  };
+  }, [query, ideas, projects, profiles, communities]);
 
   const totalResults = 
     results.ideas.length + 
     results.profiles.length + 
     results.projects.length + 
-    results.communities.length + 
-    results.events.length;
+    results.communities.length;
 
   return (
     <div className="max-w-5xl mx-auto px-6 py-12 lg:py-20">
@@ -102,7 +93,6 @@ export const Search: React.FC<SearchProps> = ({ onSelectIdea, onSelectUser, onNa
             { id: 'people', label: `Pessoas (${results.profiles.length})` },
             { id: 'projects', label: `Projetos (${results.projects.length})` },
             { id: 'communities', label: `Comunidades (${results.communities.length})` },
-            { id: 'events', label: `Eventos (${results.events.length})` },
           ].map((item) => (
             <button
               key={item.id}
@@ -120,11 +110,7 @@ export const Search: React.FC<SearchProps> = ({ onSelectIdea, onSelectUser, onNa
       </header>
 
       {/* Results Section */}
-      {loading ? (
-        <div className="flex justify-center py-20">
-          <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-b-2 border-konecta-navy"></div>
-        </div>
-      ) : query.trim().length >= 2 ? (
+      {query.trim().length >= 2 && (
         <div className="space-y-12">
           {totalResults === 0 ? (
             <div className="text-center py-20 bg-white rounded-3xl border border-dashed border-gray-200">
@@ -281,11 +267,6 @@ export const Search: React.FC<SearchProps> = ({ onSelectIdea, onSelectUser, onNa
               )}
             </>
           )}
-        </div>
-      ) : (
-        <div className="text-center py-24 text-gray-400 space-y-3">
-          <span className="material-symbols-outlined text-5xl text-gray-300">manage_search</span>
-          <p className="text-sm">Digita pelo menos 2 letras para pesquisar em toda a rede KONECTA.</p>
         </div>
       )}
 

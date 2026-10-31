@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Upload, X } from 'lucide-react';
-import { uploadToCloudflare } from '../lib/cloudflareStorage';
+import { uploadToCloudinary } from '../lib/cloudinary';
 import { d1Client } from '../lib/d1Client';
 
 interface CreateIdeaProps {
@@ -65,11 +65,11 @@ export const CreateIdea: React.FC<CreateIdeaProps> = ({ user, onOpenAuth, onIdea
       let imageUrl = '';
       if (imageFile) {
         try {
-          imageUrl = await uploadToCloudflare(imageFile, (progress) => {
+          imageUrl = await uploadToCloudinary(imageFile, (progress) => {
             setUploadProgress(progress);
           });
         } catch (imgErr: any) {
-          setError(imgErr?.message || 'Falha no envio da imagem para o Cloudflare R2. O título e descrição foram preservados.');
+          setError(imgErr?.message || 'Falha no envio da imagem para o Cloudinary. O título e descrição foram preservados.');
           setSubmitting(false);
           return;
         }
