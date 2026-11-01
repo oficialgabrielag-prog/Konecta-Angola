@@ -7,9 +7,18 @@ interface HeaderProps {
   isAdmin?: boolean;
   onSignOut: () => void;
   unreadCount?: number;
+  unreadMessagesCount?: number;
 }
 
-export const Header: React.FC<HeaderProps> = ({ currentTab, setCurrentTab, user, isAdmin = false, onSignOut, unreadCount = 0 }) => {
+export const Header: React.FC<HeaderProps> = ({ 
+  currentTab, 
+  setCurrentTab, 
+  user, 
+  isAdmin = false, 
+  onSignOut, 
+  unreadCount = 0,
+  unreadMessagesCount = 0
+}) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const navItems = [
@@ -40,6 +49,7 @@ export const Header: React.FC<HeaderProps> = ({ currentTab, setCurrentTab, user,
           <button
             onClick={() => handleNavClick('home')}
             className="flex flex-col items-start group"
+            aria-label="Página inicial Konecta"
           >
             <span className="text-xl font-extrabold tracking-tighter text-konecta-navy group-hover:text-konecta-gold transition-colors">
               KONECTA
@@ -67,6 +77,7 @@ export const Header: React.FC<HeaderProps> = ({ currentTab, setCurrentTab, user,
             onClick={() => handleNavClick('search')} 
             className={`w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center rounded-full transition-all ${currentTab === 'search' ? 'bg-konecta-navy text-white shadow-md' : 'text-konecta-navy hover:bg-gray-100'}`}
             title="Pesquisa Geral"
+            aria-label="Pesquisa geral"
           >
             <span className="material-symbols-outlined text-[20px] sm:text-[22px]">search</span>
           </button>
@@ -78,6 +89,7 @@ export const Header: React.FC<HeaderProps> = ({ currentTab, setCurrentTab, user,
                   onClick={() => handleNavClick('admin')} 
                   className={`w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center rounded-full transition-all ${currentTab === 'admin' ? 'bg-konecta-navy text-konecta-gold shadow-md' : 'text-konecta-navy hover:bg-gray-100'}`}
                   title="Painel de Administração"
+                  aria-label="Painel de administração"
                 >
                   <span className="material-symbols-outlined text-[20px] sm:text-[22px]">admin_panel_settings</span>
                 </button>
@@ -85,10 +97,16 @@ export const Header: React.FC<HeaderProps> = ({ currentTab, setCurrentTab, user,
 
               <button 
                 onClick={() => handleNavClick('messages')} 
-                className={`w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center rounded-full transition-all ${currentTab === 'messages' ? 'bg-konecta-navy text-white shadow-md' : 'text-konecta-navy hover:bg-gray-100'}`}
+                className={`w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center rounded-full transition-all relative ${currentTab === 'messages' ? 'bg-konecta-navy text-white shadow-md' : 'text-konecta-navy hover:bg-gray-100'}`}
                 title="Mensagens"
+                aria-label="Mensagens privadas"
               >
                 <span className="material-symbols-outlined text-[20px] sm:text-[22px]">forum</span>
+                {unreadMessagesCount > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-konecta-gold text-konecta-navy text-[10px] font-black w-5 h-5 rounded-full flex items-center justify-center border-2 border-white">
+                    {unreadMessagesCount > 9 ? '9+' : unreadMessagesCount}
+                  </span>
+                )}
               </button>
 
               <button 

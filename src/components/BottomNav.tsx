@@ -7,6 +7,7 @@ interface BottomNavProps {
   user: any;
   onOpenAuth: () => void;
   unreadCount?: number;
+  hidden?: boolean;
 }
 
 export const BottomNav: React.FC<BottomNavProps> = ({
@@ -14,8 +15,11 @@ export const BottomNav: React.FC<BottomNavProps> = ({
   setCurrentTab,
   user,
   onOpenAuth,
-  unreadCount = 0
+  unreadCount = 0,
+  hidden = false
 }) => {
+  if (hidden) return null;
+
   const tabs = [
     { id: 'home', label: 'Início', icon: 'home' },
     { id: 'explore', label: 'Explorar', icon: 'explore' },

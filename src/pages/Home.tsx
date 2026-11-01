@@ -110,25 +110,36 @@ export const Home: React.FC<HomeProps> = ({
       fetchUserReactions();
     }
 
-    // Subscribe to realtime updates for the unified feed
-    const unsubPosts = KonectaRealtimeService.subscribe('posts', (payload) => {
-      if (payload.eventType === 'INSERT') {
-        // We'll refetch to get joined profile/community info
+    let debounceTimer: any = null;
+
+    const debouncedFetchFeed = () => {
+      if (document.visibilityState !== 'visible') return;
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
         fetchCommunityPosts();
-      } else if (payload.eventType === 'DELETE') {
+      }, 1500);
+    };
+
+    // Subscribe to realtime updates for the unified feed with 1.5s debounce
+    const unsubPosts = KonectaRealtimeService.subscribe('posts', (payload) => {
+      if (document.visibilityState !== 'visible') return;
+      if (payload.eventType === 'DELETE') {
         setPosts(prev => prev.filter(p => p.id !== payload.old.id));
+      } else {
+        debouncedFetchFeed();
       }
     });
 
     const unsubReactions = KonectaRealtimeService.subscribe('post_reactions', () => {
-      fetchCommunityPosts();
+      debouncedFetchFeed();
     });
 
     const unsubComments = KonectaRealtimeService.subscribe('post_comments', () => {
-      fetchCommunityPosts();
+      debouncedFetchFeed();
     });
 
     return () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
       unsubPosts();
       unsubReactions();
       unsubComments();

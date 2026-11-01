@@ -5,7 +5,7 @@ import webpush from "https://esm.sh/web-push@3.6.3";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-push-secret",
 };
 
 serve(async (req) => {
@@ -14,18 +14,28 @@ serve(async (req) => {
   }
 
   try {
-    const supabaseClient = createClient(
-      Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
-    );
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+    const pushWebhookSecret = Deno.env.get("PUSH_WEBHOOK_SECRET") ?? "";
 
     const authHeader = req.headers.get("Authorization");
-    if (!authHeader) {
+    const xPushSecret = req.headers.get("x-push-secret");
+
+    const bearerToken = authHeader?.startsWith("Bearer ") ? authHeader.substring(7).trim() : null;
+
+    const isAuthorizedServiceRole = Boolean(serviceRoleKey && bearerToken && bearerToken === serviceRoleKey);
+    const isAuthorizedWebhookSecret = Boolean(pushWebhookSecret && xPushSecret && xPushSecret === pushWebhookSecret);
+
+    if (!isAuthorizedServiceRole && !isAuthorizedWebhookSecret) {
       return new Response(JSON.stringify({ error: "Não autorizado" }), {
         status: 401,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+
+    const supabaseClient = createClient(
+      Deno.env.get("SUPABASE_URL") ?? "",
+      serviceRoleKey
+    );
 
     const { user_id, title, body, icon, url } = await req.json();
 
@@ -36,11 +46,12 @@ serve(async (req) => {
       });
     }
 
-    // Fetch user push subscriptions safely
-    const { data: subscriptions, error } = await supabaseClient
-      .from("push_subscriptions")
+    // Fetch user active push devices from push_devices table
+    const { data: devices, error } = await supabaseClient
+      .from("push_devices")
       .select("*")
-      .eq("user_id", user_id);
+      .eq("user_id", user_id)
+      .eq("enabled", true);
 
     if (error) {
       throw error;
@@ -53,7 +64,7 @@ serve(async (req) => {
     if (!vapidPublicKey || !vapidPrivateKey) {
       return new Response(
         JSON.stringify({
-          message: "Chaves VAPID não configuradas nas Secrets da Supabase Edge Function. O envio push requer VAPID_PRIVATE_KEY.",
+          message: "Chaves VAPID não configuradas nas Secrets da Supabase Edge Function.",
           success: false
         }),
         {
@@ -73,18 +84,24 @@ serve(async (req) => {
     });
 
     const sendResults = await Promise.allSettled(
-      (subscriptions || []).map(async (sub) => {
-        const pushSubscription = {
-          endpoint: sub.endpoint,
-          keys: sub.keys
-        };
+      (devices || []).map(async (device) => {
+        let pushSubscription;
+        try {
+          pushSubscription = typeof device.device_token === "string" 
+            ? JSON.parse(device.device_token) 
+            : device.device_token;
+        } catch (e) {
+          console.error("Device token JSON inválido:", device.device_token);
+          return { id: device.id, status: "invalid_json" };
+        }
+
         try {
           await webpush.sendNotification(pushSubscription, payload);
-          return { endpoint: sub.endpoint, status: "sent" };
+          return { id: device.id, status: "sent" };
         } catch (err: any) {
           if (err.statusCode === 410 || err.statusCode === 404) {
-            // Remove expired subscription
-            await supabaseClient.from("push_subscriptions").delete().eq("id", sub.id);
+            // Remove expired subscription from push_devices by id
+            await supabaseClient.from("push_devices").delete().eq("id", device.id);
           }
           throw err;
         }

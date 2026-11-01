@@ -57,6 +57,8 @@ export default function App() {
   const [selectedReelId, setSelectedReelId] = useState<string | null>(null);
   const [userRole, setUserRole] = useState<string | null>(null);
   const [activeOrgSlug, setActiveOrgSlug] = useState<string | null>(null);
+  const [isMobileChatOpen, setIsMobileChatOpen] = useState(false);
+  const [unreadMessagesCount, setUnreadMessagesCount] = useState(0);
 
   const openOrgDetail = (slug: string) => {
     setActiveOrgSlug(slug);
@@ -156,19 +158,35 @@ export default function App() {
     if (!user) return;
 
     const pingPresence = async () => {
+      if (document.visibilityState !== 'visible') return;
       try {
         await supabase
-          .from('profiles')
-          .update({ updated_at: new Date().toISOString() })
-          .eq('user_id', user.id);
+          .from('user_presence')
+          .upsert({
+            user_id: user.id,
+            last_seen_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          }, { onConflict: 'user_id' });
       } catch (e) {
         // Silent ignore on background ping failure
       }
     };
 
     pingPresence();
-    const interval = setInterval(pingPresence, 35000);
-    return () => clearInterval(interval);
+    const interval = setInterval(pingPresence, 180000);
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        pingPresence();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
   }, [user]);
 
   const fetchInitialData = async () => {
@@ -320,7 +338,7 @@ export default function App() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const unreadCount = notifications.filter(n => !n.read).length;
+  const unreadCount = notifications.filter(n => !n.read_at).length;
 
   if (loading) {
     return (
@@ -349,6 +367,7 @@ export default function App() {
         isAdmin={userRole === 'admin'}
         onSignOut={handleSignOut}
         unreadCount={unreadCount}
+        unreadMessagesCount={unreadMessagesCount}
       />
 
       <main className="flex-1">
@@ -547,6 +566,8 @@ export default function App() {
               <Messages
                 user={user}
                 onOpenAuth={() => navigateTab('login')}
+                onConversationOpenChange={(open) => setIsMobileChatOpen(open)}
+                onUnreadCountChange={(count) => setUnreadMessagesCount(count)}
               />
             )}
 
@@ -637,7 +658,8 @@ export default function App() {
         setCurrentTab={navigateTab}
         user={user}
         onOpenAuth={() => navigateTab('login')}
-        unreadCount={notifications.filter(n => !n.read).length}
+        unreadCount={unreadCount}
+        hidden={currentTab === 'messages' && isMobileChatOpen}
       />
 
       <Footer onNavigateTab={navigateTab} />

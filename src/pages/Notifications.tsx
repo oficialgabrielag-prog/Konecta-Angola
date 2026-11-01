@@ -72,14 +72,14 @@ export const Notifications: React.FC<NotificationsProps> = ({
   };
 
   const filteredNotifs = notifications.filter(n => {
-    if (filterCategory === 'unread') return !n.read;
+    if (filterCategory === 'unread') return !n.read_at;
     if (filterCategory === 'vote') return n.type === 'vote';
     if (filterCategory === 'comment') return n.type === 'comment';
     if (filterCategory === 'message') return n.type === 'message';
     return true;
   });
 
-  const unreadCount = notifications.filter(n => !n.read).length;
+  const unreadCount = notifications.filter(n => !n.read_at).length;
 
   return (
     <div className="max-w-4xl mx-auto px-6 py-12 lg:py-20">
@@ -165,35 +165,37 @@ export const Notifications: React.FC<NotificationsProps> = ({
               </p>
             </motion.div>
           ) : (
-            filteredNotifs.map((notif) => (
-              <motion.div
-                key={notif.id}
-                layout
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.95 }}
-                onClick={() => handleNotificationClick(notif)}
-                className={`card-konecta p-5 flex items-start gap-4 cursor-pointer transition-all border ${
-                  notif.read 
-                    ? 'bg-white/60 border-gray-100 text-gray-600' 
-                    : 'bg-white border-konecta-gold/50 shadow-xs font-semibold text-konecta-navy'
-                }`}
-              >
-                <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${
-                  notif.read ? 'bg-gray-100 text-gray-400' : 'bg-konecta-navy text-konecta-gold'
-                }`}>
-                  <span className="material-symbols-outlined text-[20px]">
-                    {notif.type === 'vote' ? 'favorite' : notif.type === 'comment' ? 'comment' : notif.type === 'message' ? 'forum' : 'notifications'}
-                  </span>
-                </div>
-
-                <div className="flex-1">
-                  <div className="flex items-center justify-between gap-2 mb-1">
-                    <h4 className="text-sm font-bold text-konecta-navy">{notif.title}</h4>
-                    {!notif.read && (
-                      <span className="w-2.5 h-2.5 rounded-full bg-konecta-gold shrink-0" title="Não lida"></span>
-                    )}
+            filteredNotifs.map((notif) => {
+              const isRead = Boolean(notif.read_at);
+              return (
+                <motion.div
+                  key={notif.id}
+                  layout
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.95 }}
+                  onClick={() => handleNotificationClick(notif)}
+                  className={`card-konecta p-5 flex items-start gap-4 cursor-pointer transition-all border ${
+                    isRead 
+                      ? 'bg-white/60 border-gray-100 text-gray-600' 
+                      : 'bg-white border-konecta-gold/50 shadow-xs font-semibold text-konecta-navy'
+                  }`}
+                >
+                  <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${
+                    isRead ? 'bg-gray-100 text-gray-400' : 'bg-konecta-navy text-konecta-gold'
+                  }`}>
+                    <span className="material-symbols-outlined text-[20px]">
+                      {notif.type === 'vote' ? 'favorite' : notif.type === 'comment' ? 'comment' : notif.type === 'message' ? 'forum' : 'notifications'}
+                    </span>
                   </div>
+
+                  <div className="flex-1">
+                    <div className="flex items-center justify-between gap-2 mb-1">
+                      <h4 className="text-sm font-bold text-konecta-navy">{notif.title}</h4>
+                      {!isRead && (
+                        <span className="w-2.5 h-2.5 rounded-full bg-konecta-gold shrink-0" title="Não lida"></span>
+                      )}
+                    </div>
                   <p className="text-xs text-gray-600 leading-relaxed">{notif.message}</p>
                   <div className="flex items-center justify-between mt-2 pt-1">
                     <span className="text-[10px] text-gray-400 uppercase tracking-wider">
@@ -205,8 +207,9 @@ export const Notifications: React.FC<NotificationsProps> = ({
                   </div>
                 </div>
               </motion.div>
-            ))
-          )}
+            );
+          })
+        )}
         </AnimatePresence>
       </div>
 

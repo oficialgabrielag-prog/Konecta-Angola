@@ -146,8 +146,11 @@ export interface NotificationItem {
   user_id: string;
   title: string;
   message: string;
-  read: boolean;
-  type?: 'vote' | 'comment' | 'message' | 'system';
+  body?: string;
+  read_at?: string | null;
+  read?: boolean;
+  type?: 'vote' | 'comment' | 'message' | 'system' | string;
+  notification_type?: string;
   created_at: string;
 }
 

@@ -1476,7 +1476,14 @@ export const d1Client: any = {
         .select()
         .single();
 
-      return { data: wrapObject(data), error };
+      if (error) {
+        if (error.code === '23505') {
+          return { data: null, error: { message: 'Já tens uma candidatura pendente para este projeto.' } };
+        }
+        return { data: null, error };
+      }
+
+      return { data: wrapObject(data), error: null };
     },
 
     async getApplications(projectId: string): Promise<any> {
@@ -1509,14 +1516,6 @@ export const d1Client: any = {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return { success: false, error: 'Não autenticado' };
 
-      const { data: app, error: fetchErr } = await supabase
-        .from('project_applications')
-        .select('*, projects(*)')
-        .eq('id', applicationId)
-        .maybeSingle();
-
-      if (fetchErr || !app) return { success: false, error: fetchErr || 'Candidatura não encontrada' };
-
       const { error } = await supabase
         .from('project_applications')
         .update({
@@ -1528,36 +1527,6 @@ export const d1Client: any = {
         .eq('id', applicationId);
 
       if (error) return { success: false, error };
-
-      if (status === 'accepted') {
-        try {
-          await supabase.from('project_members').insert({
-            project_id: app.project_id,
-            user_id: app.applicant_id,
-            joined_at: new Date().toISOString()
-          });
-        } catch (e) {}
-
-        try {
-          await supabase.from('notifications').insert({
-            user_id: app.applicant_id,
-            title: 'Candidatura Aceotada!',
-            body: `A tua candidatura para o projeto foi aceite. Já fazes parte da equipa!`,
-            read: false,
-            created_at: new Date().toISOString()
-          });
-        } catch (e) {}
-      } else if (status === 'rejected') {
-        try {
-          await supabase.from('notifications').insert({
-            user_id: app.applicant_id,
-            title: 'Atualização de Candidatura',
-            body: `A tua candidatura para o projeto foi analisada. Continua a inovar!`,
-            read: false,
-            created_at: new Date().toISOString()
-          });
-        } catch (e) {}
-      }
 
       return { success: true, error: null };
     },
@@ -2269,18 +2238,6 @@ export const d1Client: any = {
         responded_at: new Date().toISOString()
       }, { onConflict: 'event_id,user_id' });
 
-      if (!error && response === 'going') {
-        try {
-          await supabase.from('notifications').insert({
-            user_id: user.id,
-            title: 'Inscrição Confirmada!',
-            body: 'A tua inscrição no evento foi registada com sucesso.',
-            read: false,
-            created_at: new Date().toISOString()
-          });
-        } catch (e) {}
-      }
-
       return { success: !error, error };
     },
 
@@ -2466,6 +2423,27 @@ export const d1Client: any = {
             .limit(1)
             .maybeSingle();
 
+          const myMember = (c.conversation_members || []).find((m: any) => m.user_id === user.id);
+          const myLastReadAt = myMember?.last_read_at;
+
+          let unreadCount = 0;
+          if (myLastReadAt) {
+            const { count } = await supabase
+              .from('messages')
+              .select('id', { count: 'exact', head: true })
+              .eq('conversation_id', c.id)
+              .neq('sender_id', user.id)
+              .gt('created_at', myLastReadAt);
+            unreadCount = count || 0;
+          } else {
+            const { count } = await supabase
+              .from('messages')
+              .select('id', { count: 'exact', head: true })
+              .eq('conversation_id', c.id)
+              .neq('sender_id', user.id);
+            unreadCount = count || 0;
+          }
+
           const participants = (c.conversation_members || []).map((m: any) => {
             return profilesMap[m.user_id] || {
               id: m.user_id,
@@ -2478,14 +2456,40 @@ export const d1Client: any = {
           return {
             ...c,
             participants,
+            conversation_members: c.conversation_members,
             last_message: lastMsg?.body || 'Conversa iniciada',
             last_message_at: lastMsg?.created_at || c.updated_at || c.created_at,
-            unread_count: 0
+            unread_count: unreadCount
           };
         })
       );
 
       return { data: wrapArray(formattedConvs), error: null };
+    },
+
+    async getPresenceForUsers(userIds: string[]): Promise<any> {
+      if (!userIds || userIds.length === 0) return { data: wrapObject({}), error: null };
+      try {
+        const { data, error } = await supabase
+          .from('user_presence')
+          .select('user_id, last_seen_at, updated_at')
+          .in('user_id', userIds);
+
+        if (error) {
+          console.error('Erro ao ler user_presence:', error);
+          return { data: wrapObject({}), error };
+        }
+
+        const presenceMap: Record<string, any> = {};
+        (data || []).forEach((p: any) => {
+          presenceMap[p.user_id] = p;
+        });
+
+        return { data: wrapObject(presenceMap), error: null };
+      } catch (err) {
+        console.error('Exceção ao ler user_presence:', err);
+        return { data: wrapObject({}), error: err };
+      }
     },
 
     async getMessages(convId: string): Promise<any> {
@@ -2653,7 +2657,10 @@ export const d1Client: any = {
         user_id: n.user_id,
         title: n.title,
         message: n.body,
-        read: Boolean(n.read),
+        body: n.body,
+        read_at: n.read_at,
+        read: Boolean(n.read_at),
+        type: n.notification_type || n.type || 'system',
         created_at: n.created_at
       }));
 
@@ -2666,8 +2673,9 @@ export const d1Client: any = {
 
       const { error } = await supabase
         .from('notifications')
-        .update({ read: true })
-        .eq('user_id', user.id);
+        .update({ read_at: new Date().toISOString() })
+        .eq('user_id', user.id)
+        .is('read_at', null);
 
       return { success: !error, error };
     },
@@ -2675,7 +2683,7 @@ export const d1Client: any = {
     async markAsRead(id: string): Promise<any> {
       const { error } = await supabase
         .from('notifications')
-        .update({ read: true })
+        .update({ read_at: new Date().toISOString() })
         .eq('id', id);
 
       return { success: !error, error };

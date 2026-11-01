@@ -1,5 +1,12 @@
-// Service Worker for KONECTA PWA & Web Push Notifications
-self.addEventListener('install', (event) => {
+/// <reference lib="webworker" />
+import { precacheAndRoute, cleanupOutdatedCaches } from 'workbox-precaching';
+
+declare let self: ServiceWorkerGlobalScope;
+
+cleanupOutdatedCaches();
+precacheAndRoute(self.__WB_MANIFEST);
+
+self.addEventListener('install', () => {
   self.skipWaiting();
 });
 
@@ -9,7 +16,7 @@ self.addEventListener('activate', (event) => {
 
 // Handle incoming Web Push notifications
 self.addEventListener('push', (event) => {
-  let data = { title: 'KONECTA', body: 'Tens uma nova notificação na rede KONECTA!' };
+  let data: any = { title: 'KONECTA', body: 'Tens uma nova notificação na rede KONECTA!' };
   if (event.data) {
     try {
       data = event.data.json();
@@ -18,11 +25,13 @@ self.addEventListener('push', (event) => {
     }
   }
 
-  const options = {
+  const targetUrl = data.url || data.data?.url || '/';
+
+  const options: any = {
     body: data.body,
     icon: '/icon-192.png',
     badge: '/icon-192.png',
-    data: data.data || { url: '/' },
+    data: { url: targetUrl, ...(data.data || {}) },
     vibrate: [100, 50, 100],
     actions: [
       { action: 'open', title: 'Abrir' },
@@ -39,16 +48,17 @@ self.addEventListener('push', (event) => {
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
   const urlToOpen = event.notification.data?.url || '/';
+  const targetHref = new URL(urlToOpen, self.location.origin).href;
 
   event.waitUntil(
-    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
-      for (let client of windowClients) {
-        if (client.url === urlToOpen && 'focus' in client) {
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
+      for (const client of windowClients) {
+        if (client.url === targetHref && 'focus' in client) {
           return client.focus();
         }
       }
-      if (clients.openWindow) {
-        return clients.openWindow(urlToOpen);
+      if (self.clients.openWindow) {
+        return self.clients.openWindow(targetHref);
       }
     })
   );

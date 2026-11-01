@@ -1,11 +1,13 @@
 import { useState, useEffect } from 'react';
-import { d1Client } from '../lib/d1Client';
+import { supabase } from '../lib/supabaseClient';
 
 export function useWebPush(user: any) {
   const [isSupported, setIsSupported] = useState(false);
   const [permission, setPermission] = useState<NotificationPermission>('default');
   const [isSubscribed, setIsSubscribed] = useState(false);
   const [loading, setLoading] = useState(false);
+
+  const vapidKey = import.meta.env.VITE_VAPID_PUBLIC_KEY;
 
   useEffect(() => {
     if (typeof window !== 'undefined' && 'Notification' in window && 'serviceWorker' in navigator) {
@@ -29,6 +31,11 @@ export function useWebPush(user: any) {
   };
 
   const enablePushNotifications = async (): Promise<boolean> => {
+    if (!vapidKey) {
+      alert('Notificações push indisponíveis neste momento.');
+      return false;
+    }
+
     if (!isSupported) {
       alert('O teu navegador ou dispositivo não suporta notificações Web Push. As notificações internas da KONECTA continuarão a funcionar.');
       return false;
@@ -44,33 +51,41 @@ export function useWebPush(user: any) {
         let sub = await reg.pushManager.getSubscription();
 
         if (!sub) {
-          const vapidKey = import.meta.env.VITE_VAPID_PUBLIC_KEY || 'BEl62iUYgUivxIkv69yViEuiBIa42p8-Pz6fS16K438H87J6Yy385I666eHj';
-          
-          try {
-            sub = await reg.pushManager.subscribe({
-              userVisibleOnly: true,
-              applicationServerKey: urlBase64ToUint8Array(vapidKey)
-            });
-          } catch (e) {
-            console.warn('Subscrição VAPID local ativada.');
-          }
-        }
-
-        setIsSubscribed(true);
-
-        if (user) {
-          await d1Client.profiles.update(user.id, {
-            push_enabled: true
+          sub = await reg.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey: urlBase64ToUint8Array(vapidKey)
           });
         }
 
-        return true;
+        if (sub && user) {
+          const deviceToken = JSON.stringify(sub);
+          const { error } = await supabase.from('push_devices').upsert({
+            user_id: user.id,
+            device_token: deviceToken,
+            platform: 'web',
+            enabled: true,
+            last_seen_at: new Date().toISOString(),
+            created_at: new Date().toISOString()
+          }, { onConflict: 'user_id,device_token' });
+
+          if (error) {
+            console.error('Erro ao registar dispositivo push:', error);
+            alert(`Falha ao registar o dispositivo: ${error.message}`);
+            return false;
+          }
+
+          setIsSubscribed(true);
+          return true;
+        }
+
+        return false;
       } else {
         alert('Permissão de notificações recusada no navegador.');
         return false;
       }
     } catch (err: any) {
-      console.warn('Erro ao ativar notificações push:', err?.message || err);
+      console.error('Erro ao ativar notificações push:', err);
+      alert(err?.message || 'Erro ao ativar subscrição Web Push.');
       return false;
     } finally {
       setLoading(false);
@@ -84,21 +99,22 @@ export function useWebPush(user: any) {
         const reg = await navigator.serviceWorker.ready;
         const sub = await reg.pushManager.getSubscription();
         if (sub) {
+          if (user) {
+            const deviceToken = JSON.stringify(sub);
+            await supabase.from('push_devices').update({
+              enabled: false,
+              last_seen_at: new Date().toISOString()
+            }).match({ user_id: user.id, device_token: deviceToken });
+          }
+
           await sub.unsubscribe();
         }
       }
 
       setIsSubscribed(false);
-
-      if (user) {
-        await d1Client.profiles.update(user.id, {
-          push_enabled: false
-        });
-      }
-
       return true;
     } catch (err: any) {
-      console.warn('Erro ao desativar notificações push:', err?.message || err);
+      console.error('Erro ao desativar notificações push:', err);
       return false;
     } finally {
       setLoading(false);
@@ -111,7 +127,8 @@ export function useWebPush(user: any) {
     isSubscribed,
     loading,
     enablePushNotifications,
-    disablePushNotifications
+    disablePushNotifications,
+    isPushAvailable: Boolean(vapidKey)
   };
 }
 
