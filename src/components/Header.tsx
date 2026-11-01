@@ -17,6 +17,8 @@ export const Header: React.FC<HeaderProps> = ({ currentTab, setCurrentTab, user,
     { id: 'explore', label: 'Explorar', icon: 'explore' },
     { id: 'community', label: 'Feed Social', icon: 'dynamic_feed' },
     { id: 'reels', label: 'Reels', icon: 'smart_display' },
+    { id: 'organizations', label: 'Organizações', icon: 'corporate_fare' },
+    { id: 'library', label: 'Biblioteca', icon: 'menu_book' },
     { id: 'communities', label: 'Comunidades', icon: 'groups' },
     { id: 'projects', label: 'Projetos', icon: 'folder_special' },
     { id: 'events', label: 'Eventos', icon: 'event' },
@@ -103,6 +105,13 @@ export const Header: React.FC<HeaderProps> = ({ currentTab, setCurrentTab, user,
               </button>
 
               <div className="h-6 w-px bg-gray-100 mx-1 hidden sm:block"></div>
+              <button 
+                onClick={() => handleNavClick('settings')} 
+                className={`w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center rounded-full transition-all ${currentTab === 'settings' ? 'bg-konecta-navy text-white shadow-md' : 'text-konecta-navy hover:bg-gray-100'}`}
+                title="Configurações & Privacidade"
+              >
+                <span className="material-symbols-outlined text-[20px] sm:text-[22px]">settings</span>
+              </button>
               <button 
                 onClick={() => handleNavClick('dashboard')} 
                 className={`w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center rounded-full transition-all ${currentTab === 'dashboard' ? 'bg-konecta-navy text-white shadow-md' : 'text-konecta-navy hover:bg-gray-100'}`}

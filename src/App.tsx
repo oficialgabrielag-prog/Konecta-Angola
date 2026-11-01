@@ -28,8 +28,14 @@ import { Reels } from './pages/Reels';
 import { CommunityDetail } from './pages/CommunityDetail';
 import { ProjectDetail } from './pages/ProjectDetail';
 import { IdeaDetail } from './pages/IdeaDetail';
+import { Organizations } from './pages/Organizations';
+import { OrganizationDetail } from './pages/OrganizationDetail';
+import { DigitalLibrary } from './pages/DigitalLibrary';
+import { Settings } from './pages/Settings';
+import { PolicyCenter } from './pages/PolicyCenter';
 import { OnboardingModal } from './components/OnboardingModal';
 import { d1Client } from './lib/d1Client';
+import { supabase } from './lib/supabaseClient';
 import { Idea, Challenge, Project, NotificationItem, ProfileUpdate, Profile as UserProfile, Community } from './types';
 import { OfflineIndicator } from './components/PWAComponents';
 import { ImageViewerModal } from './components/ImageViewerModal';
@@ -50,6 +56,12 @@ export default function App() {
   const [selectedIdeaId, setSelectedIdeaId] = useState<string | null>(null);
   const [selectedReelId, setSelectedReelId] = useState<string | null>(null);
   const [userRole, setUserRole] = useState<string | null>(null);
+  const [activeOrgSlug, setActiveOrgSlug] = useState<string | null>(null);
+
+  const openOrgDetail = (slug: string) => {
+    setActiveOrgSlug(slug);
+    navigateTab('org-detail');
+  };
 
   const openReel = (reelId: string) => {
     setSelectedReelId(reelId);
@@ -137,6 +149,26 @@ export default function App() {
     });
 
     return () => unsubscribe();
+  }, [user]);
+
+  // Online presence heartbeat
+  useEffect(() => {
+    if (!user) return;
+
+    const pingPresence = async () => {
+      try {
+        await supabase
+          .from('profiles')
+          .update({ updated_at: new Date().toISOString() })
+          .eq('user_id', user.id);
+      } catch (e) {
+        // Silent ignore on background ping failure
+      }
+    };
+
+    pingPresence();
+    const interval = setInterval(pingPresence, 35000);
+    return () => clearInterval(interval);
   }, [user]);
 
   const fetchInitialData = async () => {
@@ -357,6 +389,7 @@ export default function App() {
                 onSelectUser={openPublicProfile}
                 onSelectCommunity={openCommunityDetail}
                 onSelectReel={openReel}
+                onSelectOrg={openOrgDetail}
               />
             )}
 
@@ -484,6 +517,32 @@ export default function App() {
               />
             )}
 
+            {currentTab === 'organizations' && (
+              <Organizations
+                user={user}
+                onOpenAuth={() => navigateTab('login')}
+                onSelectOrg={openOrgDetail}
+                onNavigateTab={navigateTab}
+              />
+            )}
+
+            {currentTab === 'org-detail' && activeOrgSlug && (
+              <OrganizationDetail
+                slug={activeOrgSlug}
+                user={user}
+                onOpenAuth={() => navigateTab('login')}
+                onBack={() => navigateTab('organizations')}
+              />
+            )}
+
+            {currentTab === 'library' && (
+              <DigitalLibrary
+                user={user}
+                onOpenAuth={() => navigateTab('login')}
+                onNavigateTab={navigateTab}
+              />
+            )}
+
             {currentTab === 'messages' && (
               <Messages
                 user={user}
@@ -548,6 +607,20 @@ export default function App() {
               />
             )}
 
+            {currentTab === 'settings' && (
+              <Settings
+                user={user}
+                onOpenAuth={() => navigateTab('login')}
+                onNavigateTab={navigateTab}
+              />
+            )}
+
+            {currentTab === 'policy-center' && (
+              <PolicyCenter
+                onNavigateTab={navigateTab}
+              />
+            )}
+
             {currentTab === 'admin' && (
               <Admin
                 user={user}
@@ -567,7 +640,7 @@ export default function App() {
         unreadCount={notifications.filter(n => !n.read).length}
       />
 
-      <Footer />
+      <Footer onNavigateTab={navigateTab} />
       <OfflineIndicator />
 
       {showOnboarding && user && (

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Project, ProjectTask, Milestone, ProjectMember } from '../types';
+import { Project, Idea, Profile as UserProfile, ProjectTask, Milestone, ProjectMember } from '../types';
 import { d1Client } from '../lib/d1Client';
 
 interface ProjectsProps {
@@ -9,6 +9,8 @@ interface ProjectsProps {
   onOpenAuth: () => void;
   onRefreshProjects?: () => void;
   onSelectProject?: (projectId: string) => void;
+  onSelectIdea?: (ideaId: string) => void;
+  onSelectUser?: (userId: string) => void;
 }
 
 export const Projects: React.FC<ProjectsProps> = ({
@@ -17,567 +19,547 @@ export const Projects: React.FC<ProjectsProps> = ({
   onOpenAuth,
   onRefreshProjects,
   onSelectProject,
+  onSelectIdea,
+  onSelectUser,
 }) => {
-  const [selectedProject, setSelectedProject] = useState<Project | null>(projects[0] || null);
-  const [activeTab, setActiveTab] = useState<'tasks' | 'milestones' | 'members'>('tasks');
-  
+  const [activeTab, setActiveTab] = useState<'descobrir' | 'ideias' | 'projetos' | 'colaboradores' | 'minhas-iniciativas'>('descobrir');
+
   // Data states
-  const [tasks, setTasks] = useState<ProjectTask[]>([]);
-  const [milestones, setMilestones] = useState<Milestone[]>([]);
-  const [members, setMembers] = useState<ProjectMember[]>([]);
-  const [loadingDetails, setLoadingDetails] = useState(false);
-  
-  // Inputs
-  const [newTaskTitle, setNewTaskTitle] = useState('');
-  const [newMilestoneTitle, setNewMilestoneTitle] = useState('');
-  const [newMilestoneDesc, setNewMilestoneDesc] = useState('');
-  const [newMilestoneDate, setNewMilestoneDate] = useState('');
+  const [ideas, setIdeas] = useState<Idea[]>([]);
+  const [contributors, setContributors] = useState<UserProfile[]>([]);
+  const [myApplications, setMyApplications] = useState<any[]>([]);
+  const [loadingData, setLoadingData] = useState(false);
 
-  // New Project Modal
-  const [showNewProjectModal, setShowNewProjectModal] = useState(false);
-  const [projectTitle, setProjectTitle] = useState('');
-  const [projectDesc, setProjectDesc] = useState('');
-  const [projectCategory, setProjectCategory] = useState('Educação');
-  const [projectProvince, setProjectProvince] = useState('Luanda');
-  const [creatingProject, setCreatingProject] = useState(false);
+  // Search & Filter state
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState('all');
+  const [selectedProvince, setSelectedProvince] = useState('all');
+  const [selectedStatus, setSelectedStatus] = useState('all');
 
-  // Membership action state
-  const [joining, setJoining] = useState(false);
+  // Create Initiative Modal State
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [creationType, setCreationType] = useState<'idea' | 'project'>('idea');
+  const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
+  const [category, setCategory] = useState('Tecnologia');
+  const [province, setProvince] = useState('Luanda');
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    if (selectedProject) {
-      loadProjectDetails(selectedProject.id);
-    }
-  }, [selectedProject]);
+    loadTabData(activeTab);
+  }, [activeTab]);
 
-  useEffect(() => {
-    if (projects.length > 0 && !selectedProject) {
-      setSelectedProject(projects[0]);
-    }
-  }, [projects]);
-
-  const loadProjectDetails = async (projectId: string) => {
-    setLoadingDetails(true);
+  const loadTabData = async (tab: string) => {
+    setLoadingData(true);
     try {
-      const [d1Tasks, d1Milestones, d1Members] = await Promise.all([
-        d1Client.projects.getTasks(projectId),
-        d1Client.projects.getMilestones(projectId),
-        d1Client.projects.getMembers(projectId)
-      ]);
-
-      setTasks(d1Tasks.data?.data || []);
-      setMilestones(d1Milestones.data?.data || []);
-      setMembers(d1Members.data?.data || []);
-    } catch (err: any) {
-      console.warn('Aviso ao carregar detalhes do projeto:', err?.message || err);
-    } finally {
-      setLoadingDetails(false);
-    }
-  };
-
-  const isUserMember = members.some(m => m.user_id === user?.id) || selectedProject?.leader_id === user?.id;
-  const isLeader = selectedProject?.leader_id === user?.id;
-
-  const handleJoinProject = async () => {
-    if (!user) {
-      onOpenAuth();
-      return;
-    }
-    if (!selectedProject || joining) return;
-
-    setJoining(true);
-    try {
-      if (isUserMember && !isLeader) {
-        await d1Client.projects.leave(selectedProject.id);
-        setMembers(prev => prev.filter(m => m.user_id !== user.id));
-      } else if (!isUserMember) {
-        await d1Client.projects.join(selectedProject.id);
-        setMembers(prev => [...prev, { 
-          id: crypto.randomUUID(), 
-          project_id: selectedProject.id, 
-          user_id: user.id, 
-          role: 'Colaborador',
-          profiles: { 
-            id: user.id, 
-            full_name: user.user_metadata?.full_name || 'Membro Konecta', 
-            avatar_url: user.user_metadata?.avatar_url, 
-            province: user.user_metadata?.province 
-          }
-        } as any]);
+      if (tab === 'descobrir' || tab === 'ideias') {
+        const res = await d1Client.ideas.list(40);
+        setIdeas(res.data?.data || res.data || []);
       }
-    } catch (err: any) {
-      console.warn('Aviso ao aderir/sair do projeto:', err?.message || err);
-      alert('Erro ao atualizar participação no projeto.');
+      if (tab === 'descobrir' || tab === 'colaboradores') {
+        const res = await d1Client.profiles.list(40);
+        setContributors(res.data?.data || res.data || []);
+      }
+      if (tab === 'minhas-iniciativas' && user) {
+        const res = await d1Client.projects.getMyApplications();
+        setMyApplications(res.data?.data || res.data || []);
+      }
+    } catch (e) {
+      console.warn('Erro ao carregar dados da aba:', e);
     } finally {
-      setJoining(false);
+      setLoadingData(false);
     }
   };
 
-  const handleCreateTask = async (e: React.FormEvent) => {
+  const handleCreateInitiative = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) {
       onOpenAuth();
       return;
     }
-    if (!newTaskTitle.trim() || !selectedProject) return;
+    if (!title.trim() || !description.trim() || submitting) return;
 
+    setSubmitting(true);
     try {
-      const res = await d1Client.projects.createTask(selectedProject.id, newTaskTitle.trim());
-
-      if (res.data?.data) {
-        setTasks(prev => [...prev, res.data!.data]);
-        setNewTaskTitle('');
+      if (creationType === 'idea') {
+        await d1Client.ideas.create({
+          title: title.trim(),
+          description: description.trim(),
+          category,
+          status: 'open'
+        });
+        alert('Ideia publicada com sucesso na comunidade Konecta!');
       } else {
-        throw new Error('Falha ao criar tarefa.');
+        const res = await d1Client.projects.create({
+          title: title.trim(),
+          description: description.trim(),
+          category
+        });
+        if (res.error) throw new Error(res.error.message || 'Erro ao criar projeto.');
+        alert('Projeto criado com sucesso!');
+        if (onRefreshProjects) onRefreshProjects();
       }
+
+      setShowCreateModal(false);
+      setTitle('');
+      setDescription('');
+      loadTabData(activeTab);
     } catch (err: any) {
-      console.warn('Aviso ao criar tarefa:', err?.message || err);
+      alert(err.message || 'Erro ao criar iniciativa.');
+    } finally {
+      setSubmitting(false);
     }
   };
 
-  const handleToggleTask = async (task: ProjectTask) => {
-    const newStatus = task.status === 'done' ? 'todo' : 'done';
-    try {
-      await d1Client.projects.updateTask(task.id, { status: newStatus });
-      setTasks(prev => prev.map(t => t.id === task.id ? { ...t, status: newStatus } : t));
-    } catch (err: any) {
-      console.warn('Aviso ao alternar tarefa:', err?.message || err);
-    }
-  };
-
-  const handleCreateMilestone = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!user || !selectedProject || !newMilestoneTitle.trim()) return;
-
-    try {
-      const res = await d1Client.projects.createMilestone(selectedProject.id, {
-        title: newMilestoneTitle.trim(),
-        description: newMilestoneDesc.trim() || undefined,
-        due_date: newMilestoneDate || undefined
-      });
-
-      if (res.data?.data) {
-        setMilestones(prev => [...prev, res.data!.data]);
-        setNewMilestoneTitle('');
-        setNewMilestoneDesc('');
-        setNewMilestoneDate('');
-      }
-    } catch (err: any) {
-      console.warn('Aviso ao criar marco:', err?.message || err);
-    }
-  };
-
-  const handleToggleMilestone = async (milestone: Milestone) => {
-    const newStatus = milestone.status === 'completed' ? 'pending' : 'completed';
-    try {
-      await d1Client.projects.updateMilestone(milestone.id, { status: newStatus });
-      setMilestones(prev => prev.map(m => m.id === milestone.id ? { ...m, status: newStatus } : m));
-    } catch (err: any) {
-      console.warn('Aviso ao atualizar marco:', err?.message || err);
-    }
-  };
-
-  const handleCreateProject = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleConvertIdea = async (ideaId: string) => {
     if (!user) {
       onOpenAuth();
       return;
     }
-    if (!projectTitle.trim() || !projectDesc.trim() || creatingProject) return;
-
-    setCreatingProject(true);
     try {
-      const payload = {
-        title: projectTitle.trim(),
-        description: projectDesc.trim(),
-        category: projectCategory,
-        province: projectProvince,
-        leader_id: user.id,
-      };
-
-      const res = await d1Client.projects.create(payload);
-      if (res.error) {
-        throw new Error(res.error.message || 'Erro ao criar projeto.');
-      }
-
-      setShowNewProjectModal(false);
-      setProjectTitle('');
-      setProjectDesc('');
+      const res = await d1Client.projects.convertIdeaToProject(ideaId);
+      if (res.error) throw new Error(res.error.message || 'Erro ao converter ideia.');
+      alert('Ideia convertida em projeto com sucesso! Já podes geri-la na aba Projetos.');
       if (onRefreshProjects) onRefreshProjects();
+      setActiveTab('projetos');
     } catch (err: any) {
-      console.warn('Aviso ao criar projeto:', err?.message || err);
-      alert(err?.message || 'Erro ao criar projeto.');
-    } finally {
-      setCreatingProject(false);
+      alert(err.message || 'Erro ao converter ideia.');
     }
   };
 
-  const completedTasksCount = tasks.filter(t => t.status === 'done').length;
-  const progressPercent = tasks.length > 0 ? Math.round((completedTasksCount / tasks.length) * 100) : 0;
+  // Filter logic
+  const filteredProjects = projects.filter(p => {
+    const matchesSearch = p.title.toLowerCase().includes(searchQuery.toLowerCase()) || p.description.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesCat = selectedCategory === 'all' || p.category === selectedCategory;
+    const matchesProv = selectedProvince === 'all' || p.province === selectedProvince;
+    const matchesStatus = selectedStatus === 'all' || p.status === selectedStatus;
+    return matchesSearch && matchesCat && matchesProv && matchesStatus;
+  });
+
+  const filteredIdeas = ideas.filter(i => {
+    const matchesSearch = i.title.toLowerCase().includes(searchQuery.toLowerCase()) || i.description.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesCat = selectedCategory === 'all' || i.category === selectedCategory;
+    return matchesSearch && matchesCat;
+  });
 
   return (
-    <div className="max-w-7xl mx-auto px-6 py-12 lg:py-20">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8 lg:py-12 space-y-8">
       
-      {/* Page Header */}
-      <header className="mb-12 flex flex-col md:flex-row md:items-end justify-between gap-6">
+      {/* Header & Criar Iniciativa Button */}
+      <header className="flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-gray-100 pb-8">
         <div>
-          <span className="feature-kicker">Execução Colaborativa</span>
-          <h1 className="hero-title">Acompanhamento de Projetos</h1>
-          <p className="text-gray-500 mt-2 max-w-xl">
-            Visualiza tarefas, etapas e equipas reais das iniciativas em implementação em Angola.
+          <span className="feature-kicker">Inovação e Empreendedorismo</span>
+          <h1 className="hero-title">Projetos & Ideias Konecta</h1>
+          <p className="text-gray-500 mt-2 max-w-xl text-sm">
+            Descobre iniciativas transformadoras em Angola, apoia ideias inovadoras, junta-te a equipas e colabora na construção do futuro.
           </p>
         </div>
         <button
           onClick={() => {
             if (!user) onOpenAuth();
-            else setShowNewProjectModal(true);
+            else setShowCreateModal(true);
           }}
-          className="btn-gold whitespace-nowrap shadow-md text-xs py-3 px-6 self-start md:self-auto"
+          className="btn-gold py-3 px-6 text-xs font-bold shadow-md flex items-center gap-2 self-start md:self-auto"
         >
-          + Criar Novo Projeto
+          <span className="material-symbols-outlined text-[18px]">add_circle</span>
+          + Criar Iniciativa
         </button>
       </header>
 
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-8 lg:gap-12">
-        {/* Project List Sidebar */}
-        <aside className="lg:col-span-1 space-y-3">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-xs font-bold uppercase tracking-widest text-gray-400">
-              Iniciativas ({projects.length})
-            </h3>
-          </div>
+      {/* 5 Required Tabs */}
+      <div className="flex items-center gap-2 overflow-x-auto pb-2 border-b border-gray-200">
+        {[
+          { id: 'descobrir', label: 'Descobrir', icon: 'explore' },
+          { id: 'ideias', label: 'Ideias', icon: 'lightbulb', badge: ideas.length },
+          { id: 'projetos', label: 'Projetos', icon: 'folder_open', badge: projects.length },
+          { id: 'colaboradores', label: 'Colaboradores', icon: 'group', badge: contributors.length },
+          { id: 'minhas-iniciativas', label: 'Minhas Iniciativas', icon: 'person_pin' },
+        ].map(tab => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id as any)}
+            className={`flex items-center gap-2 px-5 py-3 rounded-2xl text-xs font-bold whitespace-nowrap transition-all ${
+              activeTab === tab.id
+                ? 'bg-konecta-navy text-white shadow-sm'
+                : 'bg-white text-gray-600 hover:bg-gray-100 border border-gray-100'
+            }`}
+          >
+            <span className="material-symbols-outlined text-[18px]">{tab.icon}</span>
+            <span>{tab.label}</span>
+            {tab.badge !== undefined && tab.badge > 0 && (
+              <span className={`text-[10px] px-2 py-0.5 rounded-full ${
+                activeTab === tab.id ? 'bg-konecta-gold text-konecta-navy font-bold' : 'bg-gray-200 text-gray-700'
+              }`}>
+                {tab.badge}
+              </span>
+            )}
+          </button>
+        ))}
+      </div>
 
-          {projects.length === 0 ? (
-            <div className="p-6 bg-white rounded-2xl border border-dashed border-gray-200 text-center">
-              <p className="text-xs text-gray-400 italic">Nenhum projeto registado ainda.</p>
-              <button 
-                onClick={() => user ? setShowNewProjectModal(true) : onOpenAuth()}
-                className="mt-3 text-xs font-bold text-konecta-navy hover:underline"
+      {/* Search and Filters Bar */}
+      <div className="card-konecta p-4 sm:p-6 shadow-xs border border-gray-100 flex flex-col md:flex-row gap-4 items-center justify-between">
+        <div className="relative flex-1 w-full">
+          <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-gray-400">search</span>
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            placeholder="Pesquisar projetos, ideias ou competências..."
+            className="w-full bg-gray-50 border border-gray-200 rounded-2xl pl-12 pr-4 py-3 text-xs text-konecta-navy outline-none focus:ring-1 focus:ring-konecta-navy"
+          />
+        </div>
+
+        <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
+          <select
+            value={selectedCategory}
+            onChange={e => setSelectedCategory(e.target.value)}
+            className="bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 text-xs text-konecta-navy outline-none"
+          >
+            <option value="all">Todas as Categorias</option>
+            <option value="Educação">Educação</option>
+            <option value="Tecnologia">Tecnologia</option>
+            <option value="Sustentabilidade">Sustentabilidade</option>
+            <option value="Saúde Comunitária">Saúde Comunitária</option>
+            <option value="Empreendedorismo">Empreendedorismo</option>
+            <option value="Cultura e Artes">Cultura e Artes</option>
+          </select>
+
+          {activeTab === 'projetos' && (
+            <>
+              <select
+                value={selectedProvince}
+                onChange={e => setSelectedProvince(e.target.value)}
+                className="bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 text-xs text-konecta-navy outline-none"
               >
-                Começar o primeiro →
+                <option value="all">Todas as Províncias</option>
+                <option value="Luanda">Luanda</option>
+                <option value="Benguela">Benguela</option>
+                <option value="Huambo">Huambo</option>
+                <option value="Huíla">Huíla</option>
+              </select>
+
+              <select
+                value={selectedStatus}
+                onChange={e => setSelectedStatus(e.target.value)}
+                className="bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 text-xs text-konecta-navy outline-none"
+              >
+                <option value="all">Todos os Estados</option>
+                <option value="active">Em Execução</option>
+                <option value="planning">Planeamento</option>
+                <option value="completed">Concluído</option>
+              </select>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* TAB CONTENTS */}
+      <AnimatePresence mode="wait">
+        
+        {/* TAB 1: DESCOBRIR */}
+        {activeTab === 'descobrir' && (
+          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="space-y-12">
+            {/* Featured Projects Section */}
+            <div className="space-y-6">
+              <div className="flex items-center justify-between">
+                <h3 className="text-base font-extrabold text-konecta-navy uppercase tracking-wider">Projetos em Destaque</h3>
+                <button onClick={() => setActiveTab('projetos')} className="text-xs text-konecta-gold font-bold hover:underline">Ver todos →</button>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {projects.slice(0, 3).map(proj => (
+                  <div
+                    key={proj.id}
+                    onClick={() => onSelectProject && onSelectProject(proj.id)}
+                    className="card-konecta p-6 shadow-sm border border-gray-100 flex flex-col justify-between cursor-pointer hover:border-konecta-gold transition-all group"
+                  >
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-bold text-konecta-gold uppercase tracking-widest bg-konecta-navy/5 px-3 py-1 rounded-full">
+                          {proj.category || 'Inovação'}
+                        </span>
+                        <span className="text-[10px] text-gray-400">{proj.province || 'Angola'}</span>
+                      </div>
+                      <h4 className="font-extrabold text-base text-konecta-navy group-hover:text-konecta-gold transition-colors">{proj.title}</h4>
+                      <p className="text-xs text-gray-600 line-clamp-3 leading-relaxed">{proj.description}</p>
+                    </div>
+
+                    <div className="pt-6 mt-6 border-t border-gray-50 flex items-center justify-between text-xs font-bold">
+                      <span className="text-gray-400">{(proj as any).members_count || 1} membros</span>
+                      <span className="text-konecta-navy flex items-center gap-1">Ver Workspace →</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Trending Ideas Section */}
+            <div className="space-y-6">
+              <div className="flex items-center justify-between">
+                <h3 className="text-base font-extrabold text-konecta-navy uppercase tracking-wider">Ideias Populares</h3>
+                <button onClick={() => setActiveTab('ideias')} className="text-xs text-konecta-gold font-bold hover:underline">Ver todas →</button>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {ideas.slice(0, 3).map(idea => (
+                  <div
+                    key={idea.id}
+                    className="card-konecta p-6 shadow-sm border border-gray-100 flex flex-col justify-between space-y-4"
+                  >
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-bold text-konecta-gold uppercase tracking-widest bg-konecta-navy/5 px-3 py-1 rounded-full">
+                          {idea.category || 'Inovação'}
+                        </span>
+                        <span className="text-[10px] font-bold text-green-700 bg-green-50 px-2 py-0.5 rounded">
+                          {idea.votes_count || 0} Apoios
+                        </span>
+                      </div>
+                      <h4 className="font-extrabold text-base text-konecta-navy">{idea.title}</h4>
+                      <p className="text-xs text-gray-600 line-clamp-3 leading-relaxed">{idea.description}</p>
+                    </div>
+
+                    <div className="pt-4 border-t border-gray-50 flex items-center justify-between">
+                      <button
+                        onClick={() => handleConvertIdea(idea.id)}
+                        className="btn-gold py-1.5 px-3 text-[11px] font-bold"
+                      >
+                        Converter em Projeto
+                      </button>
+                      <button
+                        onClick={() => onSelectIdea && onSelectIdea(idea.id)}
+                        className="text-xs font-bold text-konecta-navy hover:underline"
+                      >
+                        Ver Detalhes
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </motion.div>
+        )}
+
+        {/* TAB 2: IDEIAS */}
+        {activeTab === 'ideias' && (
+          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="space-y-6">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-bold uppercase tracking-wider text-konecta-navy">Banco de Ideias ({filteredIdeas.length})</h3>
+              <button
+                onClick={() => { setCreationType('idea'); setShowCreateModal(true); }}
+                className="btn-primary py-2 px-4 text-xs font-bold"
+              >
+                + Publicar Ideia
               </button>
             </div>
-          ) : (
-            projects.map((project) => (
-              <button
-                key={project.id}
-                onClick={() => setSelectedProject(project)}
-                className={`w-full text-left p-4 sm:p-5 rounded-2xl transition-all border ${
-                  selectedProject?.id === project.id 
-                    ? 'bg-konecta-navy text-white border-konecta-navy shadow-lg' 
-                    : 'bg-white text-konecta-navy border-gray-100 hover:bg-gray-50 shadow-sm'
-                }`}
-              >
-                <div className="flex items-center justify-between mb-1.5">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-konecta-gold">
-                    {project.category}
-                  </span>
-                  <span className="text-[10px] opacity-70">
-                    {project.province || 'Angola'}
-                  </span>
-                </div>
-                <span className="font-bold text-sm line-clamp-1 block">{project.title}</span>
-                <span className="text-[11px] opacity-70 line-clamp-1 mt-1 block">
-                  {project.description}
-                </span>
-              </button>
-            ))
-          )}
-        </aside>
 
-        {/* Project Detail Area */}
-        <main className="lg:col-span-3">
-          <AnimatePresence mode="wait">
-            {selectedProject ? (
-              <motion.div 
-                key={selectedProject.id}
-                initial={{ opacity: 0, y: 15 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -15 }}
-                className="card-konecta flex flex-col p-6 sm:p-10 shadow-sm border border-gray-100"
-              >
-                {/* Project Header Info */}
-                <div className="mb-8 border-b border-gray-100 pb-8">
-                  <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
-                    <div className="flex items-center gap-3">
-                      <span className="text-[10px] font-bold text-konecta-gold uppercase tracking-widest px-3 py-1 bg-konecta-navy/5 rounded-full border border-konecta-navy/10">
-                        {selectedProject.status === 'active' ? 'Em Execução' : selectedProject.status}
-                      </span>
-                      <span className="metadata-text">
-                        <span className="material-symbols-outlined text-[16px] text-konecta-gold">location_on</span>
-                        {selectedProject.province || 'Angola'}
-                      </span>
-                      <span className="metadata-text">
-                        <span className="material-symbols-outlined text-[16px]">calendar_today</span>
-                        {new Date(selectedProject.created_at || '').toLocaleDateString('pt-AO')}
-                      </span>
-                    </div>
-
-                    {/* Join / Leave Team Button & Full Page */}
-                    <div className="flex items-center gap-2">
-                      {onSelectProject && (
-                        <button
-                          onClick={() => onSelectProject(selectedProject.id)}
-                          className="btn-gold py-2 px-4 text-xs font-bold shadow-xs flex items-center gap-1.5"
-                          title="Abrir página individual do projeto com todas as abas"
-                        >
-                          <span className="material-symbols-outlined text-[16px]">open_in_new</span>
-                          Página Completa
-                        </button>
-                      )}
-
-                      {isLeader ? (
-                        <span className="text-xs font-bold text-konecta-gold bg-konecta-navy px-3 py-1.5 rounded-full">
-                          És o Líder
+            {loadingData ? (
+              <div className="py-24 flex justify-center"><div className="animate-spin rounded-full h-8 w-8 border-t-2 border-konecta-navy"></div></div>
+            ) : filteredIdeas.length === 0 ? (
+              <div className="p-16 text-center bg-white rounded-3xl border border-dashed border-gray-200">
+                <span className="material-symbols-outlined text-4xl text-gray-300 mb-2">lightbulb</span>
+                <p className="text-xs text-gray-400">Nenhuma ideia encontrada.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {filteredIdeas.map(idea => (
+                  <div key={idea.id} className="card-konecta p-6 shadow-sm border border-gray-100 flex flex-col justify-between space-y-4">
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-bold text-konecta-gold uppercase tracking-widest bg-konecta-navy/5 px-3 py-1 rounded-full">
+                          {idea.category || 'Inovação'}
                         </span>
-                      ) : (
-                        <button
-                          onClick={handleJoinProject}
-                          disabled={joining}
-                          className={`btn-primary py-2 px-5 text-xs ${isUserMember ? 'bg-red-50 text-red-600 hover:bg-red-100 border border-red-200' : ''}`}
-                        >
-                          {joining ? 'A processar...' : isUserMember ? 'Sair da Equipa' : 'Aderir à Equipa'}
-                        </button>
-                      )}
+                        <span className="text-[10px] font-bold text-green-700 bg-green-50 px-2 py-0.5 rounded">
+                          {idea.votes_count || 0} Apoios
+                        </span>
+                      </div>
+                      <h4 className="font-extrabold text-base text-konecta-navy">{idea.title}</h4>
+                      <p className="text-xs text-gray-600 line-clamp-3 leading-relaxed">{idea.description}</p>
+                    </div>
+
+                    <div className="pt-4 border-t border-gray-50 flex items-center justify-between">
+                      <button
+                        onClick={() => handleConvertIdea(idea.id)}
+                        className="btn-gold py-1.5 px-3 text-[11px] font-bold"
+                      >
+                        Converter em Projeto
+                      </button>
+                      <button
+                        onClick={() => onSelectIdea && onSelectIdea(idea.id)}
+                        className="text-xs font-bold text-konecta-navy hover:underline"
+                      >
+                        Ver Ideia
+                      </button>
                     </div>
                   </div>
+                ))}
+              </div>
+            )}
+          </motion.div>
+        )}
 
-                  <h2 className="text-2xl sm:text-3xl font-extrabold text-konecta-navy mb-4 leading-tight">
-                    {selectedProject.title}
-                  </h2>
-                  <p className="text-gray-600 text-sm leading-relaxed whitespace-pre-wrap">
-                    {selectedProject.description}
-                  </p>
+        {/* TAB 3: PROJETOS */}
+        {activeTab === 'projetos' && (
+          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="space-y-6">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-bold uppercase tracking-wider text-konecta-navy">Projetos Ativos em Angola ({filteredProjects.length})</h3>
+              <button
+                onClick={() => { setCreationType('project'); setShowCreateModal(true); }}
+                className="btn-primary py-2 px-4 text-xs font-bold"
+              >
+                + Criar Projeto
+              </button>
+            </div>
 
-                  {/* Progress Tracker */}
-                  <div className="mt-6 pt-6 border-t border-gray-50">
-                    <div className="flex items-center justify-between text-xs font-bold mb-2">
-                      <span className="text-konecta-navy uppercase tracking-wider">Progresso Geral</span>
-                      <span className="text-konecta-gold">{progressPercent}% Concluído ({completedTasksCount}/{tasks.length} tarefas)</span>
+            {filteredProjects.length === 0 ? (
+              <div className="p-16 text-center bg-white rounded-3xl border border-dashed border-gray-200">
+                <span className="material-symbols-outlined text-4xl text-gray-300 mb-2">folder_open</span>
+                <p className="text-xs text-gray-400">Nenhum projeto encontrado com os filtros selecionados.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {filteredProjects.map(proj => (
+                  <div
+                    key={proj.id}
+                    onClick={() => onSelectProject && onSelectProject(proj.id)}
+                    className="card-konecta p-6 shadow-sm border border-gray-100 flex flex-col justify-between cursor-pointer hover:border-konecta-gold transition-all group"
+                  >
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-bold text-konecta-gold uppercase tracking-widest bg-konecta-navy/5 px-3 py-1 rounded-full">
+                          {proj.category || 'Geral'}
+                        </span>
+                        <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded ${
+                          proj.status === 'completed' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'
+                        }`}>
+                          {proj.status === 'completed' ? 'Concluído' : 'Em Execução'}
+                        </span>
+                      </div>
+                      <h4 className="font-extrabold text-base text-konecta-navy group-hover:text-konecta-gold transition-colors">{proj.title}</h4>
+                      <p className="text-xs text-gray-600 line-clamp-3 leading-relaxed">{proj.description}</p>
                     </div>
-                    <div className="w-full bg-gray-100 h-2.5 rounded-full overflow-hidden">
-                      <div 
-                        className="bg-gradient-to-r from-konecta-navy to-konecta-gold h-full transition-all duration-500 rounded-full"
-                        style={{ width: `${progressPercent}%` }}
-                      />
+
+                    <div className="pt-6 mt-6 border-t border-gray-50 flex items-center justify-between text-xs font-bold">
+                      <span className="text-gray-400">{proj.province || 'Angola'}</span>
+                      <span className="text-konecta-navy">Abrir Workspace →</span>
                     </div>
                   </div>
-                </div>
+                ))}
+              </div>
+            )}
+          </motion.div>
+        )}
 
-                {/* Sub-Tabs: Tasks / Milestones / Members */}
-                <div className="flex gap-3 border-b border-gray-100 pb-4 mb-6">
-                  <button
-                    onClick={() => setActiveTab('tasks')}
-                    className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${activeTab === 'tasks' ? 'bg-konecta-navy text-white' : 'text-gray-500 hover:bg-gray-100'}`}
+        {/* TAB 4: COLABORADORES */}
+        {activeTab === 'colaboradores' && (
+          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="space-y-6">
+            <h3 className="text-sm font-bold uppercase tracking-wider text-konecta-navy">Inovadores e Especialistas ({contributors.length})</h3>
+            {loadingData ? (
+              <div className="py-24 flex justify-center"><div className="animate-spin rounded-full h-8 w-8 border-t-2 border-konecta-navy"></div></div>
+            ) : contributors.length === 0 ? (
+              <div className="p-16 text-center bg-white rounded-3xl border border-dashed border-gray-200">
+                <p className="text-xs text-gray-400">Nenhum colaborador encontrado.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+                {contributors.map(profile => (
+                  <div
+                    key={profile.id || (profile as any).user_id}
+                    onClick={() => onSelectUser && onSelectUser(profile.id || (profile as any).user_id)}
+                    className="card-konecta p-6 text-center space-y-4 cursor-pointer hover:border-konecta-gold transition-all"
                   >
-                    Tarefas ({tasks.length})
-                  </button>
-                  <button
-                    onClick={() => setActiveTab('milestones')}
-                    className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${activeTab === 'milestones' ? 'bg-konecta-navy text-white' : 'text-gray-500 hover:bg-gray-100'}`}
-                  >
-                    Etapas e Marcos ({milestones.length})
-                  </button>
-                  <button
-                    onClick={() => setActiveTab('members')}
-                    className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${activeTab === 'members' ? 'bg-konecta-navy text-white' : 'text-gray-500 hover:bg-gray-100'}`}
-                  >
-                    Equipa ({members.length})
-                  </button>
-                </div>
-
-                {/* Tab Content */}
-                <div className="flex-1 space-y-6">
-                  {loadingDetails ? (
-                    <div className="py-12 flex justify-center">
-                      <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-konecta-navy"></div>
-                    </div>
-                  ) : activeTab === 'tasks' ? (
-                    /* TASKS TAB */
-                    <div className="space-y-6">
-                      {tasks.length === 0 ? (
-                        <div className="py-12 text-center bg-gray-50 rounded-2xl">
-                          <span className="material-symbols-outlined text-4xl text-gray-300 mb-2">task_alt</span>
-                          <p className="text-gray-500 text-sm italic">Nenhuma tarefa registada para este projeto.</p>
-                        </div>
+                    <div className="w-20 h-20 rounded-full bg-gray-100 overflow-hidden mx-auto border-2 border-konecta-gold">
+                      {profile.avatar_url ? (
+                        <img src={profile.avatar_url} alt="" className="w-full h-full object-cover" />
                       ) : (
-                        <div className="space-y-2.5">
-                          {tasks.map((task) => (
-                            <div
-                              key={task.id}
-                              onClick={() => handleToggleTask(task)}
-                              className="flex items-center gap-4 p-4 rounded-xl bg-gray-50 hover:bg-gray-100 cursor-pointer group transition-colors border border-gray-100"
-                            >
-                              <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all ${task.status === 'done' ? 'bg-green-500 border-green-500 text-white' : 'border-gray-300 group-hover:border-konecta-gold'}`}>
-                                {task.status === 'done' && <span className="material-symbols-outlined text-[16px]">check</span>}
-                              </div>
-                              <span className={`text-sm font-medium flex-1 transition-all ${task.status === 'done' ? 'line-through text-gray-400' : 'text-konecta-navy'}`}>
-                                {task.title}
-                              </span>
-                              <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded ${task.status === 'done' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
-                                {task.status === 'done' ? 'Concluída' : 'Pendente'}
-                              </span>
-                            </div>
-                          ))}
+                        <div className="w-full h-full flex items-center justify-center font-black text-gray-400 text-xl">
+                          {(profile.full_name || (profile as any).display_name)?.charAt(0) || 'K'}
                         </div>
-                      )}
-
-                      {/* Add Task Form (Allowed for leader and members) */}
-                      {isUserMember && (
-                        <form onSubmit={handleCreateTask} className="pt-4 border-t border-gray-100 flex gap-3">
-                          <input
-                            type="text"
-                            value={newTaskTitle}
-                            onChange={(e) => setNewTaskTitle(e.target.value)}
-                            placeholder="Adicionar nova tarefa operacional..."
-                            className="flex-1 bg-gray-50 border-none focus:ring-1 focus:ring-konecta-navy rounded-xl px-4 py-3 text-sm"
-                          />
-                          <button
-                            type="submit"
-                            disabled={!newTaskTitle.trim()}
-                            className="btn-primary py-2.5 px-6 text-xs whitespace-nowrap"
-                          >
-                            Adicionar Tarefa
-                          </button>
-                        </form>
                       )}
                     </div>
-                  ) : activeTab === 'milestones' ? (
-                    /* MILESTONES TAB */
-                    <div className="space-y-6">
-                      {milestones.length === 0 ? (
-                        <div className="py-12 text-center bg-gray-50 rounded-2xl">
-                          <span className="material-symbols-outlined text-4xl text-gray-300 mb-2">flag</span>
-                          <p className="text-gray-500 text-sm italic">Nenhum marco ou etapa definido ainda.</p>
-                        </div>
-                      ) : (
-                        <div className="space-y-4">
-                          {milestones.map((m) => (
-                            <div 
-                              key={m.id}
-                              className={`p-5 rounded-2xl border transition-all ${m.status === 'completed' ? 'bg-green-50/50 border-green-200' : 'bg-white border-gray-200'}`}
-                            >
-                              <div className="flex items-start justify-between gap-4">
-                                <div className="space-y-1">
-                                  <div className="flex items-center gap-2">
-                                    <span className={`w-3 h-3 rounded-full ${m.status === 'completed' ? 'bg-green-500' : 'bg-konecta-gold'}`}></span>
-                                    <h4 className="font-bold text-konecta-navy text-base">{m.title}</h4>
-                                  </div>
-                                  {m.description && (
-                                    <p className="text-xs text-gray-500 leading-relaxed pl-5">{m.description}</p>
-                                  )}
-                                  {m.due_date && (
-                                    <p className="text-[11px] text-gray-400 pl-5 pt-1">
-                                      Prazo: {new Date(m.due_date).toLocaleDateString('pt-AO')}
-                                    </p>
-                                  )}
-                                </div>
-
-                                {isLeader && (
-                                  <button
-                                    onClick={() => handleToggleMilestone(m)}
-                                    className={`text-xs font-bold px-3 py-1.5 rounded-lg border transition-colors ${m.status === 'completed' ? 'border-green-300 text-green-700 bg-white hover:bg-green-100' : 'border-gray-300 text-gray-600 hover:border-konecta-gold'}`}
-                                  >
-                                    {m.status === 'completed' ? '✓ Concluído' : 'Marcar Concluído'}
-                                  </button>
-                                )}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-
-                      {/* Add Milestone Form for Leader */}
-                      {isLeader && (
-                        <form onSubmit={handleCreateMilestone} className="p-5 bg-gray-50 rounded-2xl space-y-3 border border-gray-100">
-                          <h4 className="text-xs font-bold uppercase tracking-wider text-konecta-navy">Definir Novo Marco</h4>
-                          <input
-                            type="text"
-                            placeholder="Título do marco (ex: Conclusão do protótipo)"
-                            value={newMilestoneTitle}
-                            onChange={(e) => setNewMilestoneTitle(e.target.value)}
-                            className="w-full bg-white border border-gray-200 rounded-xl px-4 py-2.5 text-sm"
-                          />
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                            <input
-                              type="text"
-                              placeholder="Breve descrição dos entregáveis"
-                              value={newMilestoneDesc}
-                              onChange={(e) => setNewMilestoneDesc(e.target.value)}
-                              className="w-full bg-white border border-gray-200 rounded-xl px-4 py-2 text-xs"
-                            />
-                            <input
-                              type="date"
-                              value={newMilestoneDate}
-                              onChange={(e) => setNewMilestoneDate(e.target.value)}
-                              className="w-full bg-white border border-gray-200 rounded-xl px-4 py-2 text-xs"
-                            />
-                          </div>
-                          <button
-                            type="submit"
-                            disabled={!newMilestoneTitle.trim()}
-                            className="btn-gold py-2 px-5 text-xs font-bold"
-                          >
-                            Gravar Marco
-                          </button>
-                        </form>
-                      )}
+                    <div>
+                      <h4 className="font-bold text-sm text-konecta-navy">{profile.full_name || (profile as any).display_name}</h4>
+                      <span className="text-[11px] text-konecta-gold font-bold uppercase tracking-wider block mt-0.5">
+                        {profile.province || 'Luanda, Angola'}
+                      </span>
                     </div>
+                    <p className="text-xs text-gray-500 line-clamp-2">{profile.bio || 'Membro da comunidade Konecta Angola.'}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </motion.div>
+        )}
+
+        {/* TAB 5: MINHAS INICIATIVAS */}
+        {activeTab === 'minhas-iniciativas' && (
+          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="space-y-8">
+            {!user ? (
+              <div className="p-16 text-center bg-white rounded-3xl border border-dashed border-gray-200 space-y-4">
+                <p className="text-xs text-gray-500">Inicia sessão para consultar as tuas ideias, projetos e candidaturas.</p>
+                <button onClick={onOpenAuth} className="btn-primary py-2 px-6 text-xs font-bold">Iniciar Sessão</button>
+              </div>
+            ) : (
+              <div className="space-y-8">
+                {/* My Projects */}
+                <div className="space-y-4">
+                  <h3 className="text-sm font-bold uppercase tracking-wider text-konecta-navy">Os Meus Projetos Liderados</h3>
+                  {projects.filter(p => (p as any).owner_id === user.id || p.leader_id === user.id).length === 0 ? (
+                    <p className="text-xs text-gray-400 italic">Ainda não criaste nenhum projeto.</p>
                   ) : (
-                    /* MEMBERS TAB */
-                    <div className="space-y-4">
-                      {members.length === 0 ? (
-                        <div className="py-12 text-center bg-gray-50 rounded-2xl">
-                          <span className="material-symbols-outlined text-4xl text-gray-300 mb-2">group</span>
-                          <p className="text-gray-500 text-sm italic">Ainda não existem membros associados a este projeto.</p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {projects.filter(p => (p as any).owner_id === user.id || p.leader_id === user.id).map(proj => (
+                        <div
+                          key={proj.id}
+                          onClick={() => onSelectProject && onSelectProject(proj.id)}
+                          className="card-konecta p-5 flex items-center justify-between cursor-pointer hover:border-konecta-gold"
+                        >
+                          <div>
+                            <h4 className="font-bold text-sm text-konecta-navy">{proj.title}</h4>
+                            <span className="text-[10px] text-konecta-gold uppercase font-bold">{proj.category}</span>
+                          </div>
+                          <span className="text-xs font-bold text-konecta-navy">Gerir Workspace →</span>
                         </div>
-                      ) : (
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                          {members.map((member) => (
-                            <div key={member.id} className="p-4 rounded-2xl bg-white border border-gray-100 shadow-sm flex items-center gap-4">
-                              <div className="w-12 h-12 rounded-full bg-gray-100 overflow-hidden shrink-0 border border-gray-100">
-                                {member.profiles?.avatar_url ? (
-                                  <img src={member.profiles.avatar_url} alt="" className="w-full h-full object-cover" />
-                                ) : (
-                                  <div className="w-full h-full flex items-center justify-center font-bold text-gray-400 text-sm">
-                                    {member.profiles?.full_name?.charAt(0) || 'U'}
-                                  </div>
-                                )}
-                              </div>
-                              <div className="flex-1 truncate">
-                                <h4 className="font-bold text-sm text-konecta-navy truncate">
-                                  {member.profiles?.full_name || 'Membro Konecta'}
-                                </h4>
-                                <span className="text-[10px] text-konecta-gold font-bold uppercase tracking-wider block">
-                                  {member.role || 'Colaborador'}
-                                </span>
-                                <span className="text-[10px] text-gray-400 block">
-                                  {member.profiles?.province || 'Angola'}
-                                </span>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
+                      ))}
                     </div>
                   )}
                 </div>
-              </motion.div>
-            ) : (
-              <div className="h-full flex flex-col items-center justify-center text-center py-32 bg-white rounded-3xl border border-dashed border-gray-200">
-                <span className="material-symbols-outlined text-6xl text-gray-200 mb-4">folder_open</span>
-                <p className="text-gray-500 max-w-sm mx-auto text-sm">
-                  Seleciona um projeto na barra lateral para visualizar o progresso, as tarefas e a equipa.
-                </p>
+
+                {/* My Applications */}
+                <div className="space-y-4">
+                  <h3 className="text-sm font-bold uppercase tracking-wider text-konecta-navy">Minhas Candidaturas de Colaboração</h3>
+                  {myApplications.length === 0 ? (
+                    <p className="text-xs text-gray-400 italic">Ainda não submeteste nenhuma candidatura a projetos.</p>
+                  ) : (
+                    <div className="space-y-3">
+                      {myApplications.map(app => (
+                        <div key={app.id} className="card-konecta p-5 flex items-center justify-between">
+                          <div>
+                            <h4 className="font-bold text-sm text-konecta-navy">{app.projects?.title || 'Projeto Konecta'}</h4>
+                            <p className="text-xs text-gray-500 line-clamp-1 mt-0.5">{app.message}</p>
+                          </div>
+                          <span className={`text-[10px] font-bold uppercase px-3 py-1 rounded-full ${
+                            app.status === 'accepted' ? 'bg-green-100 text-green-700' :
+                            app.status === 'rejected' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'
+                          }`}>
+                            {app.status === 'accepted' ? 'Aceite' : app.status === 'rejected' ? 'Rejeitada' : 'Pendente'}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
             )}
-          </AnimatePresence>
-        </main>
-      </div>
+          </motion.div>
+        )}
 
-      {/* New Project Modal */}
+      </AnimatePresence>
+
+      {/* Create Initiative Modal */}
       <AnimatePresence>
-        {showNewProjectModal && (
+        {showCreateModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-konecta-navy/60 backdrop-blur-sm">
             <motion.div
               initial={{ opacity: 0, scale: 0.95 }}
@@ -586,26 +568,40 @@ export const Projects: React.FC<ProjectsProps> = ({
               className="bg-white rounded-3xl p-6 sm:p-8 max-w-lg w-full shadow-2xl space-y-6"
             >
               <div className="flex items-center justify-between border-b border-gray-100 pb-4">
-                <h3 className="text-xl font-bold text-konecta-navy">Criar Novo Projeto Real</h3>
-                <button
-                  onClick={() => setShowNewProjectModal(false)}
-                  className="text-gray-400 hover:text-konecta-navy"
-                >
+                <h3 className="text-xl font-bold text-konecta-navy">Criar Nova Iniciativa Konecta</h3>
+                <button onClick={() => setShowCreateModal(false)} className="text-gray-400 hover:text-konecta-navy">
                   <span className="material-symbols-outlined">close</span>
                 </button>
               </div>
 
-              <form onSubmit={handleCreateProject} className="space-y-4">
+              <div className="flex gap-2 p-1 bg-gray-100 rounded-2xl">
+                <button
+                  type="button"
+                  onClick={() => setCreationType('idea')}
+                  className={`flex-1 py-2.5 rounded-xl text-xs font-bold transition-all ${creationType === 'idea' ? 'bg-konecta-navy text-white shadow-xs' : 'text-gray-600'}`}
+                >
+                  Ideia Inovadora
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCreationType('project')}
+                  className={`flex-1 py-2.5 rounded-xl text-xs font-bold transition-all ${creationType === 'project' ? 'bg-konecta-navy text-white shadow-xs' : 'text-gray-600'}`}
+                >
+                  Projeto Real
+                </button>
+              </div>
+
+              <form onSubmit={handleCreateInitiative} className="space-y-4">
                 <div>
                   <label className="block text-xs font-bold text-konecta-navy uppercase tracking-wider mb-1.5">
-                    Nome do Projeto
+                    Título da {creationType === 'idea' ? 'Ideia' : 'Projeto'}
                   </label>
                   <input
                     type="text"
                     required
-                    value={projectTitle}
-                    onChange={(e) => setProjectTitle(e.target.value)}
-                    placeholder="Ex: Reflorestamento Urbano no Cazenga"
+                    value={title}
+                    onChange={e => setTitle(e.target.value)}
+                    placeholder={creationType === 'idea' ? 'Ex: Plataforma de Reciclagem Inteligente' : 'Ex: Reflorestamento Urbano em Luanda'}
                     className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm"
                   />
                 </div>
@@ -617,9 +613,9 @@ export const Projects: React.FC<ProjectsProps> = ({
                   <textarea
                     required
                     rows={4}
-                    value={projectDesc}
-                    onChange={(e) => setProjectDesc(e.target.value)}
-                    placeholder="Explica os objetivos, público beneficiado e resultados esperados..."
+                    value={description}
+                    onChange={e => setDescription(e.target.value)}
+                    placeholder="Descreve o problema, solução e objetivos principais..."
                     className="w-full bg-gray-50 border border-gray-200 rounded-xl p-4 text-sm resize-none"
                   />
                 </div>
@@ -630,8 +626,8 @@ export const Projects: React.FC<ProjectsProps> = ({
                       Categoria
                     </label>
                     <select
-                      value={projectCategory}
-                      onChange={(e) => setProjectCategory(e.target.value)}
+                      value={category}
+                      onChange={e => setCategory(e.target.value)}
                       className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-sm"
                     >
                       <option value="Educação">Educação</option>
@@ -648,28 +644,14 @@ export const Projects: React.FC<ProjectsProps> = ({
                       Província
                     </label>
                     <select
-                      value={projectProvince}
-                      onChange={(e) => setProjectProvince(e.target.value)}
+                      value={province}
+                      onChange={e => setProvince(e.target.value)}
                       className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-sm"
                     >
                       <option value="Luanda">Luanda</option>
                       <option value="Benguela">Benguela</option>
                       <option value="Huambo">Huambo</option>
                       <option value="Huíla">Huíla</option>
-                      <option value="Cabinda">Cabinda</option>
-                      <option value="Uíge">Uíge</option>
-                      <option value="Malanje">Malanje</option>
-                      <option value="Namibe">Namibe</option>
-                      <option value="Zaire">Zaire</option>
-                      <option value="Cuanza Sul">Cuanza Sul</option>
-                      <option value="Cuanza Norte">Cuanza Norte</option>
-                      <option value="Bié">Bié</option>
-                      <option value="Moxico">Moxico</option>
-                      <option value="Cunene">Cunene</option>
-                      <option value="Cuando Cubango">Cuando Cubango</option>
-                      <option value="Lunda Norte">Lunda Norte</option>
-                      <option value="Lunda Sul">Lunda Sul</option>
-                      <option value="Bengo">Bengo</option>
                     </select>
                   </div>
                 </div>
@@ -677,17 +659,17 @@ export const Projects: React.FC<ProjectsProps> = ({
                 <div className="flex justify-end gap-3 pt-4 border-t border-gray-100">
                   <button
                     type="button"
-                    onClick={() => setShowNewProjectModal(false)}
-                    className="px-5 py-2.5 text-xs font-bold text-gray-500 hover:text-konecta-navy"
+                    onClick={() => setShowCreateModal(false)}
+                    className="px-5 py-2.5 text-xs font-bold text-gray-500"
                   >
                     Cancelar
                   </button>
                   <button
                     type="submit"
-                    disabled={creatingProject || !projectTitle.trim() || !projectDesc.trim()}
+                    disabled={submitting || !title.trim() || !description.trim()}
                     className="btn-primary py-2.5 px-6 text-xs"
                   >
-                    {creatingProject ? 'A criar...' : 'Publicar Projeto'}
+                    {submitting ? 'A publicar...' : `Publicar ${creationType === 'idea' ? 'Ideia' : 'Projeto'}`}
                   </button>
                 </div>
               </form>

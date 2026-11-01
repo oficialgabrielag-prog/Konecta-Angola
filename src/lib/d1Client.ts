@@ -1458,6 +1458,144 @@ export const d1Client: any = {
       return { data: wrapArray(formatted), error: null };
     },
 
+    async apply(projectId: string, payload: { message: string; skills: string[] }): Promise<any> {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return { data: null, error: { message: 'Não autenticado' } };
+
+      const { data, error } = await supabase
+        .from('project_applications')
+        .insert({
+          project_id: projectId,
+          applicant_id: user.id,
+          message: payload.message.trim(),
+          skills: payload.skills || [],
+          status: 'pending',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
+        .select()
+        .single();
+
+      return { data: wrapObject(data), error };
+    },
+
+    async getApplications(projectId: string): Promise<any> {
+      const { data, error } = await supabase
+        .from('project_applications')
+        .select('*')
+        .eq('project_id', projectId)
+        .order('created_at', { ascending: false });
+
+      if (error || !data) return { data: wrapArray([]), error };
+
+      const applicantIds = Array.from(new Set(data.map(a => a.applicant_id).filter(Boolean)));
+      let profilesMap: Record<string, any> = {};
+      if (applicantIds.length > 0) {
+        const { data: profs } = await supabase.from('profiles').select('*').in('user_id', applicantIds);
+        (profs || []).forEach(p => {
+          profilesMap[p.user_id] = { ...p, id: p.user_id, full_name: p.display_name };
+        });
+      }
+
+      const formatted = data.map(a => ({
+        ...a,
+        profiles: profilesMap[a.applicant_id] || { id: a.applicant_id, full_name: 'Inovador Konecta' }
+      }));
+
+      return { data: wrapArray(formatted), error: null };
+    },
+
+    async updateApplicationStatus(applicationId: string, status: 'accepted' | 'rejected' | 'withdrawn'): Promise<any> {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return { success: false, error: 'Não autenticado' };
+
+      const { data: app, error: fetchErr } = await supabase
+        .from('project_applications')
+        .select('*, projects(*)')
+        .eq('id', applicationId)
+        .maybeSingle();
+
+      if (fetchErr || !app) return { success: false, error: fetchErr || 'Candidatura não encontrada' };
+
+      const { error } = await supabase
+        .from('project_applications')
+        .update({
+          status,
+          reviewed_by: user.id,
+          reviewed_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', applicationId);
+
+      if (error) return { success: false, error };
+
+      if (status === 'accepted') {
+        try {
+          await supabase.from('project_members').insert({
+            project_id: app.project_id,
+            user_id: app.applicant_id,
+            joined_at: new Date().toISOString()
+          });
+        } catch (e) {}
+
+        try {
+          await supabase.from('notifications').insert({
+            user_id: app.applicant_id,
+            title: 'Candidatura Aceotada!',
+            body: `A tua candidatura para o projeto foi aceite. Já fazes parte da equipa!`,
+            read: false,
+            created_at: new Date().toISOString()
+          });
+        } catch (e) {}
+      } else if (status === 'rejected') {
+        try {
+          await supabase.from('notifications').insert({
+            user_id: app.applicant_id,
+            title: 'Atualização de Candidatura',
+            body: `A tua candidatura para o projeto foi analisada. Continua a inovar!`,
+            read: false,
+            created_at: new Date().toISOString()
+          });
+        } catch (e) {}
+      }
+
+      return { success: true, error: null };
+    },
+
+    async getMyApplications(): Promise<any> {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return { data: wrapArray([]), error: null };
+
+      const { data, error } = await supabase
+        .from('project_applications')
+        .select('*, projects(*)')
+        .eq('applicant_id', user.id)
+        .order('created_at', { ascending: false });
+
+      return { data: wrapArray(data || []), error };
+    },
+
+    async convertIdeaToProject(ideaId: string): Promise<any> {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return { data: null, error: 'Não autenticado' };
+
+      const { data: idea, error: ideaErr } = await supabase
+        .from('ideas')
+        .select('*')
+        .eq('id', ideaId)
+        .maybeSingle();
+
+      if (ideaErr || !idea) return { data: null, error: 'Ideia não encontrada' };
+
+      const res = await d1Client.projects.create({
+        title: idea.title,
+        description: idea.description,
+        category: idea.category || 'Inovação'
+      });
+
+      return res;
+    },
+
     async getTasks(projectId: string): Promise<any> {
       const { data, error } = await supabase
         .from('project_tasks')
@@ -1910,30 +2048,119 @@ export const d1Client: any = {
   },
 
   events: {
-    async list(): Promise<any> {
-      const { data: eventRows, error } = await supabase
+    async list(filter?: { event_type?: string; format?: string; category?: string; search?: string }): Promise<any> {
+      let query = supabase
         .from('events')
         .select('*, event_attendees(*)')
         .order('starts_at', { ascending: true });
 
+      if (filter?.event_type) {
+        query = query.eq('event_type', filter.event_type);
+      }
+      if (filter?.format) {
+        query = query.eq('format', filter.format);
+      }
+      if (filter?.category && filter.category !== 'all') {
+        query = query.eq('category', filter.category);
+      }
+
+      const { data: eventRows, error } = await query;
       if (error || !eventRows) return { data: wrapArray([]), error };
 
-      const formatted = eventRows.map(ev => ({
+      const organizerIds = Array.from(new Set(eventRows.map(e => e.organizer_id).filter(Boolean)));
+      let profilesMap: Record<string, any> = {};
+      if (organizerIds.length > 0) {
+        const { data: profs } = await supabase.from('profiles').select('*').in('user_id', organizerIds);
+        (profs || []).forEach(p => {
+          profilesMap[p.user_id] = { ...p, id: p.user_id, full_name: p.display_name };
+        });
+      }
+
+      let filtered = eventRows;
+      if (filter?.search) {
+        const q = filter.search.toLowerCase();
+        filtered = eventRows.filter(e => 
+          e.title?.toLowerCase().includes(q) || 
+          e.description?.toLowerCase().includes(q) ||
+          e.venue?.toLowerCase().includes(q)
+        );
+      }
+
+      const formatted = filtered.map(ev => ({
         id: ev.id,
         title: ev.title,
         description: ev.description,
+        starts_at: ev.starts_at,
+        ends_at: ev.ends_at,
         date: ev.starts_at,
-        location: 'Luanda / Híbrido',
-        image_url: null,
+        venue: ev.venue || ev.location || 'Luanda / Híbrido',
+        online_url: ev.online_url,
+        format: ev.format || 'presencial',
+        event_type: ev.event_type || 'event',
+        capacity: ev.capacity || 100,
+        category: ev.category || 'Inovação',
+        requirements: ev.requirements,
+        agenda: ev.agenda,
+        certificate_available: ev.certificate_available || false,
+        status: ev.status || 'published',
+        visibility: ev.visibility || 'public',
+        cover_photo_url: ev.cover_photo_url || ev.image_url,
+        image_url: ev.cover_photo_url || ev.image_url,
         organizer_id: ev.organizer_id,
-        participant_count: ev.event_attendees?.length || 0,
-        created_at: ev.created_at
+        community_id: ev.community_id,
+        participant_count: (ev.event_attendees || []).filter((a: any) => a.response === 'going').length || ev.event_attendees?.length || 0,
+        attendees: ev.event_attendees || [],
+        profiles: profilesMap[ev.organizer_id] || { id: ev.organizer_id, full_name: 'Organizador Konecta' }
       }));
 
       return { data: wrapArray(formatted), error: null };
     },
 
-    async create(data: { title: string; description: string; date?: string }): Promise<any> {
+    async getById(id: string): Promise<any> {
+      const { data: ev, error } = await supabase
+        .from('events')
+        .select('*, event_attendees(*)')
+        .eq('id', id)
+        .maybeSingle();
+
+      if (error || !ev) return { data: null, error };
+
+      let profile = null;
+      if (ev.organizer_id) {
+        const { data: p } = await supabase.from('profiles').select('*').eq('user_id', ev.organizer_id).maybeSingle();
+        if (p) profile = { ...p, id: p.user_id, full_name: p.display_name };
+      }
+
+      const formatted = {
+        ...ev,
+        date: ev.starts_at,
+        venue: ev.venue || 'Luanda',
+        image_url: ev.cover_photo_url || ev.image_url,
+        participant_count: (ev.event_attendees || []).filter((a: any) => a.response === 'going').length || ev.event_attendees?.length || 0,
+        profiles: profile || { id: ev.organizer_id, full_name: 'Organizador Konecta' }
+      };
+
+      return { data: wrapObject(formatted), error: null };
+    },
+
+    async create(data: {
+      title: string;
+      description: string;
+      starts_at: string;
+      ends_at?: string;
+      venue?: string;
+      online_url?: string;
+      format?: string;
+      event_type?: string;
+      capacity?: number;
+      category?: string;
+      requirements?: string;
+      agenda?: string;
+      certificate_available?: boolean;
+      visibility?: string;
+      cover_photo_url?: string;
+      community_id?: string;
+    }): Promise<any> {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return { data: null, error: { message: 'Não autenticado' } };
 
@@ -1942,25 +2169,118 @@ export const d1Client: any = {
         .insert({
           title: data.title.trim(),
           description: data.description.trim(),
-          starts_at: data.date || new Date().toISOString(),
+          starts_at: data.starts_at,
+          ends_at: data.ends_at || data.starts_at,
+          venue: data.venue?.trim() || 'Luanda',
+          online_url: data.online_url?.trim() || null,
+          format: data.format || 'presencial',
+          event_type: data.event_type || 'event',
+          capacity: data.capacity || 100,
+          category: data.category || 'Inovação',
+          requirements: data.requirements?.trim() || null,
+          agenda: data.agenda?.trim() || null,
+          certificate_available: !!data.certificate_available,
+          visibility: data.visibility || 'public',
+          cover_photo_url: data.cover_photo_url || null,
+          community_id: data.community_id || null,
           organizer_id: user.id,
+          status: 'published',
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
         })
         .select()
         .single();
 
+      if (newEvent) {
+        // Automatically join organizer as going
+        try {
+          await supabase.from('event_attendees').insert({
+            event_id: newEvent.id,
+            user_id: user.id,
+            response: 'going',
+            responded_at: new Date().toISOString()
+          });
+        } catch (e) {}
+      }
+
       return { data: wrapObject(newEvent), error };
     },
 
-    async join(eventId: string): Promise<any> {
+    async update(id: string, payload: any): Promise<any> {
+      const updateData: any = { updated_at: new Date().toISOString() };
+      if (payload.title !== undefined) updateData.title = payload.title;
+      if (payload.description !== undefined) updateData.description = payload.description;
+      if (payload.starts_at !== undefined) updateData.starts_at = payload.starts_at;
+      if (payload.ends_at !== undefined) updateData.ends_at = payload.ends_at;
+      if (payload.venue !== undefined) updateData.venue = payload.venue;
+      if (payload.online_url !== undefined) updateData.online_url = payload.online_url;
+      if (payload.format !== undefined) updateData.format = payload.format;
+      if (payload.capacity !== undefined) updateData.capacity = payload.capacity;
+      if (payload.category !== undefined) updateData.category = payload.category;
+      if (payload.requirements !== undefined) updateData.requirements = payload.requirements;
+      if (payload.agenda !== undefined) updateData.agenda = payload.agenda;
+      if (payload.certificate_available !== undefined) updateData.certificate_available = payload.certificate_available;
+      if (payload.status !== undefined) updateData.status = payload.status;
+      if (payload.cover_photo_url !== undefined) updateData.cover_photo_url = payload.cover_photo_url;
+
+      const { data, error } = await supabase
+        .from('events')
+        .update(updateData)
+        .eq('id', id)
+        .select()
+        .maybeSingle();
+
+      return { data: wrapObject(data), error };
+    },
+
+    async cancel(id: string): Promise<any> {
+      const { error } = await supabase
+        .from('events')
+        .update({ status: 'cancelled', updated_at: new Date().toISOString() })
+        .eq('id', id);
+      return { success: !error, error };
+    },
+
+    async join(eventId: string, response: 'going' | 'interested' | 'not_going' = 'going'): Promise<any> {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return { success: false, error: 'Não autenticado' };
 
-      const { error } = await supabase.from('event_attendees').insert({
+      // Check capacity if going
+      if (response === 'going') {
+        const { data: ev } = await supabase.from('events').select('capacity, status').eq('id', eventId).maybeSingle();
+        if (ev?.status === 'cancelled') return { success: false, error: 'Este evento foi cancelado.' };
+        
+        const { count } = await supabase
+          .from('event_attendees')
+          .select('*', { count: 'exact', head: true })
+          .eq('event_id', eventId)
+          .eq('response', 'going');
+
+        if (ev?.capacity && count !== null && count >= ev.capacity) {
+          return { success: false, error: 'Este evento esgotou a capacidade de participantes.' };
+        }
+      }
+
+      // Upsert attendee response
+      const { error } = await supabase.from('event_attendees').upsert({
         event_id: eventId,
-        user_id: user.id
-      });
+        user_id: user.id,
+        response,
+        responded_at: new Date().toISOString()
+      }, { onConflict: 'event_id,user_id' });
+
+      if (!error && response === 'going') {
+        try {
+          await supabase.from('notifications').insert({
+            user_id: user.id,
+            title: 'Inscrição Confirmada!',
+            body: 'A tua inscrição no evento foi registada com sucesso.',
+            read: false,
+            created_at: new Date().toISOString()
+          });
+        } catch (e) {}
+      }
+
       return { success: !error, error };
     },
 
@@ -1973,10 +2293,122 @@ export const d1Client: any = {
         user_id: user.id
       });
       return { success: !error, error };
+    },
+
+    async getMyAttendances(): Promise<any> {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return { data: wrapArray([]), error: null };
+
+      const { data: attendees } = await supabase
+        .from('event_attendees')
+        .select('event_id, response, events(*, event_attendees(*))')
+        .eq('user_id', user.id);
+
+      const items = (attendees || []).map(a => ({
+        ...(a.events as any),
+        my_response: a.response,
+        participant_count: (((a.events || {}) as any).event_attendees || []).filter((at: any) => at.response === 'going').length
+      })).filter(Boolean);
+
+      return { data: wrapArray(items), error: null };
+    },
+
+    async getMyEvents(): Promise<any> {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return { data: wrapArray([]), error: null };
+
+      const { data: eventRows } = await supabase
+        .from('events')
+        .select('*, event_attendees(*)')
+        .eq('organizer_id', user.id)
+        .order('starts_at', { ascending: false });
+
+      const formatted = (eventRows || []).map(ev => ({
+        ...ev,
+        participant_count: (ev.event_attendees || []).filter((a: any) => a.response === 'going').length
+      }));
+
+      return { data: wrapArray(formatted), error: null };
+    },
+
+    async getAttendees(eventId: string): Promise<any> {
+      const { data, error } = await supabase
+        .from('event_attendees')
+        .select('*')
+        .eq('event_id', eventId);
+
+      if (error || !data) return { data: wrapArray([]), error };
+
+      const userIds = data.map(a => a.user_id);
+      let profilesMap: Record<string, any> = {};
+      if (userIds.length > 0) {
+        const { data: profs } = await supabase.from('profiles').select('*').in('user_id', userIds);
+        (profs || []).forEach(p => {
+          profilesMap[p.user_id] = { ...p, id: p.user_id, full_name: p.display_name };
+        });
+      }
+
+      const formatted = data.map(a => ({
+        ...a,
+        profiles: profilesMap[a.user_id] || { id: a.user_id, full_name: 'Inovador Konecta' }
+      }));
+
+      return { data: wrapArray(formatted), error: null };
     }
   },
 
   messages: {
+    async searchProfiles(query: string): Promise<any> {
+      const { data: { user } } = await supabase.auth.getUser();
+      const clean = query.trim().toLowerCase();
+      if (!clean) return { data: wrapArray([]), error: null };
+
+      let { data: profs, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .or(`display_name.ilike.%${clean}%,username.ilike.%${clean}%`)
+        .limit(20);
+
+      if (error || !profs || profs.length === 0) {
+        const { data: allProfs } = await supabase.from('profiles').select('*').limit(50);
+        profs = (allProfs || []).filter(p => 
+          p.display_name?.toLowerCase().includes(clean) ||
+          p.username?.toLowerCase().includes(clean)
+        );
+      }
+
+      if (user) {
+        profs = profs.filter(p => p.user_id !== user.id);
+
+        try {
+          const { data: blocks } = await supabase
+            .from('user_blocks')
+            .select('blocked_id, blocker_id')
+            .or(`blocker_id.eq.${user.id},blocked_id.eq.${user.id}`);
+
+          if (blocks && blocks.length > 0) {
+            const blockedIds = new Set(
+              blocks.map(b => b.blocker_id === user.id ? b.blocked_id : b.blocker_id)
+            );
+            profs = profs.filter(p => !blockedIds.has(p.user_id));
+          }
+        } catch (e) {}
+      }
+
+      const formatted = profs.map(p => ({
+        ...p,
+        id: p.user_id,
+        user_id: p.user_id,
+        full_name: p.display_name || p.username || 'Membro Konecta',
+        display_name: p.display_name || p.username || 'Membro Konecta',
+        username: p.username,
+        avatar_url: p.avatar_url,
+        province: p.province || 'Angola'
+      }));
+
+      return { data: wrapArray(formatted), error: null };
+    },
+
     async listConversations(): Promise<any> {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return { data: wrapArray([]), error: null };
@@ -1989,13 +2421,71 @@ export const d1Client: any = {
       const convIds = (memberRows || []).map(m => m.conversation_id);
       if (convIds.length === 0) return { data: wrapArray([]), error: null };
 
-      const { data: conversations } = await supabase
+      const { data: conversations, error } = await supabase
         .from('conversations')
         .select('*, conversation_members(*)')
         .in('id', convIds)
         .order('updated_at', { ascending: false });
 
-      return { data: wrapArray(conversations || []), error: null };
+      if (error || !conversations) return { data: wrapArray([]), error };
+
+      const allUserIds = new Set<string>();
+      conversations.forEach(c => {
+        (c.conversation_members || []).forEach((m: any) => {
+          if (m.user_id) allUserIds.add(m.user_id);
+        });
+      });
+
+      let profilesMap: Record<string, any> = {};
+      if (allUserIds.size > 0) {
+        const { data: profs } = await supabase
+          .from('profiles')
+          .select('*')
+          .in('user_id', Array.from(allUserIds));
+
+        (profs || []).forEach(p => {
+          profilesMap[p.user_id] = {
+            id: p.user_id,
+            user_id: p.user_id,
+            full_name: p.display_name || p.username || 'Membro Konecta',
+            display_name: p.display_name || p.username || 'Membro Konecta',
+            username: p.username,
+            avatar_url: p.avatar_url,
+            province: p.province || 'Angola'
+          };
+        });
+      }
+
+      const formattedConvs = await Promise.all(
+        conversations.map(async (c) => {
+          const { data: lastMsg } = await supabase
+            .from('messages')
+            .select('*')
+            .eq('conversation_id', c.id)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          const participants = (c.conversation_members || []).map((m: any) => {
+            return profilesMap[m.user_id] || {
+              id: m.user_id,
+              user_id: m.user_id,
+              full_name: 'Membro Konecta',
+              avatar_url: null
+            };
+          });
+
+          return {
+            ...c,
+            participants,
+            last_message: lastMsg?.body || 'Conversa iniciada',
+            last_message_at: lastMsg?.created_at || c.updated_at || c.created_at,
+            unread_count: 0
+          };
+        })
+      );
+
+      return { data: wrapArray(formattedConvs), error: null };
     },
 
     async getMessages(convId: string): Promise<any> {
@@ -2010,15 +2500,16 @@ export const d1Client: any = {
         conversation_id: m.conversation_id,
         sender_id: m.sender_id,
         content: m.body,
+        media_url: m.media_url || null,
         created_at: m.created_at
       }));
 
       return { data: wrapArray(formatted), error };
     },
 
-    async sendMessage(convId: string, content: string): Promise<any> {
+    async sendMessage(convId: string, content: string, mediaUrl?: string): Promise<any> {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return { data: null, error: 'Não autenticado' };
+      if (!user) return { data: null, error: { message: 'Não autenticado' } };
 
       const { data: newMsg, error } = await supabase
         .from('messages')
@@ -2026,6 +2517,7 @@ export const d1Client: any = {
           conversation_id: convId,
           sender_id: user.id,
           body: content.trim(),
+          media_url: mediaUrl || null,
           created_at: new Date().toISOString()
         })
         .select()
@@ -2043,11 +2535,82 @@ export const d1Client: any = {
       };
     },
 
+    async deleteMessage(messageId: string): Promise<any> {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return { success: false, error: 'Não autenticado' };
+
+      const { error } = await supabase
+        .from('messages')
+        .delete()
+        .match({ id: messageId, sender_id: user.id });
+
+      return { success: !error, error };
+    },
+
     async startConversation(targetUserId: string): Promise<any> {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return { data: null, error: 'Não autenticado' };
+      if (!user) return { data: null, error: { message: 'Sessão expirada. Por favor, inicie sessão.' } };
 
-      // 1. Create conversation
+      if (user.id === targetUserId) {
+        return { data: null, error: { message: 'Não é possível iniciar conversa consigo próprio.' } };
+      }
+
+      try {
+        const { data: blocks } = await supabase
+          .from('user_blocks')
+          .select('id')
+          .or(`and(blocker_id.eq.${user.id},blocked_id.eq.${targetUserId}),and(blocker_id.eq.${targetUserId},blocked_id.eq.${user.id})`);
+
+        if (blocks && blocks.length > 0) {
+          return { data: null, error: { message: 'Não é possível enviar mensagens a este utilizador devido a restrições de privacidade ou bloqueio.' } };
+        }
+      } catch (e) {}
+
+      const { data: myMembers } = await supabase
+        .from('conversation_members')
+        .select('conversation_id')
+        .eq('user_id', user.id);
+
+      if (myMembers && myMembers.length > 0) {
+        const myConvIds = myMembers.map(m => m.conversation_id);
+        const { data: sharedMembers } = await supabase
+          .from('conversation_members')
+          .select('conversation_id')
+          .in('conversation_id', myConvIds)
+          .eq('user_id', targetUserId);
+
+        if (sharedMembers && sharedMembers.length > 0) {
+          const sharedConvId = sharedMembers[0].conversation_id;
+          const { data: existingConv } = await supabase
+            .from('conversations')
+            .select('*, conversation_members(*)')
+            .eq('id', sharedConvId)
+            .maybeSingle();
+
+          if (existingConv) {
+            return { data: wrapObject(existingConv), error: null };
+          }
+        }
+      }
+
+      try {
+        const { data: rpcConvId, error: rpcErr } = await supabase.rpc('start_direct_conversation', {
+          p_target_user_id: targetUserId
+        });
+
+        if (!rpcErr && rpcConvId) {
+          const { data: convData } = await supabase
+            .from('conversations')
+            .select('*, conversation_members(*)')
+            .eq('id', rpcConvId)
+            .maybeSingle();
+
+          if (convData) return { data: wrapObject(convData), error: null };
+        }
+      } catch (e) {
+        console.warn('RPC start_direct_conversation fallback to manual insert:', e);
+      }
+
       const { data: newConv, error } = await supabase
         .from('conversations')
         .insert({
@@ -2057,15 +2620,20 @@ export const d1Client: any = {
         .select()
         .single();
 
-      if (error || !newConv) return { data: null, error };
+      if (error || !newConv) return { data: null, error: error || { message: 'Erro ao criar conversa.' } };
 
-      // 2. Add members
       await supabase.from('conversation_members').insert([
         { conversation_id: newConv.id, user_id: user.id, joined_at: new Date().toISOString() },
         { conversation_id: newConv.id, user_id: targetUserId, joined_at: new Date().toISOString() }
       ]);
 
-      return { data: wrapObject(newConv), error: null };
+      const { data: fullConv } = await supabase
+        .from('conversations')
+        .select('*, conversation_members(*)')
+        .eq('id', newConv.id)
+        .maybeSingle();
+
+      return { data: wrapObject(fullConv || newConv), error: null };
     }
   },
 
@@ -2334,6 +2902,637 @@ export const d1Client: any = {
         .eq('reel_id', reelId)
         .maybeSingle();
       return { data: wrapObject(data), error };
+    }
+  },
+
+  organizations: {
+    async list(filter?: { category?: string; province?: string; search?: string; verified?: boolean; owner_id?: string; my_member?: string }): Promise<any> {
+      let query = supabase
+        .from('organizations')
+        .select('*, organization_members(*), organization_followers(*)')
+        .order('created_at', { ascending: false });
+
+      if (filter?.category && filter.category !== 'all') {
+        query = query.eq('category', filter.category);
+      }
+      if (filter?.province && filter.province !== 'all') {
+        query = query.eq('province', filter.province);
+      }
+      if (filter?.verified !== undefined) {
+        query = query.eq('verified', filter.verified);
+      }
+      if (filter?.owner_id) {
+        query = query.eq('owner_id', filter.owner_id);
+      }
+
+      const { data, error } = await query;
+      if (error || !data) return { data: wrapArray([]), error };
+
+      let filtered = data;
+      if (filter?.search) {
+        const q = filter.search.toLowerCase();
+        filtered = data.filter(o => 
+          o.name?.toLowerCase().includes(q) || 
+          o.description?.toLowerCase().includes(q) ||
+          o.municipality?.toLowerCase().includes(q)
+        );
+      }
+
+      const formatted = filtered.map(org => ({
+        ...org,
+        followers_count: org.organization_followers?.length || 0,
+        members_count: org.organization_members?.length || 0,
+        image_url: org.logo_url || org.cover_url
+      }));
+
+      return { data: wrapArray(formatted), error: null };
+    },
+
+    async getBySlug(slug: string): Promise<any> {
+      const { data, error } = await supabase
+        .from('organizations')
+        .select('*, organization_members(*), organization_followers(*)')
+        .eq('slug', slug)
+        .maybeSingle();
+
+      if (!data) return { data: null, error };
+
+      const formatted = {
+        ...data,
+        followers_count: data.organization_followers?.length || 0,
+        members_count: data.organization_members?.length || 0,
+        image_url: data.logo_url || data.cover_url
+      };
+      return { data: wrapObject(formatted), error: null };
+    },
+
+    async getById(id: string): Promise<any> {
+      const { data, error } = await supabase
+        .from('organizations')
+        .select('*, organization_members(*), organization_followers(*)')
+        .eq('id', id)
+        .maybeSingle();
+
+      if (!data) return { data: null, error };
+
+      const formatted = {
+        ...data,
+        followers_count: data.organization_followers?.length || 0,
+        members_count: data.organization_members?.length || 0,
+        image_url: data.logo_url || data.cover_url
+      };
+      return { data: wrapObject(formatted), error: null };
+    },
+
+    async create(payload: {
+      name: string;
+      category: string;
+      description?: string;
+      mission?: string;
+      logo_url?: string;
+      cover_url?: string;
+      website?: string;
+      email?: string;
+      phone?: string;
+      address?: string;
+      province?: string;
+      municipality?: string;
+    }): Promise<any> {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return { data: null, error: { message: 'Sessão expirada ou não autenticada. Por favor, inicie sessão.' } };
+
+      const baseSlug = payload.name
+        .toLowerCase()
+        .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/(^-|-$)/g, '') || 'org';
+      const slug = `${baseSlug}-${Date.now().toString().slice(-4)}`;
+
+      let { data, error } = await supabase
+        .from('organizations')
+        .insert({
+          name: payload.name.trim(),
+          slug,
+          category: payload.category,
+          description: payload.description?.trim() || null,
+          mission: payload.mission?.trim() || null,
+          logo_url: payload.logo_url || null,
+          cover_url: payload.cover_url || null,
+          website: payload.website?.trim() || null,
+          email: payload.email?.trim() || null,
+          phone: payload.phone?.trim() || null,
+          address: payload.address?.trim() || null,
+          province: payload.province || 'Luanda',
+          municipality: payload.municipality || '',
+          owner_id: user.id,
+          verified: false,
+          verification_status: 'none',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
+        .select()
+        .maybeSingle();
+
+      if (error) {
+        console.warn('Initial insert to organizations failed, retrying without verification_status:', error);
+        const retry = await supabase
+          .from('organizations')
+          .insert({
+            name: payload.name.trim(),
+            slug,
+            category: payload.category,
+            description: payload.description?.trim() || null,
+            mission: payload.mission?.trim() || null,
+            logo_url: payload.logo_url || null,
+            cover_url: payload.cover_url || null,
+            website: payload.website?.trim() || null,
+            email: payload.email?.trim() || null,
+            phone: payload.phone?.trim() || null,
+            address: payload.address?.trim() || null,
+            province: payload.province || 'Luanda',
+            municipality: payload.municipality || '',
+            owner_id: user.id,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          })
+          .select()
+          .maybeSingle();
+
+        data = retry.data;
+        error = retry.error;
+      }
+
+      if (data) {
+        try {
+          await supabase.from('organization_members').insert({
+            organization_id: data.id,
+            user_id: user.id,
+            role: 'owner',
+            joined_at: new Date().toISOString()
+          });
+        } catch (e) {
+          console.warn('Failed adding owner to organization_members:', e);
+        }
+      }
+
+      return { data: wrapObject(data), error };
+    },
+
+    async update(id: string, payload: any): Promise<any> {
+      const { error } = await supabase
+        .from('organizations')
+        .update({ ...payload, updated_at: new Date().toISOString() })
+        .eq('id', id);
+      return { success: !error, error };
+    },
+
+    async toggleFollow(orgId: string, isFollowing: boolean): Promise<any> {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return { success: false, error: 'Não autenticado' };
+
+      if (isFollowing) {
+        const { error } = await supabase.from('organization_followers').delete().match({
+          organization_id: orgId,
+          user_id: user.id
+        });
+        return { success: !error, error };
+      } else {
+        const { error } = await supabase.from('organization_followers').insert({
+          organization_id: orgId,
+          user_id: user.id,
+          created_at: new Date().toISOString()
+        });
+        return { success: !error, error };
+      }
+    },
+
+    async getMembers(orgId: string): Promise<any> {
+      const { data, error } = await supabase
+        .from('organization_members')
+        .select('*')
+        .eq('organization_id', orgId);
+
+      if (error || !data) return { data: wrapArray([]), error };
+
+      const userIds = data.map(m => m.user_id);
+      let profilesMap: Record<string, any> = {};
+      if (userIds.length > 0) {
+        const { data: profs } = await supabase.from('profiles').select('*').in('user_id', userIds);
+        (profs || []).forEach(p => {
+          profilesMap[p.user_id] = { ...p, id: p.user_id, full_name: p.display_name };
+        });
+      }
+
+      const formatted = data.map(m => ({
+        ...m,
+        profiles: profilesMap[m.user_id] || { id: m.user_id, full_name: 'Membro' }
+      }));
+
+      return { data: wrapArray(formatted), error: null };
+    },
+
+    async addMember(orgId: string, userId: string, role = 'member'): Promise<any> {
+      const { error } = await supabase.from('organization_members').upsert({
+        organization_id: orgId,
+        user_id: userId,
+        role,
+        joined_at: new Date().toISOString()
+      }, { onConflict: 'organization_id,user_id' });
+      return { success: !error, error };
+    },
+
+    async updateMemberRole(orgId: string, userId: string, role: string): Promise<any> {
+      const { error } = await supabase
+        .from('organization_members')
+        .update({ role })
+        .match({ organization_id: orgId, user_id: userId });
+      return { success: !error, error };
+    },
+
+    async removeMember(orgId: string, userId: string): Promise<any> {
+      const { error } = await supabase
+        .from('organization_members')
+        .delete()
+        .match({ organization_id: orgId, user_id: userId });
+      return { success: !error, error };
+    },
+
+    async getPosts(orgId: string): Promise<any> {
+      const { data, error } = await supabase
+        .from('organization_posts')
+        .select('*')
+        .eq('organization_id', orgId)
+        .order('created_at', { ascending: false });
+      return { data: wrapArray(data || []), error };
+    },
+
+    async createPost(orgId: string, payload: { title?: string; body: string; media_url?: string }): Promise<any> {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return { data: null, error: 'Não autenticado' };
+
+      const { data, error } = await supabase
+        .from('organization_posts')
+        .insert({
+          organization_id: orgId,
+          author_id: user.id,
+          title: payload.title?.trim() || null,
+          body: payload.body.trim(),
+          media_url: payload.media_url || null,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
+        .select()
+        .single();
+      return { data: wrapObject(data), error };
+    },
+
+    async getDocuments(orgId: string): Promise<any> {
+      const { data, error } = await supabase
+        .from('organization_documents')
+        .select('*')
+        .eq('organization_id', orgId)
+        .order('created_at', { ascending: false });
+      return { data: wrapArray(data || []), error };
+    },
+
+    async uploadDocument(orgId: string, payload: { title: string; category?: string; file_url: string; visibility?: string }): Promise<any> {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return { data: null, error: 'Não autenticado' };
+
+      const { data, error } = await supabase
+        .from('organization_documents')
+        .insert({
+          organization_id: orgId,
+          uploader_id: user.id,
+          title: payload.title.trim(),
+          category: payload.category || 'Geral',
+          file_url: payload.file_url,
+          visibility: payload.visibility || 'public',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
+        .select()
+        .single();
+      return { data: wrapObject(data), error };
+    },
+
+    async deleteDocument(docId: string): Promise<any> {
+      const { error } = await supabase.from('organization_documents').delete().eq('id', docId);
+      return { success: !error, error };
+    },
+
+    async requestVerification(orgId: string, payload: { details: string; proof_url?: string }): Promise<any> {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return { data: null, error: 'Não autenticado' };
+
+      const { data, error } = await supabase
+        .from('organization_verification_requests')
+        .insert({
+          organization_id: orgId,
+          requester_id: user.id,
+          details: payload.details.trim(),
+          proof_url: payload.proof_url || null,
+          status: 'pending',
+          created_at: new Date().toISOString()
+        })
+        .select()
+        .single();
+      return { data: wrapObject(data), error };
+    },
+
+    async listVerificationRequests(): Promise<any> {
+      const { data, error } = await supabase
+        .from('organization_verification_requests')
+        .select('*, organizations(*)')
+        .order('created_at', { ascending: false });
+      return { data: wrapArray(data || []), error };
+    },
+
+    async reviewVerification(requestId: string, status: 'approved' | 'rejected', orgId: string): Promise<any> {
+      const { error: reqErr } = await supabase
+        .from('organization_verification_requests')
+        .update({ status })
+        .eq('id', requestId);
+
+      if (reqErr) return { success: false, error: reqErr };
+
+      if (status === 'approved') {
+        await supabase
+          .from('organizations')
+          .update({ verified: true, verification_status: 'verified', updated_at: new Date().toISOString() })
+          .eq('id', orgId);
+      }
+      return { success: true, error: null };
+    },
+
+    // Digital Library / Authors & Books
+    async listBooks(filter?: { author_id?: string; genre?: string; search?: string }): Promise<any> {
+      let query = supabase
+        .from('author_books')
+        .select('*, book_chapters(*), book_reviews(*)')
+        .order('created_at', { ascending: false });
+
+      if (filter?.author_id) {
+        query = query.eq('author_id', filter.author_id);
+      }
+      if (filter?.genre && filter.genre !== 'all') {
+        query = query.eq('genre', filter.genre);
+      }
+
+      const { data, error } = await query;
+      if (error || !data) return { data: wrapArray([]), error };
+
+      let filtered = data;
+      if (filter?.search) {
+        const q = filter.search.toLowerCase();
+        filtered = data.filter(b => 
+          b.title?.toLowerCase().includes(q) || 
+          b.synopsis?.toLowerCase().includes(q)
+        );
+      }
+
+      const authorIds = Array.from(new Set(filtered.map(b => b.author_id).filter(Boolean)));
+      let profilesMap: Record<string, any> = {};
+      if (authorIds.length > 0) {
+        const { data: profs } = await supabase.from('profiles').select('*').in('user_id', authorIds);
+        (profs || []).forEach(p => {
+          profilesMap[p.user_id] = { ...p, id: p.user_id, full_name: p.display_name };
+        });
+      }
+
+      const formatted = filtered.map(book => {
+        const reviews = book.book_reviews || [];
+        const avgRating = reviews.length > 0 ? reviews.reduce((acc: number, r: any) => acc + (r.rating || 0), 0) / reviews.length : 0;
+        return {
+          ...book,
+          chapters_count: book.book_chapters?.length || 0,
+          reviews_count: reviews.length,
+          average_rating: parseFloat(avgRating.toFixed(1)),
+          profiles: profilesMap[book.author_id] || { id: book.author_id, full_name: 'Autor Konecta' }
+        };
+      });
+
+      return { data: wrapArray(formatted), error: null };
+    },
+
+    async getBookById(id: string): Promise<any> {
+      const { data, error } = await supabase
+        .from('author_books')
+        .select('*, book_chapters(*), book_reviews(*)')
+        .eq('id', id)
+        .maybeSingle();
+
+      if (!data) return { data: null, error };
+
+      let profile = null;
+      if (data.author_id) {
+        const { data: p } = await supabase.from('profiles').select('*').eq('user_id', data.author_id).maybeSingle();
+        if (p) profile = { ...p, id: p.user_id, full_name: p.display_name };
+      }
+
+      const reviews = data.book_reviews || [];
+      const avgRating = reviews.length > 0 ? reviews.reduce((acc: number, r: any) => acc + (r.rating || 0), 0) / reviews.length : 0;
+
+      const formatted = {
+        ...data,
+        chapters_count: data.book_chapters?.length || 0,
+        reviews_count: reviews.length,
+        average_rating: parseFloat(avgRating.toFixed(1)),
+        profiles: profile || { id: data.author_id, full_name: 'Autor Konecta' }
+      };
+
+      return { data: wrapObject(formatted), error: null };
+    },
+
+    async createBook(payload: {
+      title: string;
+      subtitle?: string;
+      synopsis?: string;
+      genre: string;
+      language?: string;
+      copyright_notice?: string;
+      cover_url?: string;
+    }): Promise<any> {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return { data: null, error: { message: 'Não autenticado' } };
+
+      const { data, error } = await supabase
+        .from('author_books')
+        .insert({
+          author_id: user.id,
+          title: payload.title.trim(),
+          subtitle: payload.subtitle?.trim() || null,
+          synopsis: payload.synopsis?.trim() || null,
+          genre: payload.genre || 'Literatura',
+          language: payload.language || 'Português',
+          copyright_notice: payload.copyright_notice?.trim() || 'Todos os direitos reservados',
+          cover_url: payload.cover_url || null,
+          status: 'published',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
+        .select()
+        .single();
+      return { data: wrapObject(data), error };
+    },
+
+    async updateBook(id: string, payload: any): Promise<any> {
+      const { error } = await supabase
+        .from('author_books')
+        .update({ ...payload, updated_at: new Date().toISOString() })
+        .eq('id', id);
+      return { success: !error, error };
+    },
+
+    async deleteBook(id: string): Promise<any> {
+      await supabase.from('book_chapters').delete().eq('book_id', id);
+      await supabase.from('book_reviews').delete().eq('book_id', id);
+      const { error } = await supabase.from('author_books').delete().eq('id', id);
+      return { success: !error, error };
+    },
+
+    async createChapter(bookId: string, payload: { title: string; content: string; chapter_number?: number }): Promise<any> {
+      const { data, error } = await supabase
+        .from('book_chapters')
+        .insert({
+          book_id: bookId,
+          title: payload.title.trim(),
+          content: payload.content.trim(),
+          chapter_number: payload.chapter_number || 1,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
+        .select()
+        .single();
+      return { data: wrapObject(data), error };
+    },
+
+    async updateChapter(chapterId: string, payload: any): Promise<any> {
+      const { error } = await supabase
+        .from('book_chapters')
+        .update({ ...payload, updated_at: new Date().toISOString() })
+        .eq('id', chapterId);
+      return { success: !error, error };
+    },
+
+    async deleteChapter(chapterId: string): Promise<any> {
+      const { error } = await supabase.from('book_chapters').delete().eq('id', chapterId);
+      return { success: !error, error };
+    },
+
+    async addReview(bookId: string, rating: number, comment: string): Promise<any> {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return { data: null, error: { message: 'Não autenticado' } };
+
+      const { data, error } = await supabase
+        .from('book_reviews')
+        .upsert({
+          book_id: bookId,
+          user_id: user.id,
+          rating,
+          comment: comment.trim(),
+          created_at: new Date().toISOString()
+        }, { onConflict: 'book_id,user_id' })
+        .select()
+        .single();
+      return { data: wrapObject(data), error };
+    }
+  },
+
+  settings: {
+    async get(): Promise<any> {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return { data: null, error: 'Não autenticado' };
+
+      const { data } = await supabase
+        .from('user_settings')
+        .select('*')
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+      return { data: wrapObject(data || {}), error: null };
+    },
+
+    async update(payload: any): Promise<any> {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return { success: false, error: 'Não autenticado' };
+
+      const { data: existing } = await supabase
+        .from('user_settings')
+        .select('privacy_settings')
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+      const mergedPrivacy = {
+        ...(existing?.privacy_settings || {}),
+        ...(payload.privacy_settings || {})
+      };
+
+      const { error } = await supabase
+        .from('user_settings')
+        .upsert({
+          user_id: user.id,
+          privacy_settings: mergedPrivacy,
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'user_id' });
+
+      return { success: !error, error };
+    }
+  },
+
+  blocks: {
+    async list(): Promise<any> {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return { data: wrapArray([]), error: null };
+
+      const { data, error } = await supabase
+        .from('user_blocks')
+        .select('*')
+        .eq('blocker_id', user.id);
+
+      if (error || !data || data.length === 0) return { data: wrapArray([]), error };
+
+      const blockedUserIds = data.map(b => b.blocked_id);
+      const { data: profs } = await supabase.from('profiles').select('*').in('user_id', blockedUserIds);
+
+      let profMap: Record<string, any> = {};
+      (profs || []).forEach(p => { profMap[p.user_id] = p; });
+
+      const formatted = data.map(b => ({
+        id: b.id,
+        blocked_id: b.blocked_id,
+        created_at: b.created_at,
+        profiles: profMap[b.blocked_id] || { user_id: b.blocked_id, display_name: 'Utilizador Bloqueado' }
+      }));
+
+      return { data: wrapArray(formatted), error };
+    },
+
+    async blockUser(targetUserId: string): Promise<any> {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return { success: false, error: 'Não autenticado' };
+
+      const { error } = await supabase
+        .from('user_blocks')
+        .insert({
+          blocker_id: user.id,
+          blocked_id: targetUserId,
+          created_at: new Date().toISOString()
+        });
+
+      return { success: !error, error };
+    },
+
+    async unblockUser(targetUserId: string): Promise<any> {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return { success: false, error: 'Não autenticado' };
+
+      const { error } = await supabase
+        .from('user_blocks')
+        .delete()
+        .match({ blocker_id: user.id, blocked_id: targetUserId });
+
+      return { success: !error, error };
     }
   },
 

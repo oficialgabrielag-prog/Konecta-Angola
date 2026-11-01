@@ -1,6 +1,9 @@
 export interface Profile {
   id: string;
+  user_id?: string;
   full_name?: string;
+  display_name?: string;
+  username?: string;
   avatar_url?: string;
   bio?: string;
   province?: string;

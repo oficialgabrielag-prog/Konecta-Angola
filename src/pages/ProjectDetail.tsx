@@ -31,9 +31,16 @@ export const ProjectDetail: React.FC<ProjectDetailProps> = ({
   const [updates, setUpdates] = useState<ProjectUpdate[]>([]);
   const [discussions, setDiscussions] = useState<any[]>([]);
   const [attachments, setAttachments] = useState<any[]>([]);
+  const [applications, setApplications] = useState<any[]>([]);
   const [isFollowing, setIsFollowing] = useState(false);
   const [isMember, setIsMember] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
+
+  // Apply modal states
+  const [showApplyModal, setShowApplyModal] = useState(false);
+  const [applyMessage, setApplyMessage] = useState('');
+  const [applySkills, setApplySkills] = useState('');
+  const [submittingApply, setSubmittingApply] = useState(false);
 
   // Forms inputs
   const [newTaskTitle, setNewTaskTitle] = useState('');
@@ -100,12 +107,61 @@ export const ProjectDetail: React.FC<ProjectDetailProps> = ({
         loadUpdates(),
         loadDiscussions(),
         loadAttachments(),
-        checkFollowStatus()
+        checkFollowStatus(),
+        loadApplications()
       ]);
     } catch (err) {
       console.warn('Erro ao carregar detalhes do projeto:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadApplications = async () => {
+    try {
+      const res = await d1Client.projects.getApplications(projectId);
+      setApplications(res.data?.data || res.data || []);
+    } catch (e) {}
+  };
+
+  const handleSubmitApplication = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user) {
+      onOpenAuth();
+      return;
+    }
+    if (!applyMessage.trim()) return;
+
+    setSubmittingApply(true);
+    try {
+      const skillsArray = applySkills.split(',').map(s => s.trim()).filter(Boolean);
+      const res = await d1Client.projects.apply(projectId, {
+        message: applyMessage.trim(),
+        skills: skillsArray
+      });
+      if (res.error) throw new Error(res.error.message || 'Erro ao enviar candidatura.');
+      alert('Candidatura enviada com sucesso! O líder do projeto irá analisá-la.');
+      setShowApplyModal(false);
+      setApplyMessage('');
+      setApplySkills('');
+      loadApplications();
+    } catch (err: any) {
+      alert(err.message || 'Erro ao enviar candidatura.');
+    } finally {
+      setSubmittingApply(false);
+    }
+  };
+
+  const handleReviewApplication = async (appId: string, status: 'accepted' | 'rejected') => {
+    try {
+      const res = await d1Client.projects.updateApplicationStatus(appId, status);
+      if (res.success) {
+        setApplications(prev => prev.map(a => a.id === appId ? { ...a, status } : a));
+        loadMembers();
+        alert(status === 'accepted' ? 'Candidatura aceite! O colaborador foi adicionado à equipa.' : 'Candidatura rejeitada.');
+      }
+    } catch (e) {
+      alert('Erro ao atualizar estado da candidatura.');
     }
   };
 
@@ -352,6 +408,7 @@ export const ProjectDetail: React.FC<ProjectDetailProps> = ({
     { id: 'equipa', label: 'Equipa', icon: 'badge', badge: members.length },
     { id: 'marcos', label: 'Marcos & Metas', icon: 'flag', badge: milestones.length },
     { id: 'discussoes', label: 'Discussões', icon: 'forum', badge: discussions.length },
+    ...(isLeader ? [{ id: 'candidaturas', label: 'Candidaturas', icon: 'how_to_reg', badge: applications.filter(a => a.status === 'pending').length }] : []),
     ...(isLeader ? [{ id: 'configuracoes', label: 'Configurações', icon: 'settings' }] : [])
   ];
 
@@ -384,31 +441,46 @@ export const ProjectDetail: React.FC<ProjectDetailProps> = ({
           </div>
 
           <div className="flex items-center gap-3">
-            <button
-              onClick={handleToggleFollow}
-              className={`px-4 py-2 rounded-xl text-xs font-bold border transition-colors flex items-center gap-1.5 ${
-                isFollowing ? 'bg-konecta-gold text-konecta-navy border-konecta-gold' : 'border-gray-200 text-gray-600 hover:border-konecta-navy'
-              }`}
-            >
-              <span className="material-symbols-outlined text-[16px]">{isFollowing ? 'done' : 'add'}</span>
-              {isFollowing ? 'A Seguir' : 'Seguir Projeto'}
-            </button>
-
-            {isLeader ? (
-              <span className="text-xs font-bold text-konecta-gold bg-konecta-navy px-4 py-2 rounded-xl shadow-xs">
-                Líder do Projeto
-              </span>
-            ) : (
+            <div className="flex items-center gap-2">
               <button
-                onClick={handleToggleMembership}
-                disabled={actionLoading}
-                className={`btn-primary py-2 px-5 text-xs font-bold ${
-                  isMember ? 'bg-red-50 text-red-600 hover:bg-red-100 border border-red-200' : ''
+                onClick={handleToggleFollow}
+                className={`px-4 py-2 rounded-xl text-xs font-bold border transition-colors flex items-center gap-1.5 ${
+                  isFollowing ? 'bg-konecta-gold text-konecta-navy border-konecta-gold' : 'border-gray-200 text-gray-600 hover:border-konecta-navy'
                 }`}
               >
-                {actionLoading ? 'Aguarde...' : isMember ? 'Sair da Equipa' : 'Aderir à Equipa'}
+                <span className="material-symbols-outlined text-[16px]">{isFollowing ? 'done' : 'add'}</span>
+                {isFollowing ? 'A Seguir' : 'Seguir'}
               </button>
-            )}
+
+              {!isMember && !isLeader && (
+                <button
+                  onClick={() => {
+                    if (!user) onOpenAuth();
+                    else setShowApplyModal(true);
+                  }}
+                  className="btn-gold py-2 px-4 text-xs font-bold shadow-xs flex items-center gap-1.5"
+                >
+                  <span className="material-symbols-outlined text-[16px]">handshake</span>
+                  Quero Colaborar
+                </button>
+              )}
+
+              {isLeader ? (
+                <span className="text-xs font-bold text-konecta-gold bg-konecta-navy px-4 py-2 rounded-xl shadow-xs">
+                  Líder
+                </span>
+              ) : (
+                <button
+                  onClick={handleToggleMembership}
+                  disabled={actionLoading}
+                  className={`btn-primary py-2 px-4 text-xs font-bold ${
+                    isMember ? 'bg-red-50 text-red-600 hover:bg-red-100 border border-red-200' : ''
+                  }`}
+                >
+                  {actionLoading ? 'Aguarde...' : isMember ? 'Sair' : 'Aderir'}
+                </button>
+              )}
+            </div>
           </div>
         </div>
 
@@ -868,7 +940,148 @@ export const ProjectDetail: React.FC<ProjectDetailProps> = ({
             </form>
           </div>
         )}
+        {/* TAB: CANDIDATURAS (LÍDER) */}
+        {activeTab === 'candidaturas' && isLeader && (
+          <div className="max-w-4xl mx-auto space-y-6">
+            <h3 className="text-sm font-bold uppercase tracking-wider text-konecta-navy">Candidaturas Recebidas ({applications.length})</h3>
+            {applications.length === 0 ? (
+              <div className="p-16 text-center bg-white rounded-3xl border border-dashed border-gray-200">
+                <span className="material-symbols-outlined text-4xl text-gray-300 mb-2">how_to_reg</span>
+                <p className="text-xs text-gray-400">Ainda não há candidaturas para este projeto.</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {applications.map(app => (
+                  <div key={app.id} className="card-konecta p-6 space-y-4 border border-gray-100 shadow-sm">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-full bg-gray-100 overflow-hidden shrink-0 border">
+                          {app.profiles?.avatar_url ? (
+                            <img src={app.profiles.avatar_url} alt="" className="w-full h-full object-cover" />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center font-bold text-xs text-gray-400">
+                              {app.profiles?.full_name?.charAt(0) || 'U'}
+                            </div>
+                          )}
+                        </div>
+                        <div>
+                          <h4 className="font-bold text-sm text-konecta-navy">{app.profiles?.full_name || 'Candidato'}</h4>
+                          <span className="text-[10px] text-gray-400">Candidatou-se a {new Date(app.created_at).toLocaleDateString('pt-AO')}</span>
+                        </div>
+                      </div>
+                      <span className={`text-[10px] font-bold uppercase px-3 py-1 rounded-full ${
+                        app.status === 'accepted' ? 'bg-green-100 text-green-700' :
+                        app.status === 'rejected' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'
+                      }`}>
+                        {app.status === 'accepted' ? 'Aceite' : app.status === 'rejected' ? 'Rejeitada' : 'Pendente'}
+                      </span>
+                    </div>
+
+                    <div className="space-y-2 bg-gray-50 p-4 rounded-2xl text-xs">
+                      <p className="font-bold text-konecta-navy">Mensagem de Apresentação:</p>
+                      <p className="text-gray-700 whitespace-pre-wrap">{app.message}</p>
+                      {app.skills && app.skills.length > 0 && (
+                        <div className="pt-2 flex flex-wrap gap-1.5 items-center">
+                          <span className="font-bold text-konecta-navy">Competências:</span>
+                          {app.skills.map((s: string, idx: number) => (
+                            <span key={idx} className="bg-konecta-navy/5 text-konecta-navy px-2 py-0.5 rounded-full text-[10px] font-bold">
+                              {s}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {app.status === 'pending' && (
+                      <div className="flex justify-end gap-3 pt-2">
+                        <button
+                          onClick={() => handleReviewApplication(app.id, 'rejected')}
+                          className="px-4 py-2 text-xs font-bold text-red-600 bg-red-50 hover:bg-red-100 rounded-xl transition-colors"
+                        >
+                          Rejeitar
+                        </button>
+                        <button
+                          onClick={() => handleReviewApplication(app.id, 'accepted')}
+                          className="btn-gold py-2 px-5 text-xs font-bold"
+                        >
+                          Aceitar na Equipa
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
+
+      {/* Quero Colaborar Modal */}
+      <AnimatePresence>
+        {showApplyModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-konecta-navy/60 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white rounded-3xl p-6 sm:p-8 max-w-lg w-full shadow-2xl space-y-6"
+            >
+              <div className="flex items-center justify-between border-b border-gray-100 pb-4">
+                <h3 className="text-xl font-bold text-konecta-navy">Candidatar-se a Colaborar</h3>
+                <button onClick={() => setShowApplyModal(false)} className="text-gray-400 hover:text-konecta-navy">
+                  <span className="material-symbols-outlined">close</span>
+                </button>
+              </div>
+
+              <form onSubmit={handleSubmitApplication} className="space-y-4">
+                <div>
+                  <label className="block text-xs font-bold text-konecta-navy uppercase tracking-wider mb-1.5">
+                    Mensagem de Apresentação e Motivação
+                  </label>
+                  <textarea
+                    required
+                    rows={4}
+                    value={applyMessage}
+                    onChange={e => setApplyMessage(e.target.value)}
+                    placeholder="Porque queres colaborar neste projeto? Qual a tua experiência relevante?"
+                    className="w-full bg-gray-50 border border-gray-200 rounded-xl p-4 text-sm resize-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-konecta-navy uppercase tracking-wider mb-1.5">
+                    Competências Principais (separadas por vírgula)
+                  </label>
+                  <input
+                    type="text"
+                    value={applySkills}
+                    onChange={e => setApplySkills(e.target.value)}
+                    placeholder="Ex: Gestão de Projetos, React, Comunicação, Logística"
+                    className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm"
+                  />
+                </div>
+
+                <div className="flex justify-end gap-3 pt-4 border-t border-gray-100">
+                  <button
+                    type="button"
+                    onClick={() => setShowApplyModal(false)}
+                    className="px-5 py-2.5 text-xs font-bold text-gray-500"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={submittingApply || !applyMessage.trim()}
+                    className="btn-primary py-2.5 px-6 text-xs"
+                  >
+                    {submittingApply ? 'A enviar...' : 'Submeter Candidatura'}
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };
