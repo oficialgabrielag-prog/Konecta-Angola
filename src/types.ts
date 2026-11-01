@@ -26,7 +26,9 @@ export interface Idea {
   province?: string;
   image_url?: string;
   user_id: string;
+  community_id?: string;
   profiles?: Profile;
+  communities?: Community;
   votes_count?: number;
   created_at?: string;
 }
@@ -73,7 +75,9 @@ export interface Post {
   content: string;
   image_url?: string;
   user_id: string;
+  community_id?: string;
   profiles?: Profile;
+  communities?: Community;
   likes_count?: number;
   comments_count?: number;
   created_at: string;
@@ -260,6 +264,15 @@ export interface Reel {
   is_saved?: boolean;
   created_at: string;
   profiles?: Profile;
+  music_info?: {
+    track: MusicTrack;
+    settings: {
+      startMs: number;
+      endMs: number;
+      musicVolume: number;
+      originalVolume: number;
+    };
+  } | null;
 }
 
 export interface CommunityAnnouncement {
@@ -289,5 +302,58 @@ export interface ProjectUpdate {
   body: string;
   created_at: string;
   profiles?: Profile;
+}
+
+export interface MusicCategory {
+  id: string;
+  name: string;
+  slug: string;
+  description?: string;
+  created_at: string;
+}
+
+export interface MusicTrack {
+  id: string;
+  title: string;
+  artist: string;
+  album?: string;
+  category_id: string;
+  audio_url: string;
+  cloudinary_public_id: string;
+  cover_url?: string;
+  cover_cloudinary_public_id?: string;
+  original_file_name?: string;
+  mime_type?: string;
+  file_size_bytes?: number;
+  duration_ms: number;
+  metadata?: any;
+  rights_confirmed: boolean;
+  rights_basis?: string;
+  status: 'published' | 'draft' | 'archived';
+  uploaded_by: string;
+  published_at?: string;
+  created_at: string;
+  updated_at: string;
+  categories?: MusicCategory;
+}
+
+export interface ReelMusicUse {
+  id: string;
+  reel_id: string;
+  track_id: string;
+  start_ms: number;
+  end_ms: number;
+  music_volume: number;
+  original_audio_volume: number;
+  created_by: string;
+  created_at: string;
+  music_tracks?: MusicTrack;
+}
+
+export interface MusicLibraryAdmin {
+  id: string;
+  user_id: string;
+  role: 'super_admin' | 'music_editor';
+  created_at: string;
 }
 

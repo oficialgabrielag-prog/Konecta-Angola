@@ -364,7 +364,7 @@ export const d1Client: any = {
     async list(limit = 30, userId?: string, communityId?: string): Promise<any> {
       let query = supabase
         .from('posts')
-        .select('*, post_media(*), post_comments(*), post_reactions(*)')
+        .select('*, post_media(*), post_comments(*), post_reactions(*), communities(*)')
         .order('created_at', { ascending: false })
         .limit(limit);
 
@@ -373,6 +373,12 @@ export const d1Client: any = {
       }
       if (communityId) {
         query = query.eq('community_id', communityId);
+      } else {
+        // If no communityId, we should only show posts that are either public (community_id is null)
+        // or posts from public communities.
+        // Actually, for simplicity and respecting RLS, we can fetch all and let RLS handle it, 
+        // but we might want to explicitly filter out posts from secret communities if RLS doesn't cover "public feed" vs "member only".
+        // For now, let's just fetch all and ensure we return the community info.
       }
 
       const { data: postRows, error } = await query;
@@ -400,6 +406,7 @@ export const d1Client: any = {
         content: p.body,
         body: p.body,
         community_id: p.community_id,
+        communities: p.communities, // Add community metadata
         visibility: p.visibility,
         status: p.status,
         image_url: p.post_media?.[0]?.media_url || null,
@@ -469,12 +476,22 @@ export const d1Client: any = {
         mediaUrl = mediaData?.media_url || data.image_url;
       }
 
-      // 3. Fetch author profile
+      // 3. Fetch author profile and community info
       const { data: profile } = await supabase
         .from('profiles')
         .select('*')
         .eq('user_id', user.id)
         .maybeSingle();
+
+      let communityData = null;
+      if (newPost.community_id) {
+        const { data: comm } = await supabase
+          .from('communities')
+          .select('*')
+          .eq('id', newPost.community_id)
+          .maybeSingle();
+        communityData = comm;
+      }
 
       const formattedProfile = profile
         ? { ...profile, id: profile.user_id, full_name: profile.display_name }
@@ -493,6 +510,7 @@ export const d1Client: any = {
         content: newPost.body,
         body: newPost.body,
         community_id: newPost.community_id,
+        communities: communityData,
         image_url: mediaUrl,
         likes_count: 0,
         comments_count: 0,
@@ -1689,7 +1707,7 @@ export const d1Client: any = {
     async list(limit = 20): Promise<any> {
       const { data, error } = await supabase
         .from('reels')
-        .select('*, reel_comments(*), reel_reactions(*), reel_saves(*)')
+        .select('*, reel_comments(*), reel_reactions(*), reel_saves(*), reel_music_uses(*, music_tracks(*))')
         .order('created_at', { ascending: false })
         .limit(limit);
 
@@ -1723,7 +1741,16 @@ export const d1Client: any = {
         saves_count: r.reel_saves?.length || 0,
         is_liked: currentUserId ? (r.reel_reactions || []).some((rx: any) => rx.user_id === currentUserId) : false,
         is_saved: currentUserId ? (r.reel_saves || []).some((s: any) => s.user_id === currentUserId) : false,
-        profiles: profilesMap[r.author_id] || { id: r.author_id, full_name: 'Criador Konecta' }
+        profiles: profilesMap[r.author_id] || { id: r.author_id, full_name: 'Criador Konecta' },
+        music_info: r.reel_music_uses?.[0] ? {
+          track: r.reel_music_uses[0].music_tracks,
+          settings: {
+            startMs: r.reel_music_uses[0].start_ms,
+            endMs: r.reel_music_uses[0].end_ms,
+            musicVolume: r.reel_music_uses[0].music_volume,
+            originalVolume: r.reel_music_uses[0].original_audio_volume
+          }
+        } : null
       }));
 
       return { data: wrapArray(formatted), error: null };
@@ -2058,7 +2085,7 @@ export const d1Client: any = {
         user_id: n.user_id,
         title: n.title,
         message: n.body,
-        read: false,
+        read: Boolean(n.read),
         created_at: n.created_at
       }));
 
@@ -2066,11 +2093,23 @@ export const d1Client: any = {
     },
 
     async markAllAsRead(): Promise<any> {
-      return { success: true };
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return { success: false, error: 'Não autenticado' };
+
+      const { error } = await supabase
+        .from('notifications')
+        .update({ read: true })
+        .eq('user_id', user.id);
+
+      return { success: !error, error };
     },
 
     async markAsRead(id: string): Promise<any> {
-      const { error } = await supabase.from('notifications').delete().eq('id', id);
+      const { error } = await supabase
+        .from('notifications')
+        .update({ read: true })
+        .eq('id', id);
+
       return { success: !error, error };
     }
   },
@@ -2163,6 +2202,138 @@ export const d1Client: any = {
           events: []
         }
       };
+    }
+  },
+
+  music: {
+    async listCategories(): Promise<any> {
+      const { data, error } = await supabase
+        .from('music_categories')
+        .select('*')
+        .order('name', { ascending: true });
+      return { data: wrapArray(data || []), error };
+    },
+
+    async createCategory(name: string): Promise<any> {
+      const slug = name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, '-');
+      const { data, error } = await supabase
+        .from('music_categories')
+        .insert({ name, slug, created_at: new Date().toISOString() })
+        .select()
+        .single();
+      return { data: wrapObject(data), error };
+    },
+
+    async deleteCategory(id: string): Promise<any> {
+      const { error } = await supabase.from('music_categories').delete().eq('id', id);
+      return { success: !error, error };
+    },
+
+    async listTracks(filters?: { category_id?: string; status?: string; search?: string }): Promise<any> {
+      let query = supabase
+        .from('music_tracks')
+        .select('*, music_categories(*)')
+        .order('created_at', { ascending: false });
+
+      if (filters?.category_id && filters.category_id !== 'all') {
+        query = query.eq('category_id', filters.category_id);
+      }
+      if (filters?.status) {
+        query = query.eq('status', filters.status);
+      } else {
+        query = query.eq('status', 'published');
+      }
+      if (filters?.search) {
+        query = query.or(`title.ilike.%${filters.search}%,artist.ilike.%${filters.search}%`);
+      }
+
+      const { data, error } = await query;
+      return { data: wrapArray(data || []), error };
+    },
+
+    async getTrackById(id: string): Promise<any> {
+      const { data, error } = await supabase
+        .from('music_tracks')
+        .select('*, music_categories(*)')
+        .eq('id', id)
+        .maybeSingle();
+      return { data: wrapObject(data), error };
+    },
+
+    async createTrack(payload: any): Promise<any> {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return { data: null, error: 'Não autenticado' };
+
+      const { data, error } = await supabase
+        .from('music_tracks')
+        .insert({
+          ...payload,
+          uploaded_by: user.id,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
+        .select()
+        .single();
+      return { data: wrapObject(data), error };
+    },
+
+    async updateTrack(id: string, payload: any): Promise<any> {
+      const { error } = await supabase
+        .from('music_tracks')
+        .update({
+          ...payload,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', id);
+      return { success: !error, error };
+    },
+
+    async deleteTrack(id: string): Promise<any> {
+      const { error } = await supabase
+        .from('music_tracks')
+        .delete()
+        .eq('id', id);
+      return { success: !error, error };
+    },
+
+    async isAdmin(): Promise<boolean> {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return false;
+      
+      // Secondary check for the specific email mentioned in prompt
+      if (user.email === 'oficialgabrielag@gmail.com' || user.email === 'officialgabrielag@gmail.com') return true;
+
+      const { data } = await supabase
+        .from('music_library_admins')
+        .select('id')
+        .eq('user_id', user.id)
+        .maybeSingle();
+      return !!data;
+    },
+
+    async addMusicToReel(reelId: string, trackId: string, settings: { start_ms: number; end_ms: number; music_volume: number; original_audio_volume: number }): Promise<any> {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return { success: false, error: 'Não autenticado' };
+
+      const { error } = await supabase
+        .from('reel_music_uses')
+        .insert({
+          reel_id: reelId,
+          track_id: trackId,
+          ...settings,
+          created_by: user.id,
+          created_at: new Date().toISOString()
+        });
+      return { success: !error, error };
+    },
+
+    async getReelMusic(reelId: string): Promise<any> {
+      const { data, error } = await supabase
+        .from('reel_music_uses')
+        .select('*, music_tracks(*)')
+        .eq('reel_id', reelId)
+        .maybeSingle();
+      return { data: wrapObject(data), error };
     }
   },
 

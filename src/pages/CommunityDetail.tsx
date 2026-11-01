@@ -566,8 +566,33 @@ export const CommunityDetail: React.FC<CommunityDetailProps> = ({
                   </div>
                 ) : (
                   posts.slice(0, 5).map(post => (
-                    <div key={post.id} className="card-konecta p-6 shadow-sm border border-gray-100 space-y-3">
-                      <div className="flex items-center gap-3">
+                      <div key={post.id} className="card-konecta p-6 shadow-sm border border-gray-100 space-y-3 overflow-hidden">
+                        {/* Community Context Banner */}
+                        {post.communities && (
+                          <div 
+                            className="mb-4 -mx-6 -mt-6 h-20 relative overflow-hidden"
+                          >
+                            {post.communities.cover_url ? (
+                              <img src={post.communities.cover_url} className="w-full h-full object-cover" alt="" />
+                            ) : (
+                              <div className="w-full h-full bg-gradient-to-r from-konecta-navy to-slate-800" />
+                            )}
+                            <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
+                            <div className="absolute bottom-2 left-4 flex items-center gap-2">
+                              <div className="w-8 h-8 rounded-lg bg-white p-0.5 border border-konecta-gold/50 shadow-sm shrink-0">
+                                {post.communities.avatar_url ? (
+                                  <img src={post.communities.avatar_url} className="w-full h-full object-cover rounded-md" alt="" />
+                                ) : (
+                                  <div className="w-full h-full bg-konecta-navy rounded-md flex items-center justify-center text-[10px] text-konecta-gold font-black">
+                                    {post.communities.name.charAt(0)}
+                                  </div>
+                                )}
+                              </div>
+                              <span className="text-[10px] font-black text-white uppercase tracking-tight">{post.communities.name}</span>
+                            </div>
+                          </div>
+                        )}
+                        <div className="flex items-center gap-3">
                         <div className="w-9 h-9 rounded-full bg-gray-100 overflow-hidden">
                           {post.profiles?.avatar_url ? (
                             <img src={post.profiles.avatar_url} alt="" className="w-full h-full object-cover" />
@@ -726,7 +751,30 @@ export const CommunityDetail: React.FC<CommunityDetailProps> = ({
 
             <div className="space-y-4">
               {posts.map(post => (
-                <div key={post.id} className="card-konecta p-6 shadow-sm border border-gray-100 space-y-3">
+                <div key={post.id} className="card-konecta p-6 shadow-sm border border-gray-100 space-y-3 overflow-hidden">
+                  {/* Community Context Banner */}
+                  {post.communities && (
+                    <div className="mb-4 -mx-6 -mt-6 h-20 relative overflow-hidden">
+                      {post.communities.cover_url ? (
+                        <img src={post.communities.cover_url} className="w-full h-full object-cover" alt="" />
+                      ) : (
+                        <div className="w-full h-full bg-gradient-to-r from-konecta-navy to-slate-800" />
+                      )}
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
+                      <div className="absolute bottom-2 left-4 flex items-center gap-2">
+                        <div className="w-8 h-8 rounded-lg bg-white p-0.5 border border-konecta-gold/50 shadow-sm shrink-0">
+                          {post.communities.avatar_url ? (
+                            <img src={post.communities.avatar_url} className="w-full h-full object-cover rounded-md" alt="" />
+                          ) : (
+                            <div className="w-full h-full bg-konecta-navy rounded-md flex items-center justify-center text-[10px] text-konecta-gold font-black">
+                              {post.communities.name.charAt(0)}
+                            </div>
+                          )}
+                        </div>
+                        <span className="text-[10px] font-black text-white uppercase tracking-tight">{post.communities.name}</span>
+                      </div>
+                    </div>
+                  )}
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-full bg-gray-100 overflow-hidden">
                       {post.profiles?.avatar_url ? (

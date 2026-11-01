@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Header } from './components/Header';
 import { Footer } from './components/Footer';
+import { BottomNav } from './components/BottomNav';
 import { Home } from './pages/Home';
 import { Explore } from './pages/Explore';
 import { CreateIdea } from './pages/CreateIdea';
@@ -18,6 +19,7 @@ import { Communities } from './pages/Communities';
 import { CommunitySettings } from './pages/CommunitySettings';
 import { CommunityFeedPage } from './pages/CommunityFeedPage';
 import { Events } from './pages/Events';
+import { KonectaRealtimeService } from './lib/realtime';
 import { Messages } from './pages/Messages';
 import { Search } from './pages/Search';
 import { Pricing } from './pages/Pricing';
@@ -46,7 +48,14 @@ export default function App() {
   const [activeCommunityId, setActiveCommunityId] = useState<string | null>(null);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [selectedIdeaId, setSelectedIdeaId] = useState<string | null>(null);
+  const [selectedReelId, setSelectedReelId] = useState<string | null>(null);
   const [userRole, setUserRole] = useState<string | null>(null);
+
+  const openReel = (reelId: string) => {
+    setSelectedReelId(reelId);
+    navigateTab('reels');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
 
   // App Data State (Strictly real data; fake/sample posts and records are removed)
   const [ideas, setIdeas] = useState<Idea[]>(() => {
@@ -116,16 +125,18 @@ export default function App() {
     initAuth();
   }, []);
 
-  // Realtime notification channel via polling
+  // Realtime notification channel
   useEffect(() => {
     if (!user) return;
 
     fetchNotifications();
-    const interval = setInterval(() => {
-      fetchNotifications();
-    }, 30000);
+    const unsubscribe = KonectaRealtimeService.subscribe('notifications', (payload: any) => {
+      if (payload.new && payload.new.user_id === user.id) {
+        fetchNotifications();
+      }
+    });
 
-    return () => clearInterval(interval);
+    return () => unsubscribe();
   }, [user]);
 
   const fetchInitialData = async () => {
@@ -325,6 +336,8 @@ export default function App() {
                 user={user}
                 onSelectPost={openPostDetail}
                 onSelectUser={openPublicProfile}
+                onSelectCommunity={openCommunityDetail}
+                onSelectReel={openReel}
                 onVoteIdea={handleVoteIdea}
                 onRequireAuth={() => navigateTab('login')}
                 onImageClick={setFullscreenImage}
@@ -334,11 +347,16 @@ export default function App() {
             {currentTab === 'explore' && (
               <Explore
                 ideas={ideas}
+                reels={[]}
+                communities={communities}
+                projects={projects}
                 onVoteIdea={handleVoteIdea}
                 user={user}
                 onOpenAuth={() => navigateTab('login')}
                 onSelectPost={openPostDetail}
                 onSelectUser={openPublicProfile}
+                onSelectCommunity={openCommunityDetail}
+                onSelectReel={openReel}
               />
             )}
 
@@ -406,6 +424,7 @@ export default function App() {
                 user={user}
                 onOpenAuth={() => navigateTab('login')}
                 onSelectUser={openPublicProfile}
+                initialReelId={selectedReelId}
               />
             )}
 
@@ -414,6 +433,7 @@ export default function App() {
                 user={user}
                 onOpenAuth={() => navigateTab('login')}
                 onSelectUser={openPublicProfile}
+                onSelectCommunity={openCommunityDetail}
                 onImageClick={setFullscreenImage}
               />
             )}
@@ -538,6 +558,14 @@ export default function App() {
           </motion.div>
         </AnimatePresence>
       </main>
+
+      <BottomNav
+        currentTab={currentTab}
+        setCurrentTab={navigateTab}
+        user={user}
+        onOpenAuth={() => navigateTab('login')}
+        unreadCount={notifications.filter(n => !n.read).length}
+      />
 
       <Footer />
       <OfflineIndicator />

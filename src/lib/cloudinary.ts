@@ -33,7 +33,8 @@ export async function uploadMediaToCloudinary(
   if (onProgress) onProgress(15);
 
   const isVideo = file.type.startsWith('video/') || file.name.match(/\.(mp4|webm|mov|m4v|mkv)$/i);
-  const resourceType = isVideo ? 'video' : 'image';
+  const isAudio = file.type.startsWith('audio/') || file.name.match(/\.(mp3|wav|m4a|aac|flac|ogg)$/i);
+  const resourceType = (isVideo || isAudio) ? 'video' : 'image';
 
   const formData = new FormData();
   formData.append('file', file);

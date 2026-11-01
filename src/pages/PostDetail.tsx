@@ -85,7 +85,7 @@ export const PostDetail: React.FC<PostDetailProps> = ({
         });
       }
     } catch (err: any) {
-      console.warn('Aviso ao carregar comentários (D1):', err?.message || err);
+      console.warn('Aviso ao carregar comentários:', err?.message || err);
     } finally {
       setLoading(false);
     }
@@ -162,7 +162,7 @@ export const PostDetail: React.FC<PostDetailProps> = ({
     try {
       await d1Client.ideas.addComment(idea.id, contentText);
     } catch (err: any) {
-      console.warn('Comentário guardado na cache local (D1 error):', err?.message || err);
+      console.warn('Comentário guardado na cache local:', err?.message || err);
     } finally {
       setSubmittingComment(false);
     }
@@ -215,8 +215,36 @@ export const PostDetail: React.FC<PostDetailProps> = ({
           Voltar ao feed
         </button>
 
-        {/* Main Idea Card */}
+        {/* Main Card */}
         <article className="card-konecta p-0 overflow-hidden mb-12 shadow-sm border border-gray-100">
+          {/* Community Context Banner */}
+          {idea.communities && (
+            <div 
+              className="h-28 relative overflow-hidden"
+            >
+              {idea.communities.cover_url ? (
+                <img src={idea.communities.cover_url} className="w-full h-full object-cover" alt="" />
+              ) : (
+                <div className="w-full h-full bg-gradient-to-r from-konecta-navy to-slate-800" />
+              )}
+              <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
+              <div className="absolute bottom-4 left-6 flex items-center gap-3">
+                <div className="w-12 h-12 rounded-xl bg-white p-0.5 border border-konecta-gold/50 shadow-lg shrink-0">
+                  {idea.communities.avatar_url ? (
+                    <img src={idea.communities.avatar_url} className="w-full h-full object-cover rounded-lg" alt="" />
+                  ) : (
+                    <div className="w-full h-full bg-konecta-navy rounded-lg flex items-center justify-center text-sm text-konecta-gold font-black">
+                      {idea.communities.name.charAt(0)}
+                    </div>
+                  )}
+                </div>
+                <div>
+                  <span className="text-[10px] font-bold text-konecta-gold uppercase tracking-[0.2em] block mb-0.5">Publicado em</span>
+                  <h4 className="text-sm sm:text-base font-black text-white uppercase tracking-tight">{idea.communities.name}</h4>
+                </div>
+              </div>
+            </div>
+          )}
           {idea.image_url && (
             <div 
               onClick={() => onImageClick && onImageClick(idea.image_url!)}
@@ -356,7 +384,7 @@ export const PostDetail: React.FC<PostDetailProps> = ({
             <h3 className="text-xl font-extrabold text-konecta-navy">
               Discussão da Comunidade ({comments.length})
             </h3>
-            <span className="text-xs text-gray-400">Comentários reais armazenados no Cloudflare D1</span>
+            <span className="text-xs text-gray-400">Comentários da rede</span>
           </div>
           
           {/* Add Comment Box */}

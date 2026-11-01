@@ -75,7 +75,7 @@ export const CreateIdea: React.FC<CreateIdeaProps> = ({ user, onOpenAuth, onIdea
         }
       }
 
-      // Insert idea into Cloudflare D1
+      // Insert idea into Supabase
       const ideaPayload = {
         title: title.trim(),
         description: description.trim(),
@@ -86,7 +86,7 @@ export const CreateIdea: React.FC<CreateIdeaProps> = ({ user, onOpenAuth, onIdea
 
       const res = await d1Client.ideas.create(ideaPayload);
       if (res.error) {
-        throw new Error(res.error.message || 'Erro ao guardar ideia no Cloudflare D1.');
+        throw new Error(res.error.message || 'Erro ao guardar ideia.');
       }
 
       setSuccess(true);
@@ -97,12 +97,8 @@ export const CreateIdea: React.FC<CreateIdeaProps> = ({ user, onOpenAuth, onIdea
         setCurrentTab('explore');
       }, 1000);
     } catch (err: any) {
-      console.warn('Aviso ao submeter ideia:', err?.message || err);
-      setSuccess(true);
-      setTimeout(() => {
-        onIdeaCreated();
-        setCurrentTab('explore');
-      }, 1000);
+      console.error('Erro ao submeter ideia:', err?.message || err);
+      setError(err?.message || 'Erro ao publicar a sua ideia. Por favor, tente novamente.');
     } finally {
       setSubmitting(false);
     }
@@ -132,7 +128,7 @@ export const CreateIdea: React.FC<CreateIdeaProps> = ({ user, onOpenAuth, onIdea
             <span className="material-symbols-outlined text-3xl">check</span>
           </div>
           <h2 className="text-2xl font-bold text-green-900">Ideia Publicada com Sucesso!</h2>
-          <p className="text-sm text-green-700">A tua iniciativa foi guardada no Cloudflare D1 e já está visível para toda a rede.</p>
+          <p className="text-sm text-green-700">A tua iniciativa foi publicada e já está visível para toda a rede.</p>
         </div>
       ) : (
         <form onSubmit={handleSubmit} className="grid grid-cols-1 lg:grid-cols-2 gap-12">
@@ -216,7 +212,7 @@ export const CreateIdea: React.FC<CreateIdeaProps> = ({ user, onOpenAuth, onIdea
 
           <div className="space-y-8">
             <div className="space-y-2">
-              <label className="text-xs font-bold uppercase tracking-widest text-konecta-navy">Imagem de Capa (Opcional - Cloudflare R2)</label>
+              <label className="text-xs font-bold uppercase tracking-widest text-konecta-navy">Imagem de Capa (Opcional)</label>
               
               {imagePreview ? (
                 <div className="relative rounded-3xl overflow-hidden bg-gray-50 border border-gray-200 aspect-square flex items-center justify-center group shadow-xs">
@@ -241,7 +237,7 @@ export const CreateIdea: React.FC<CreateIdeaProps> = ({ user, onOpenAuth, onIdea
                     <Upload className="w-6 h-6" />
                   </div>
                   <span className="text-xs font-bold text-gray-400 uppercase tracking-widest group-hover:text-konecta-navy transition-colors">Carregar Fotografia</span>
-                  <p className="text-[10px] text-gray-400 mt-2">PNG, JPG até 10MB via Cloudflare R2</p>
+                  <p className="text-[10px] text-gray-400 mt-2">PNG, JPG até 10MB</p>
                   <input type="file" accept="image/*" onChange={handleImageChange} className="hidden" />
                 </label>
               )}
@@ -266,7 +262,7 @@ export const CreateIdea: React.FC<CreateIdeaProps> = ({ user, onOpenAuth, onIdea
               disabled={submitting}
               className="btn-gold w-full py-4 text-sm font-extrabold uppercase tracking-widest shadow-lg hover:brightness-105 transition-all"
             >
-              {submitting ? 'A Publicar no Cloudflare...' : 'Publicar na Rede KONECTA'}
+              {submitting ? 'A Publicar...' : 'Publicar na Rede KONECTA'}
             </button>
           </div>
         </form>

@@ -10,6 +10,7 @@ interface CommunityProps {
   user: any;
   onOpenAuth: () => void;
   onSelectUser: (userId: string) => void;
+  onSelectCommunity: (communityId: string, slug?: string) => void;
   onImageClick: (url: string) => void;
 }
 
@@ -17,6 +18,7 @@ export const Community: React.FC<CommunityProps> = ({
   user,
   onOpenAuth,
   onSelectUser,
+  onSelectCommunity,
   onImageClick,
 }) => {
   const [posts, setPosts] = useState<Post[]>(() => {
@@ -178,29 +180,8 @@ export const Community: React.FC<CommunityProps> = ({
       setImagePreview(null);
       setUploadProgress(0);
     } catch (err: any) {
-      console.warn('Aviso ao criar post:', err?.message || err);
-      const fallbackPost: Post = {
-        id: crypto.randomUUID(),
-        user_id: user.id,
-        content: content.trim(),
-        image_url: undefined,
-        created_at: new Date().toISOString(),
-        profiles: {
-          id: user.id,
-          full_name: user.user_metadata?.full_name || 'Membro Konecta',
-          avatar_url: user.user_metadata?.avatar_url || undefined,
-          province: user.user_metadata?.province || 'Angola'
-        }
-      };
-      setPosts(prev => {
-        const next = [fallbackPost, ...prev];
-        savePostsToCache(next);
-        return next;
-      });
-      setContent('');
-      setImageFile(null);
-      if (imagePreview) URL.revokeObjectURL(imagePreview);
-      setImagePreview(null);
+      console.error('Erro ao criar post:', err?.message || err);
+      alert('Erro ao publicar no feed da comunidade. Por favor, tente novamente.');
     } finally {
       setPublishing(false);
     }
@@ -241,7 +222,7 @@ export const Community: React.FC<CommunityProps> = ({
         }
       } catch (e) {}
  
-      // Fetch from D1
+      // Fetch from Supabase
       setLoadingPostComments(prev => ({ ...prev, [postId]: true }));
       try {
         const d1Res = await d1Client.posts.getComments(postId);
@@ -371,7 +352,7 @@ export const Community: React.FC<CommunityProps> = ({
                 className="flex items-center gap-2 text-xs font-bold text-gray-500 hover:text-konecta-navy transition-colors px-3 py-1.5 rounded-lg hover:bg-gray-100"
               >
                 <span className="material-symbols-outlined text-[20px] text-konecta-gold">add_photo_alternate</span>
-                Imagem (Cloudflare R2)
+                Imagem
               </button>
               <input 
                 type="file" 
@@ -408,9 +389,42 @@ export const Community: React.FC<CommunityProps> = ({
                     key={post.id}
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
-                    className="card-konecta p-6 sm:p-8"
+                    className="card-konecta p-6 sm:p-8 overflow-hidden"
                   >
-                    <button
+                    {/* Community Context Banner */}
+                    {post.communities && (
+                      <div 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onSelectCommunity(post.communities!.id, post.communities!.slug);
+                        }}
+                        className="mb-6 -mx-6 -mt-6 sm:-mx-8 sm:-mt-8 h-24 relative cursor-pointer group/cover"
+                      >
+                        {post.communities.cover_url ? (
+                          <img src={post.communities.cover_url} className="w-full h-full object-cover transition-transform duration-700 group-hover/cover:scale-105" alt="" />
+                        ) : (
+                          <div className="w-full h-full bg-gradient-to-r from-konecta-navy to-slate-800" />
+                        )}
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
+                        <div className="absolute bottom-3 left-4 sm:left-6 flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-xl bg-white p-0.5 border border-konecta-gold/50 shadow-lg shrink-0">
+                            {post.communities.avatar_url ? (
+                              <img src={post.communities.avatar_url} className="w-full h-full object-cover rounded-lg" alt="" />
+                            ) : (
+                              <div className="w-full h-full bg-konecta-navy rounded-lg flex items-center justify-center text-xs text-konecta-gold font-black">
+                                {post.communities.name.charAt(0)}
+                              </div>
+                            )}
+                          </div>
+                          <div>
+                            <span className="text-[10px] font-bold text-konecta-gold uppercase tracking-[0.2em] block mb-0.5">Publicado em</span>
+                            <h4 className="text-xs sm:text-sm font-black text-white uppercase tracking-tight">{post.communities.name}</h4>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    <div 
                       onClick={() => post.user_id && onSelectUser(post.user_id)}
                       className="flex items-center gap-3 mb-4 text-left group/author cursor-pointer"
                     >
@@ -424,12 +438,14 @@ export const Community: React.FC<CommunityProps> = ({
                         )}
                       </div>
                       <div>
-                        <h4 className="font-bold text-sm text-konecta-navy group-hover/author:text-konecta-gold transition-colors">{post.profiles?.full_name || 'Membro Konecta'}</h4>
+                        <div className="flex items-center gap-2">
+                          <h4 className="font-bold text-sm text-konecta-navy group-hover/author:text-konecta-gold transition-colors">{post.profiles?.full_name || 'Membro Konecta'}</h4>
+                        </div>
                         <p className="text-[10px] text-gray-400 uppercase tracking-wider font-bold">
                           {post.profiles?.province || 'Angola'} · {new Date(post.created_at).toLocaleDateString('pt-AO')}
                         </p>
                       </div>
-                    </button>
+                    </div>
 
                     <div className="text-gray-700 leading-relaxed text-sm whitespace-pre-wrap mb-4">
                       {post.content}
@@ -582,7 +598,7 @@ export const Community: React.FC<CommunityProps> = ({
               </li>
               <li className="flex items-start gap-2">
                 <span className="text-konecta-gold">✓</span>
-                <span>Usa o Cloudflare R2 para anexar imagens reais dos teus projetos.</span>
+                <span>Anexa imagens reais dos teus projetos.</span>
               </li>
             </ul>
           </section>

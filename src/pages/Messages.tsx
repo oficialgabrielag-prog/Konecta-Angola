@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { d1Client } from '../lib/d1Client';
 import { Conversation, Message, Profile } from '../types';
+import { KonectaRealtimeService } from '../lib/realtime';
 
 interface MessagesProps {
   user: any;
@@ -29,18 +30,21 @@ export const Messages: React.FC<MessagesProps> = ({ user, onOpenAuth }) => {
     }
   }, [user]);
 
-  // Periodic poll for messages in selected conversation
+  // Realtime subscription for messages
   useEffect(() => {
     if (!selectedConv) return;
 
     fetchMessages(selectedConv.id);
 
-    const pollInterval = setInterval(() => {
-      fetchMessages(selectedConv.id, true);
-    }, 4000);
+    const unsubscribe = KonectaRealtimeService.subscribe('messages', (payload: any) => {
+      // Refresh messages if they belong to this conversation
+      if (payload.new && payload.new.conversation_id === selectedConv.id) {
+        fetchMessages(selectedConv.id, true);
+      }
+    });
 
     return () => {
-      clearInterval(pollInterval);
+      unsubscribe();
     };
   }, [selectedConv]);
 
@@ -126,7 +130,7 @@ export const Messages: React.FC<MessagesProps> = ({ user, onOpenAuth }) => {
 
       const res = await d1Client.messages.startConversation(targetUser.id);
       if (!res.data?.data) {
-        throw new Error(res.error?.message || 'Falha ao iniciar conversa no Cloudflare D1.');
+        throw new Error(res.error?.message || 'Falha ao iniciar conversa.');
       }
 
       const newConv = res.data.data;

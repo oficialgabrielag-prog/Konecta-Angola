@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Idea, Challenge, Post, CommentItem } from '../types';
+import { Idea, Challenge, Post, CommentItem, Reel } from '../types';
 import { d1Client } from '../lib/d1Client';
 import { uploadToCloudinary } from '../lib/cloudinary';
+import { KonectaRealtimeService } from '../lib/realtime';
 import { PostCardSkeleton, IdeaCardSkeleton } from '../components/Skeletons';
 
 interface HomeProps {
@@ -12,6 +13,8 @@ interface HomeProps {
   user: any;
   onSelectPost: (idea: Idea) => void;
   onSelectUser: (userId: string) => void;
+  onSelectCommunity: (communityId: string, slug?: string) => void;
+  onSelectReel?: (reelId: string) => void;
   onVoteIdea: (id: string) => void;
   onRequireAuth: () => void;
   onImageClick: (url: string) => void;
@@ -24,13 +27,15 @@ export const Home: React.FC<HomeProps> = ({
   user,
   onSelectPost,
   onSelectUser,
+  onSelectCommunity,
+  onSelectReel,
   onVoteIdea,
   onRequireAuth,
   onImageClick,
 }) => {
   const heroImage = "/src/assets/images/hero_konecta_innovation_1793239577568.jpg";
 
-  const [feedType, setFeedType] = useState<'all' | 'ideas' | 'posts'>('all');
+  const [feedType, setFeedType] = useState<'all' | 'ideas' | 'posts' | 'communities' | 'reels'>('all');
   const [posts, setPosts] = useState<Post[]>(() => {
     try {
       const cached = localStorage.getItem('konecta_cached_posts');
@@ -39,9 +44,42 @@ export const Home: React.FC<HomeProps> = ({
       return [];
     }
   });
+  const [reels, setReels] = useState<Reel[]>([]);
+  const [selectedReelModal, setSelectedReelModal] = useState<Reel | null>(null);
+  const [isModalMuted, setIsModalMuted] = useState(false);
   const [loadingPosts, setLoadingPosts] = useState(false);
   const [userLikes, setUserLikes] = useState<Record<string, boolean>>({});
   const [userBookmarks, setUserBookmarks] = useState<Record<string, boolean>>({});
+
+  const handleToggleReelLike = async (reelId: string) => {
+    if (!user) {
+      onRequireAuth();
+      return;
+    }
+    setReels(prev => prev.map(r => {
+      if (r.id === reelId) {
+        const isLiked = r.is_liked;
+        return {
+          ...r,
+          is_liked: !isLiked,
+          likes_count: isLiked ? Math.max(0, (r.likes_count || 1) - 1) : (r.likes_count || 0) + 1
+        };
+      }
+      return r;
+    }));
+    if (selectedReelModal && selectedReelModal.id === reelId) {
+      setSelectedReelModal(prev => prev ? {
+        ...prev,
+        is_liked: !prev.is_liked,
+        likes_count: prev.is_liked ? Math.max(0, (prev.likes_count || 1) - 1) : (prev.likes_count || 0) + 1
+      } : null);
+    }
+    try {
+      await d1Client.reels.toggleReaction(reelId, false);
+    } catch (err) {
+      console.warn('Erro ao curtir reel:', err);
+    }
+  };
 
   // Post Comments State
   const [expandedPostComments, setExpandedPostComments] = useState<Record<string, boolean>>({});
@@ -56,12 +94,45 @@ export const Home: React.FC<HomeProps> = ({
   const [publishing, setPublishing] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const reelsRowRef = useRef<HTMLDivElement>(null);
+
+  const scrollReels = (direction: 'left' | 'right') => {
+    if (reelsRowRef.current) {
+      const scrollAmount = direction === 'left' ? -320 : 320;
+      reelsRowRef.current.scrollBy({ left: scrollAmount, behavior: 'smooth' });
+    }
+  };
 
   useEffect(() => {
     fetchCommunityPosts();
+    fetchReels();
     if (user) {
       fetchUserReactions();
     }
+
+    // Subscribe to realtime updates for the unified feed
+    const unsubPosts = KonectaRealtimeService.subscribe('posts', (payload) => {
+      if (payload.eventType === 'INSERT') {
+        // We'll refetch to get joined profile/community info
+        fetchCommunityPosts();
+      } else if (payload.eventType === 'DELETE') {
+        setPosts(prev => prev.filter(p => p.id !== payload.old.id));
+      }
+    });
+
+    const unsubReactions = KonectaRealtimeService.subscribe('post_reactions', () => {
+      fetchCommunityPosts();
+    });
+
+    const unsubComments = KonectaRealtimeService.subscribe('post_comments', () => {
+      fetchCommunityPosts();
+    });
+
+    return () => {
+      unsubPosts();
+      unsubReactions();
+      unsubComments();
+    };
   }, [user]);
 
   const savePostsToCache = (updatedPosts: Post[]) => {
@@ -90,9 +161,20 @@ export const Home: React.FC<HomeProps> = ({
         });
       }
     } catch (err: any) {
-      console.warn('Aviso ao carregar publicações (Cloudflare D1):', err?.message || err);
+      console.warn('Aviso ao carregar publicações:', err?.message || err);
     } finally {
       setLoadingPosts(false);
+    }
+  };
+
+  const fetchReels = async () => {
+    try {
+      const res = await d1Client.reels.list(10);
+      if (res.data?.data) {
+        setReels(res.data.data);
+      }
+    } catch (err: any) {
+      console.warn('Aviso ao carregar Reels:', err?.message || err);
     }
   };
 
@@ -181,29 +263,8 @@ export const Home: React.FC<HomeProps> = ({
       setNewPostImagePreview(null);
       setUploadProgress(0);
     } catch (err: any) {
-      console.warn('Aviso ao publicar no feed:', err?.message || err);
-      const fallbackPost: Post = {
-        id: crypto.randomUUID(),
-        user_id: user.id,
-        content: newPostContent.trim(),
-        image_url: undefined,
-        created_at: new Date().toISOString(),
-        profiles: {
-          id: user.id,
-          full_name: user.user_metadata?.full_name || 'Membro Konecta',
-          avatar_url: user.user_metadata?.avatar_url || undefined,
-          province: user.user_metadata?.province || 'Angola'
-        }
-      };
-      setPosts(prev => {
-        const next = [fallbackPost, ...prev];
-        savePostsToCache(next);
-        return next;
-      });
-      setNewPostContent('');
-      setNewPostImage(null);
-      if (newPostImagePreview) URL.revokeObjectURL(newPostImagePreview);
-      setNewPostImagePreview(null);
+      console.error('Erro ao publicar no feed:', err?.message || err);
+      alert(err?.message || 'Erro ao publicar no feed. Por favor, tente novamente.');
     } finally {
       setPublishing(false);
     }
@@ -260,7 +321,7 @@ export const Home: React.FC<HomeProps> = ({
         }
       } catch (e) {}
 
-      // Fetch from Cloudflare D1
+      // Fetch from Supabase
       setLoadingPostComments(prev => ({ ...prev, [postId]: true }));
       try {
         const res = await d1Client.posts.getComments(postId);
@@ -318,13 +379,36 @@ export const Home: React.FC<HomeProps> = ({
       return p;
     }));
 
-    // Save to Cloudflare D1
+    // Save to Supabase
     try {
       await d1Client.posts.addComment(postId, text);
     } catch (err: any) {
       console.warn('Comentário guardado na cache local:', err?.message || err);
     }
   };
+
+  const mixedFeed = React.useMemo(() => {
+    if (feedType === 'reels') {
+      return reels.map(r => ({ type: 'reel', data: r }));
+    }
+    const filtered = posts.filter(p => {
+      if (feedType === 'posts') return !p.community_id;
+      if (feedType === 'communities') return !!p.community_id;
+      return true;
+    });
+    const items: any[] = filtered.map(p => ({ type: 'post', data: p }));
+    if (feedType === 'all') {
+      reels.forEach((reel, index) => {
+        const position = (index + 1) * 3;
+        if (position <= items.length) {
+          items.splice(position, 0, { type: 'reel', data: reel });
+        } else if (items.length < 3 && index === 0) {
+          items.push({ type: 'reel', data: reel });
+        }
+      });
+    }
+    return items;
+  }, [posts, reels, feedType]);
 
   return (
     <div className="bg-konecta-bg min-h-screen">
@@ -385,9 +469,117 @@ export const Home: React.FC<HomeProps> = ({
           {/* Main Feed Column */}
           <div className="lg:col-span-8 space-y-8">
             
+            {/* EXPOSED REELS ROW (Fila Única e Grande com Scroll/Deslize Horizontal) */}
+            {reels.length > 0 && (
+              <div className="space-y-3 mb-6">
+                <div className="flex items-center justify-between px-1">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-konecta-gold animate-pulse"></span>
+                    <h3 className="font-black text-konecta-navy text-base uppercase tracking-wider">
+                      Reels em Destaque
+                    </h3>
+                    <span className="text-xs text-gray-400 font-medium hidden sm:inline">• Deslize para explorar</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {/* Navigation buttons for desktop/tablets */}
+                    <div className="hidden sm:flex items-center gap-1 mr-2">
+                      <button 
+                        type="button"
+                        onClick={() => scrollReels('left')}
+                        className="w-8 h-8 rounded-full bg-gray-100 hover:bg-konecta-navy hover:text-white text-konecta-navy flex items-center justify-center transition-all shadow-xs"
+                        title="Reels anteriores"
+                      >
+                        <span className="material-symbols-outlined text-lg">chevron_left</span>
+                      </button>
+                      <button 
+                        type="button"
+                        onClick={() => scrollReels('right')}
+                        className="w-8 h-8 rounded-full bg-gray-100 hover:bg-konecta-navy hover:text-white text-konecta-navy flex items-center justify-center transition-all shadow-xs"
+                        title="Mais reels"
+                      >
+                        <span className="material-symbols-outlined text-lg">chevron_right</span>
+                      </button>
+                    </div>
+                    <button 
+                      onClick={() => setCurrentTab('reels')}
+                      className="text-xs font-black text-konecta-navy bg-konecta-gold/20 hover:bg-konecta-gold px-3 py-1.5 rounded-full flex items-center gap-1 transition-all"
+                    >
+                      <span>Ver no Reels ↗</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Single Large Row (Fila Única) - Deslize para a esquerda para ver mais reels, sem grades, nenhum reel debaixo do outro */}
+                <div 
+                  ref={reelsRowRef}
+                  className="flex flex-row gap-4 overflow-x-auto scrollbar-hide snap-x snap-mandatory py-2 px-1 touch-pan-x -mx-3 sm:mx-0 px-3 sm:px-0"
+                >
+                  {reels.map((reel) => (
+                    <motion.div
+                      key={`exposed-reel-${reel.id}`}
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.96 }}
+                      onClick={() => onSelectReel ? onSelectReel(reel.id) : setCurrentTab('reels')}
+                      className="shrink-0 w-[200px] sm:w-[240px] md:w-[260px] aspect-[9/16] bg-slate-950 rounded-2xl sm:rounded-3xl overflow-hidden cursor-pointer relative group border border-slate-800 shadow-md snap-start select-none transition-transform"
+                    >
+                      <video
+                        src={reel.video_url}
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 pointer-events-none"
+                        muted
+                        loop
+                        playsInline
+                        onMouseOver={(e) => (e.target as HTMLVideoElement).play().catch(() => {})}
+                        onMouseOut={(e) => {
+                          const v = e.target as HTMLVideoElement;
+                          v.pause();
+                          v.currentTime = 0;
+                        }}
+                      />
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/25 to-black/30 p-3.5 sm:p-4 flex flex-col justify-between pointer-events-none">
+                        <div className="flex justify-between items-start">
+                          <span className="bg-konecta-gold text-konecta-navy text-[10px] font-black px-2.5 py-1 rounded-full uppercase tracking-wider shadow-sm">
+                            Reel
+                          </span>
+                          <div className="w-8 h-8 rounded-full bg-white/25 backdrop-blur-md text-white flex items-center justify-center shadow border border-white/20 group-hover:scale-110 transition-transform">
+                            <span className="material-symbols-outlined text-sm font-bold">play_arrow</span>
+                          </div>
+                        </div>
+
+                        <div>
+                          <div className="flex items-center gap-2 mb-1.5">
+                            {reel.profiles?.avatar_url ? (
+                              <img src={reel.profiles.avatar_url} alt="" className="w-6 h-6 rounded-full object-cover border border-white/40" />
+                            ) : (
+                              <div className="w-6 h-6 rounded-full bg-konecta-gold text-konecta-navy font-black text-[10px] flex items-center justify-center">
+                                {reel.profiles?.full_name?.charAt(0) || 'K'}
+                              </div>
+                            )}
+                            <p className="font-bold text-xs sm:text-sm text-white line-clamp-1 drop-shadow-sm">
+                              {reel.profiles?.full_name || 'Criador Konecta'}
+                            </p>
+                          </div>
+
+                          <p className="text-xs text-gray-200 line-clamp-2 leading-relaxed opacity-95 drop-shadow-xs">
+                            {reel.caption || 'Sem legenda'}
+                          </p>
+                          
+                          <div className="flex items-center justify-between mt-2.5 pt-2 border-t border-white/10 text-xs">
+                            <div className="flex items-center gap-1.5 font-extrabold text-konecta-gold">
+                              <span>❤️ {reel.likes_count || 0}</span>
+                            </div>
+                            <span className="text-[11px] text-gray-300 font-medium">Toque para ver</span>
+                          </div>
+                        </div>
+                      </div>
+                    </motion.div>
+                  ))}
+                </div>
+              </div>
+            )}
+            
             {/* Quick Post Box for Logged-In Users */}
             {user ? (
-              <form onSubmit={handleCreatePost} className="card-konecta p-6 sm:p-8 space-y-4 shadow-sm border border-gray-100">
+              <form onSubmit={handleCreatePost} className="bg-white rounded-2xl sm:rounded-3xl p-5 sm:p-7 space-y-4 border border-gray-100 shadow-xs">
                 <div className="flex gap-4">
                   <div className="w-12 h-12 rounded-full bg-konecta-navy/5 overflow-hidden shrink-0 border border-gray-100">
                     {user.user_metadata?.avatar_url ? (
@@ -449,7 +641,7 @@ export const Home: React.FC<HomeProps> = ({
                         className="flex items-center gap-2 text-xs font-bold text-gray-500 hover:text-konecta-navy transition-colors px-3 py-1.5 rounded-lg hover:bg-gray-100"
                       >
                         <span className="material-symbols-outlined text-[20px] text-konecta-gold">add_photo_alternate</span>
-                        Anexar Imagem (Cloudflare R2)
+                        Anexar Imagem
                       </button>
                       <input 
                         type="file" 
@@ -484,12 +676,18 @@ export const Home: React.FC<HomeProps> = ({
 
             {/* Filter Tabs */}
             <div className="flex items-center justify-between border-b border-gray-100 pb-4">
-              <div className="flex gap-2">
+              <div className="flex gap-2 flex-wrap">
                 <button
                   onClick={() => setFeedType('all')}
                   className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${feedType === 'all' ? 'bg-konecta-navy text-white shadow-sm' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}
                 >
                   Tudo
+                </button>
+                <button
+                  onClick={() => setFeedType('reels')}
+                  className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${feedType === 'reels' ? 'bg-konecta-navy text-white shadow-sm' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}
+                >
+                  Reels ({reels.length})
                 </button>
                 <button
                   onClick={() => setFeedType('ideas')}
@@ -501,12 +699,18 @@ export const Home: React.FC<HomeProps> = ({
                   onClick={() => setFeedType('posts')}
                   className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${feedType === 'posts' ? 'bg-konecta-navy text-white shadow-sm' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}
                 >
-                  Publicações ({posts.length})
+                  Publicações ({posts.filter(p => !p.community_id).length})
+                </button>
+                <button
+                  onClick={() => setFeedType('communities')}
+                  className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${feedType === 'communities' ? 'bg-konecta-navy text-white shadow-sm' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}
+                >
+                  Comunidades ({posts.filter(p => p.community_id).length})
                 </button>
               </div>
 
               <span className="text-xs text-gray-400 font-medium hidden sm:inline">
-                Dados reais sincronizados com o Cloudflare D1
+                Dados em tempo real
               </span>
             </div>
 
@@ -518,23 +722,200 @@ export const Home: React.FC<HomeProps> = ({
                 </div>
               )}
 
-              {/* Show Posts if 'all' or 'posts' */}
-              {(feedType === 'all' || feedType === 'posts') && posts.length > 0 && (
+              {feedType === 'reels' ? (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="font-extrabold text-slate-900 text-base sm:text-lg flex items-center gap-2">
+                      <span className="material-symbols-outlined text-konecta-gold">movie</span>
+                      Reels em Fila (Deslize para a esquerda)
+                    </h3>
+                    <button 
+                      onClick={() => setCurrentTab('reels')}
+                      className="text-xs font-bold text-konecta-navy bg-konecta-gold hover:bg-yellow-400 px-3 py-1.5 rounded-full transition-all shadow"
+                    >
+                      Tela cheia ↗
+                    </button>
+                  </div>
+                  {reels.length === 0 ? (
+                    <div className="bg-white rounded-2xl border border-gray-100 p-12 text-center text-gray-400">
+                      Nenhum Reel disponível de momento.
+                    </div>
+                  ) : (
+                    <div className="flex flex-row gap-4 overflow-x-auto scrollbar-hide snap-x snap-mandatory py-2 px-1 touch-pan-x -mx-3 sm:mx-0 px-3 sm:px-0">
+                      {reels.map((reel) => (
+                        <motion.div
+                          key={`reels-tab-${reel.id}`}
+                          whileHover={{ scale: 1.02 }}
+                          whileTap={{ scale: 0.96 }}
+                          onClick={() => onSelectReel ? onSelectReel(reel.id) : setCurrentTab('reels')}
+                          className="shrink-0 w-[200px] sm:w-[240px] md:w-[260px] aspect-[9/16] bg-slate-950 rounded-2xl sm:rounded-3xl overflow-hidden cursor-pointer relative group border border-slate-800 shadow-md snap-start select-none"
+                        >
+                          <video
+                            src={reel.video_url}
+                            className="w-full h-full object-cover pointer-events-none group-hover:scale-105 transition-transform duration-500"
+                            muted
+                            loop
+                            playsInline
+                            onMouseOver={(e) => (e.target as HTMLVideoElement).play().catch(() => {})}
+                            onMouseOut={(e) => {
+                              const v = e.target as HTMLVideoElement;
+                              v.pause();
+                              v.currentTime = 0;
+                            }}
+                          />
+                          <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/25 to-black/30 p-3.5 sm:p-4 flex flex-col justify-between pointer-events-none">
+                            <div className="flex justify-between items-start">
+                              <span className="bg-konecta-gold text-konecta-navy text-[10px] font-black px-2.5 py-1 rounded-full uppercase tracking-wider shadow-sm">
+                                Reel
+                              </span>
+                              <div className="w-8 h-8 rounded-full bg-white/25 backdrop-blur-md text-white flex items-center justify-center shadow border border-white/20 group-hover:scale-110 transition-transform">
+                                <span className="material-symbols-outlined text-sm font-bold">play_arrow</span>
+                              </div>
+                            </div>
+                            <div>
+                              <div className="flex items-center gap-2 mb-1.5">
+                                {reel.profiles?.avatar_url ? (
+                                  <img src={reel.profiles.avatar_url} alt="" className="w-6 h-6 rounded-full object-cover border border-white/40" />
+                                ) : (
+                                  <div className="w-6 h-6 rounded-full bg-konecta-gold text-konecta-navy font-black text-[10px] flex items-center justify-center">
+                                    {reel.profiles?.full_name?.charAt(0) || 'K'}
+                                  </div>
+                                )}
+                                <p className="font-bold text-xs sm:text-sm text-white line-clamp-1 drop-shadow-sm">
+                                  {reel.profiles?.full_name || 'Criador Konecta'}
+                                </p>
+                              </div>
+                              <p className="text-xs text-gray-200 line-clamp-2 leading-relaxed opacity-95 drop-shadow-xs">
+                                {reel.caption || 'Sem descrição'}
+                              </p>
+                              <div className="flex items-center justify-between mt-2.5 pt-2 border-t border-white/10 text-xs">
+                                <div className="flex items-center gap-1.5 font-extrabold text-konecta-gold">
+                                  <span>❤️ {reel.likes_count || 0}</span>
+                                </div>
+                                <span className="text-[11px] text-gray-300 font-medium">Toque para ver</span>
+                              </div>
+                            </div>
+                          </div>
+                        </motion.div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ) : (feedType === 'all' || feedType === 'posts' || feedType === 'communities') && mixedFeed.length > 0 && (
                 <div className="space-y-6">
-                  {posts.map((post) => {
+                  {mixedFeed.map((item) => {
+                    if (item.type === 'reel') {
+                      const reel = item.data as Reel;
+                      return (
+                        <motion.article 
+                          key={`reel-${reel.id}`} 
+                          initial={{ opacity: 0, y: 15 }} 
+                          whileInView={{ opacity: 1, y: 0 }} 
+                          viewport={{ once: true }} 
+                          onClick={() => onSelectReel ? onSelectReel(reel.id) : setCurrentTab('reels')}
+                          className="rounded-2xl p-4 sm:p-5 bg-gradient-to-br from-slate-900 via-slate-950 to-konecta-navy text-white overflow-hidden relative border border-slate-800 shadow-md cursor-pointer hover:border-konecta-gold transition-all"
+                        >
+                          <div className="flex items-center justify-between mb-3">
+                            <div className="flex items-center gap-3">
+                              <div className="w-9 h-9 rounded-full bg-konecta-gold text-konecta-navy flex items-center justify-center font-extrabold text-xs shadow-md">
+                                {reel.profiles?.full_name?.charAt(0) || 'R'}
+                              </div>
+                              <div>
+                                <h4 className="font-bold text-xs text-white">{reel.profiles?.full_name || 'Criador Konecta'}</h4>
+                                <span className="text-[10px] text-konecta-gold uppercase tracking-wider font-extrabold">Sugestão de Reel</span>
+                              </div>
+                            </div>
+                            <button 
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onSelectReel ? onSelectReel(reel.id) : setCurrentTab('reels');
+                              }} 
+                              className="text-xs text-konecta-navy bg-konecta-gold hover:bg-yellow-400 font-black flex items-center gap-1 px-3 py-1.5 rounded-full transition-all shadow"
+                            >
+                              Assistir no Reels ↗
+                            </button>
+                          </div>
+
+                          <div className="relative aspect-[16/9] sm:aspect-video bg-black rounded-2xl overflow-hidden group border border-white/10">
+                            <video 
+                              src={reel.video_url} 
+                              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" 
+                              muted 
+                              loop 
+                              playsInline 
+                              onMouseOver={(e) => (e.target as HTMLVideoElement).play().catch(() => {})} 
+                              onMouseOut={(e) => {
+                                const v = e.target as HTMLVideoElement;
+                                v.pause();
+                                v.currentTime = 0;
+                              }} 
+                            />
+                            <div className="absolute inset-0 bg-black/30 group-hover:bg-black/20 transition-colors flex items-center justify-center">
+                              <div className="w-12 h-12 rounded-full bg-konecta-gold text-konecta-navy flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform">
+                                <span className="material-symbols-outlined text-2xl font-black">play_arrow</span>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="mt-3 flex items-center justify-between text-xs text-gray-300">
+                            <p className="font-medium line-clamp-1 max-w-[80%]">{reel.caption || 'Reel Konecta'}</p>
+                            <span className="font-bold text-red-400 flex items-center gap-1">
+                              ❤️ {reel.likes_count || 0}
+                            </span>
+                          </div>
+                        </motion.article>
+                      );
+                    }
+                    const post = item.data as Post;
                     const isLiked = userLikes[post.id];
                     const isBookmarked = userBookmarks[post.id];
 
                     return (
                       <motion.article 
-                        key={post.id}
+                        key={`post-${post.id}`}
                         initial={{ opacity: 0, y: 15 }}
                         whileInView={{ opacity: 1, y: 0 }}
                         viewport={{ once: true }}
-                        className="card-konecta p-6 sm:p-8"
+                        className="bg-white rounded-3xl p-5 sm:p-7 shadow-xs border border-gray-100/80 mb-4 overflow-hidden transition-all hover:border-gray-200"
                       >
+                        {/* Community Context Banner */}
+                        {post.communities && (
+                          <div 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onSelectCommunity(post.communities!.id, post.communities!.slug);
+                            }}
+                            className="mb-6 -mx-6 -mt-6 sm:-mx-8 sm:-mt-8 h-24 relative cursor-pointer group/cover"
+                          >
+                            {post.communities.cover_url ? (
+                              <img src={post.communities.cover_url} className="w-full h-full object-cover transition-transform duration-700 group-hover/cover:scale-105" alt="" />
+                            ) : (
+                              <div className="w-full h-full bg-gradient-to-r from-konecta-navy to-slate-800" />
+                            )}
+                            <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
+                            <div className="absolute bottom-3 left-4 sm:left-6 flex items-center gap-3">
+                              <div className="w-10 h-10 rounded-xl bg-white p-0.5 border border-konecta-gold/50 shadow-lg shrink-0">
+                                {post.communities.avatar_url ? (
+                                  <img src={post.communities.avatar_url} className="w-full h-full object-cover rounded-lg" alt="" />
+                                ) : (
+                                  <div className="w-full h-full bg-konecta-navy rounded-lg flex items-center justify-center text-xs text-konecta-gold font-black">
+                                    {post.communities.name.charAt(0)}
+                                  </div>
+                                )}
+                              </div>
+                              <div>
+                                <span className="text-[10px] font-bold text-konecta-gold uppercase tracking-[0.2em] block mb-0.5">Publicado em</span>
+                                <h4 className="text-xs sm:text-sm font-black text-white uppercase tracking-tight">{post.communities.name}</h4>
+                              </div>
+                            </div>
+                            <div className="absolute top-4 right-4 opacity-0 group-hover/cover:opacity-100 transition-opacity">
+                              <span className="material-symbols-outlined text-white text-sm bg-black/20 backdrop-blur-sm p-1.5 rounded-full">arrow_forward</span>
+                            </div>
+                          </div>
+                        )}
                         <div className="flex items-center justify-between mb-4">
-                          <button
+                          <div 
                             onClick={() => post.user_id && onSelectUser(post.user_id)}
                             className="flex items-center gap-3 text-left group/author cursor-pointer"
                           >
@@ -548,10 +929,12 @@ export const Home: React.FC<HomeProps> = ({
                               )}
                             </div>
                             <div>
-                              <h4 className="font-bold text-sm text-konecta-navy group-hover/author:text-konecta-gold transition-colors">{post.profiles?.full_name || 'Membro Konecta'}</h4>
+                              <div className="flex items-center gap-2">
+                                <h4 className="font-bold text-sm text-konecta-navy group-hover/author:text-konecta-gold transition-colors">{post.profiles?.full_name || 'Membro Konecta'}</h4>
+                              </div>
                               <p className="text-[10px] text-gray-400 uppercase tracking-wider">{post.profiles?.province || 'Angola'} · {new Date(post.created_at).toLocaleDateString('pt-AO')}</p>
                             </div>
-                          </button>
+                          </div>
                           
                           <button
                             onClick={() => handleToggleBookmark(post.id)}
@@ -584,7 +967,6 @@ export const Home: React.FC<HomeProps> = ({
 
                         <div className="flex items-center justify-between pt-4 border-t border-gray-50 text-xs text-gray-500 font-medium">
                           <div className="flex items-center gap-3">
-                            {/* Like button: turns completely red when liked */}
                             <button
                               onClick={() => handleToggleLike(post.id)}
                               className={`flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-bold transition-all duration-200 active:scale-95 shadow-xs ${
@@ -603,7 +985,6 @@ export const Home: React.FC<HomeProps> = ({
                               <span className={isLiked ? 'text-white font-extrabold' : ''}>{post.likes_count || 0}</span>
                             </button>
 
-                            {/* Comment toggle button */}
                             <button 
                               onClick={() => togglePostComments(post.id)}
                               className={`flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-bold transition-all active:scale-95 ${
@@ -618,10 +999,11 @@ export const Home: React.FC<HomeProps> = ({
                             </button>
                           </div>
 
-                          <span className="text-[11px] text-gray-400">Comunidade</span>
+                          <span className="text-[11px] text-gray-400">
+                            {post.communities ? `Publicado em ${post.communities.name}` : 'Publicação da Rede'}
+                          </span>
                         </div>
 
-                        {/* Expandable Comments Drawer */}
                         <AnimatePresence>
                           {expandedPostComments[post.id] && (
                             <motion.div
@@ -648,7 +1030,6 @@ export const Home: React.FC<HomeProps> = ({
                                 </div>
                               )}
 
-                              {/* Input form */}
                               <form onSubmit={(e) => handleAddPostComment(post.id, e)} className="flex gap-2 pt-1">
                                 <input 
                                   type="text"
@@ -773,7 +1154,7 @@ export const Home: React.FC<HomeProps> = ({
             <section className="bg-konecta-navy rounded-[32px] p-8 text-white shadow-xl">
               <h3 className="text-xs font-bold uppercase tracking-[0.2em] text-konecta-gold mb-8 flex items-center gap-2">
                 <span className="w-2 h-2 rounded-full bg-konecta-gold animate-pulse"></span>
-                Estado da Rede (Cloudflare D1)
+                Estado da Rede Konecta
               </h3>
               <div className="space-y-6">
                 <div className="flex items-baseline justify-between border-b border-white/10 pb-4">
@@ -858,6 +1239,114 @@ export const Home: React.FC<HomeProps> = ({
           </aside>
         </div>
       </main>
+
+      {/* Fullscreen Interactive Reel Player Modal */}
+      <AnimatePresence>
+        {selectedReelModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex items-center justify-center p-2 sm:p-4"
+            onClick={() => setSelectedReelModal(null)}
+          >
+            <motion.div
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.9, y: 20 }}
+              onClick={(e) => e.stopPropagation()}
+              className="relative w-full max-w-sm aspect-[9/16] bg-black rounded-3xl overflow-hidden shadow-2xl border border-white/10 flex flex-col justify-between"
+            >
+              <video
+                src={selectedReelModal.video_url}
+                className="absolute inset-0 w-full h-full object-cover"
+                autoPlay
+                loop
+                muted={isModalMuted}
+                playsInline
+              />
+
+              {/* Top Controls */}
+              <div className="relative z-10 p-4 flex items-center justify-between bg-gradient-to-b from-black/80 to-transparent">
+                <div className="flex items-center gap-2 text-white">
+                  <div className="w-8 h-8 rounded-full bg-konecta-navy border border-konecta-gold flex items-center justify-center font-bold text-xs">
+                    {selectedReelModal.profiles?.full_name?.charAt(0) || 'K'}
+                  </div>
+                  <div>
+                    <span className="font-bold text-xs block leading-tight">{selectedReelModal.profiles?.full_name || 'Criador Konecta'}</span>
+                    <span className="text-[10px] text-konecta-gold font-bold">@criador</span>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsModalMuted(!isModalMuted)}
+                    className="w-8 h-8 rounded-full bg-black/60 text-white flex items-center justify-center hover:bg-black/90 backdrop-blur-xs transition-colors"
+                  >
+                    <span className="material-symbols-outlined text-base">
+                      {isModalMuted ? 'volume_off' : 'volume_up'}
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedReelModal(null)}
+                    className="w-8 h-8 rounded-full bg-black/60 text-white flex items-center justify-center hover:bg-black/90 backdrop-blur-xs transition-colors"
+                  >
+                    <span className="material-symbols-outlined text-base">close</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Bottom Overlay & Interactions */}
+              <div className="relative z-10 p-5 bg-gradient-to-t from-black/95 via-black/50 to-transparent text-white space-y-3">
+                <p className="text-xs line-clamp-3 leading-relaxed drop-shadow">{selectedReelModal.caption}</p>
+                <div className="flex items-center justify-between pt-2 border-t border-white/10">
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => handleToggleReelLike(selectedReelModal.id)}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-all active:scale-125 ${
+                        selectedReelModal.is_liked
+                          ? 'bg-red-600 text-white shadow-lg shadow-red-500/30'
+                          : 'bg-white/10 text-white hover:bg-white/20'
+                      }`}
+                    >
+                      <span className="material-symbols-outlined text-sm" style={selectedReelModal.is_liked ? { fontVariationSettings: "'FILL' 1" } : undefined}>
+                        favorite
+                      </span>
+                      <span>{selectedReelModal.likes_count || 0}</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedReelModal(null);
+                        setCurrentTab('reels');
+                      }}
+                      className="flex items-center gap-1 text-xs text-white/80 hover:text-white bg-white/10 px-3 py-1.5 rounded-full"
+                    >
+                      <span className="material-symbols-outlined text-sm">chat_bubble</span>
+                      <span>Comentar</span>
+                    </button>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard?.writeText(window.location.href);
+                      alert('Link do Reel copiado para a área de transferência!');
+                    }}
+                    className="text-xs font-bold text-konecta-navy bg-konecta-gold px-3.5 py-1.5 rounded-full shadow hover:bg-yellow-400 transition-colors"
+                  >
+                    Partilhar
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
     </div>
   );
 };

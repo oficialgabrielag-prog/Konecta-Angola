@@ -95,7 +95,7 @@ export const Pricing: React.FC<PricingProps> = ({ user, onOpenAuth, onNavigateTa
         subscription_status: 'pending'
       });
 
-      setMessage(`O teu pedido para o plano ${planId.toUpperCase()} foi registado no Cloudflare D1 com o estado "Pendente". A nossa equipa entrará em contacto com as instruções de pagamento seguro.`);
+      setMessage(`O teu pedido para o plano ${planId.toUpperCase()} foi registado com o estado "Pendente". A nossa equipa entrará em contacto com as instruções de pagamento seguro.`);
     } catch (err: any) {
       console.warn('Aviso ao solicitar plano:', err?.message || err);
       setMessage(err?.message || 'Erro ao registar intenção de subscrição.');

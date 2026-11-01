@@ -140,7 +140,7 @@ export const Challenges: React.FC<ChallengesProps> = ({
       onParticipateChallenge();
     } catch (err: any) {
       console.warn('Aviso ao criar desafio:', err?.message || err);
-      alert(err?.message || 'Erro ao criar desafio no Cloudflare D1.');
+      alert(err?.message || 'Erro ao criar desafio.');
     } finally {
       setCreating(false);
     }
@@ -172,7 +172,7 @@ export const Challenges: React.FC<ChallengesProps> = ({
         {challenges.length === 0 ? (
           <div className="col-span-full py-32 text-center bg-white rounded-[32px] border border-dashed border-gray-200">
             <span className="material-symbols-outlined text-5xl text-gray-200 mb-4">emoji_events</span>
-            <p className="text-gray-400 italic">De momento não existem desafios ativos no Cloudflare D1. Sê o primeiro a lançar um desafio!</p>
+            <p className="text-gray-400 italic">De momento não existem desafios ativos. Sê o primeiro a lançar um desafio!</p>
             <button
               onClick={() => user ? setShowModal(true) : onOpenAuth()}
               className="btn-primary mt-6 text-xs"
