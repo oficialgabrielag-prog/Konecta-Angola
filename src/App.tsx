@@ -5,6 +5,7 @@ import { BottomNav } from './components/BottomNav';
 import { Home } from './pages/Home';
 import { Explore } from './pages/Explore';
 import { CreateIdea } from './pages/CreateIdea';
+import { CreateSheet } from './components/CreateSheet';
 import { Challenges } from './pages/Challenges';
 import { Projects } from './pages/Projects';
 import { Community as CommunityPage } from './pages/Community';
@@ -33,6 +34,9 @@ import { OrganizationDetail } from './pages/OrganizationDetail';
 import { DigitalLibrary } from './pages/DigitalLibrary';
 import { Settings } from './pages/Settings';
 import { PolicyCenter } from './pages/PolicyCenter';
+import { PrivacyPolicyPage } from './pages/PrivacyPolicyPage';
+import { Verification } from './pages/Verification';
+import { Plans } from './pages/Plans';
 import { OnboardingModal } from './components/OnboardingModal';
 import { d1Client } from './lib/d1Client';
 import { supabase } from './lib/supabaseClient';
@@ -41,6 +45,9 @@ import { OfflineIndicator } from './components/PWAComponents';
 import { ImageViewerModal } from './components/ImageViewerModal';
 import { motion, AnimatePresence } from 'motion/react';
 import { CANONICAL_IDEAS, CANONICAL_CHALLENGES, CANONICAL_PROJECTS } from './lib/canonicalData';
+import { useUI } from './context/UIContext';
+import { ShareSheet } from './components/ShareSheet';
+import { PostCreationBox } from './components/PostCreationBox';
 
 export default function App() {
   const [currentTab, setCurrentTab] = useState<string>('home');
@@ -59,6 +66,41 @@ export default function App() {
   const [activeOrgSlug, setActiveOrgSlug] = useState<string | null>(null);
   const [isMobileChatOpen, setIsMobileChatOpen] = useState(false);
   const [unreadMessagesCount, setUnreadMessagesCount] = useState(0);
+  
+  const { 
+    isCreateSheetOpen, 
+    setCreateSheetOpen, 
+    isShareSheetOpen, 
+    setShareSheetOpen, 
+    shareData,
+    setCreateIntent,
+    isCreatePostModalOpen,
+    setCreatePostModalOpen
+  } = useUI();
+
+  const handleSelectCreateAction = (action: string) => {
+    setCreateSheetOpen(false);
+    if (!user) {
+      navigateTab('login');
+      return;
+    }
+    switch (action) {
+      case 'post': 
+        setCreatePostModalOpen(true);
+        break;
+      case 'reel': 
+        setCreateIntent('reel');
+        navigateTab('reels');
+        break;
+      case 'idea': 
+        navigateTab('create');
+        break;
+      case 'book': 
+        setCreateIntent('book');
+        navigateTab('library');
+        break;
+    }
+  };
 
   const openOrgDetail = (slug: string) => {
     setActiveOrgSlug(slug);
@@ -120,9 +162,11 @@ export default function App() {
       try {
         const d1Res = await d1Client.auth.me();
         if (d1Res.data?.user) {
-          setUser(d1Res.data.user);
-          setUserRole(d1Res.data.user.role || 'member');
-          if (!d1Res.data.user.user_metadata?.province) {
+          const authUser = d1Res.data.user;
+          setUser(authUser);
+          const isUserAdmin = authUser.email === 'oficialgabrielag@gmail.com' || authUser.email === 'officialgabrielag@gmail.com' || authUser.role === 'admin' || (await d1Client.isAdmin());
+          setUserRole(isUserAdmin ? 'admin' : (authUser.role || 'member'));
+          if (!authUser.user_metadata?.province) {
             setShowOnboarding(true);
           }
         } else {
@@ -139,18 +183,104 @@ export default function App() {
     initAuth();
   }, []);
 
+  // Handle direct URLs via pathname (/p/:id, /r/:id, /i/:id, /c/:slug, /u/:username, /l/:id)
+  useEffect(() => {
+    const handleLocationRoute = async () => {
+      const path = window.location.pathname;
+      if (path.startsWith('/p/')) {
+        const id = path.replace('/p/', '').split('/')[0];
+        if (id) {
+          try {
+            const res = await d1Client.ideas.getById(id);
+            if (res.data) {
+              setSelectedPost(res.data);
+              setCurrentTab('post-detail');
+            }
+          } catch (e) {
+            console.error('Erro ao resolver rota /p/:id:', e);
+          }
+        }
+      } else if (path.startsWith('/r/')) {
+        const id = path.replace('/r/', '').split('/')[0];
+        if (id) {
+          setSelectedReelId(id);
+          setCurrentTab('reels');
+        }
+      } else if (path.startsWith('/i/')) {
+        const id = path.replace('/i/', '').split('/')[0];
+        if (id) {
+          setSelectedIdeaId(id);
+          setCurrentTab('idea-detail');
+        }
+      } else if (path.startsWith('/c/')) {
+        const slug = path.replace('/c/', '').split('/')[0];
+        if (slug) {
+          setActiveCommunitySlug(slug);
+          setCurrentTab('community-detail');
+        }
+      } else if (path.startsWith('/u/')) {
+        const uid = path.replace('/u/', '').split('/')[0];
+        if (uid) {
+          setSelectedUserId(uid);
+          setCurrentTab('public-profile');
+        }
+      } else if (path.startsWith('/privacy') || path.startsWith('/politica-privacidade')) {
+        setCurrentTab('privacy-policy');
+      } else if (path.startsWith('/l/')) {
+        setCurrentTab('library');
+      }
+    };
+
+    handleLocationRoute();
+    window.addEventListener('popstate', handleLocationRoute);
+    return () => window.removeEventListener('popstate', handleLocationRoute);
+  }, []);
+
+  const [activeToast, setActiveToast] = useState<{ title: string; body?: string } | null>(null);
+
   // Realtime notification channel
   useEffect(() => {
     if (!user) return;
 
     fetchNotifications();
-    const unsubscribe = KonectaRealtimeService.subscribe('notifications', (payload: any) => {
+    const unsubscribeNotif = KonectaRealtimeService.subscribe('notifications', (payload: any) => {
       if (payload.new && payload.new.user_id === user.id) {
         fetchNotifications();
+        if (payload.new.title) {
+          setActiveToast({ title: payload.new.title, body: payload.new.body });
+          setTimeout(() => setActiveToast(null), 4500);
+        }
       }
     });
 
-    return () => unsubscribe();
+    const unsubscribeIdeas = KonectaRealtimeService.subscribe('ideas', () => {
+      fetchInitialData();
+    });
+
+    const unsubscribeProjects = KonectaRealtimeService.subscribe('projects', () => {
+      fetchInitialData();
+    });
+
+    const unsubscribeChallenges = KonectaRealtimeService.subscribe('challenges', () => {
+      fetchInitialData();
+    });
+
+    const unsubscribeProfiles = KonectaRealtimeService.subscribe('profiles', () => {
+      fetchInitialData();
+    });
+
+    const unsubscribePosts = KonectaRealtimeService.subscribe('posts', () => {
+      fetchInitialData();
+    });
+
+    return () => {
+      unsubscribeNotif();
+      unsubscribeIdeas();
+      unsubscribeProjects();
+      unsubscribeChallenges();
+      unsubscribeProfiles();
+      unsubscribePosts();
+    };
   }, [user]);
 
   // Online presence heartbeat
@@ -350,11 +480,33 @@ export default function App() {
 
   // Auth Screens
   if (currentTab === 'login') {
-    return <Login onSuccess={(u) => { setUser(u); setCurrentTab('home'); }} onNavigateRegister={() => setCurrentTab('register')} onBack={() => setCurrentTab('home')} />;
+    return (
+      <Login 
+        onSuccess={async (u) => { 
+          setUser(u); 
+          const isAdm = u?.email === 'oficialgabrielag@gmail.com' || u?.email === 'officialgabrielag@gmail.com' || u?.role === 'admin' || (await d1Client.isAdmin());
+          setUserRole(isAdm ? 'admin' : (u?.role || 'member'));
+          setCurrentTab('home'); 
+        }} 
+        onNavigateRegister={() => setCurrentTab('register')} 
+        onBack={() => setCurrentTab('home')} 
+      />
+    );
   }
 
   if (currentTab === 'register') {
-    return <Register onSuccess={(u) => { setUser(u); setCurrentTab('home'); }} onNavigateLogin={() => setCurrentTab('login')} onBack={() => setCurrentTab('home')} />;
+    return (
+      <Register 
+        onSuccess={async (u) => { 
+          setUser(u); 
+          const isAdm = u?.email === 'oficialgabrielag@gmail.com' || u?.email === 'officialgabrielag@gmail.com' || u?.role === 'admin' || (await d1Client.isAdmin());
+          setUserRole(isAdm ? 'admin' : (u?.role || 'member'));
+          setCurrentTab('home'); 
+        }} 
+        onNavigateLogin={() => setCurrentTab('login')} 
+        onBack={() => setCurrentTab('home')} 
+      />
+    );
   }
 
   return (
@@ -364,10 +516,11 @@ export default function App() {
         currentTab={currentTab}
         setCurrentTab={navigateTab}
         user={user}
-        isAdmin={userRole === 'admin'}
+        isAdmin={userRole === 'admin' || user?.email === 'oficialgabrielag@gmail.com' || user?.email === 'officialgabrielag@gmail.com'}
         onSignOut={handleSignOut}
         unreadCount={unreadCount}
         unreadMessagesCount={unreadMessagesCount}
+        variant={currentTab === 'reels' ? 'overlay' : 'default'}
       />
 
       <main className="flex-1">
@@ -568,6 +721,7 @@ export default function App() {
                 onOpenAuth={() => navigateTab('login')}
                 onConversationOpenChange={(open) => setIsMobileChatOpen(open)}
                 onUnreadCountChange={(count) => setUnreadMessagesCount(count)}
+                onNavigateTab={navigateTab}
               />
             )}
 
@@ -633,12 +787,19 @@ export default function App() {
                 user={user}
                 onOpenAuth={() => navigateTab('login')}
                 onNavigateTab={navigateTab}
+                onUpdateProfile={handleUpdateProfile}
               />
             )}
 
             {currentTab === 'policy-center' && (
               <PolicyCenter
                 onNavigateTab={navigateTab}
+              />
+            )}
+
+            {currentTab === 'privacy-policy' && (
+              <PrivacyPolicyPage
+                onBack={() => navigateTab('home')}
               />
             )}
 
@@ -649,6 +810,47 @@ export default function App() {
                 onNavigateTab={navigateTab}
               />
             )}
+
+            {currentTab === 'verification' && (
+              <Verification
+                user={user}
+                onOpenAuth={() => navigateTab('login')}
+                onNavigateTab={navigateTab}
+              />
+            )}
+
+            {currentTab === 'plans' && (
+              <Plans
+                user={user}
+                onOpenAuth={() => navigateTab('login')}
+                onNavigateTab={navigateTab}
+              />
+            )}
+
+
+            {![
+              'home', 'explore', 'create', 'post-detail', 'public-profile', 'reels',
+              'project-detail', 'community-detail', 'community-settings', 'community-feed',
+              'communities', 'idea-detail', 'events', 'organizations', 'org-detail',
+              'library', 'messages', 'challenges', 'profile', 'notifications',
+              'pricing', 'settings', 'policy-center', 'privacy-policy', 'admin', 'verification', 'plans'
+            ].includes(currentTab) && (
+              <div className="max-w-md mx-auto px-6 py-28 text-center space-y-4">
+                <div className="w-16 h-16 rounded-2xl bg-konecta-navy/5 text-konecta-navy flex items-center justify-center mx-auto text-xl font-bold font-mono">
+                  404
+                </div>
+                <h3 className="text-lg font-bold text-konecta-navy uppercase tracking-tight">Página não encontrada</h3>
+                <p className="text-xs text-gray-500 leading-relaxed">
+                  O endereço solicitado não existe ou já não se encontra disponível na rede Konecta.
+                </p>
+                <button 
+                  onClick={() => navigateTab('home')} 
+                  className="bg-konecta-navy text-white hover:bg-konecta-gold hover:text-konecta-navy py-2.5 px-6 rounded-xl text-xs font-bold uppercase tracking-wider transition-all"
+                >
+                  Voltar ao Início
+                </button>
+              </div>
+            )}
           </motion.div>
         </AnimatePresence>
       </main>
@@ -658,12 +860,72 @@ export default function App() {
         setCurrentTab={navigateTab}
         user={user}
         onOpenAuth={() => navigateTab('login')}
+        onOpenCreateMenu={() => setCreateSheetOpen(true)}
         unreadCount={unreadCount}
         hidden={currentTab === 'messages' && isMobileChatOpen}
+        variant={currentTab === 'reels' ? 'overlay' : 'default'}
       />
 
-      <Footer onNavigateTab={navigateTab} />
+      <CreateSheet 
+        isOpen={isCreateSheetOpen} 
+        onClose={() => setCreateSheetOpen(false)} 
+        onSelectAction={handleSelectCreateAction} 
+      />
+
+      <ShareSheet 
+        isOpen={isShareSheetOpen}
+        onClose={() => setShareSheetOpen(false)}
+        {...(shareData || { targetId: '', targetType: '', title: '', authorName: '' })}
+      />
+
+      {isCreatePostModalOpen && (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs" 
+          onClick={() => setCreatePostModalOpen(false)}
+        >
+          <div className="w-full max-w-lg" onClick={e => e.stopPropagation()}>
+            <PostCreationBox 
+              onPostCreated={() => {
+                setCreatePostModalOpen(false);
+                fetchInitialData();
+              }}
+              onClose={() => setCreatePostModalOpen(false)}
+            />
+          </div>
+        </div>
+      )}
+
+
+      {currentTab !== 'reels' && currentTab !== 'messages' && (
+        <Footer onNavigateTab={navigateTab} />
+      )}
       <OfflineIndicator />
+
+      {/* Discreet In-App Notification Toast */}
+      <AnimatePresence>
+        {activeToast && (
+          <motion.div
+            initial={{ opacity: 0, y: -20, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -20, scale: 0.95 }}
+            onClick={() => {
+              navigateTab('notifications');
+              setActiveToast(null);
+            }}
+            className="fixed top-24 right-4 z-50 bg-white/95 backdrop-blur-md border border-konecta-gold/40 shadow-xl rounded-2xl p-4 max-w-sm flex items-start gap-3 cursor-pointer hover:border-konecta-gold transition-all"
+          >
+            <div className="w-8 h-8 rounded-full bg-konecta-gold/20 text-konecta-navy flex items-center justify-center shrink-0">
+              <span className="material-symbols-outlined text-lg text-konecta-navy">notifications_active</span>
+            </div>
+            <div className="flex-1 min-w-0">
+              <h5 className="text-xs font-bold text-konecta-navy truncate">{activeToast.title}</h5>
+              {activeToast.body && (
+                <p className="text-[11px] text-gray-600 line-clamp-2 mt-0.5">{activeToast.body}</p>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {showOnboarding && user && (
         <OnboardingModal

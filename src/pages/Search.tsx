@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { Idea, Profile, Project, Community, Event } from '../types';
 import { d1Client } from '../lib/d1Client';
+import { UserBadge } from '../components/UserBadges';
 
 interface SearchProps {
   ideas: Idea[];
@@ -174,7 +175,10 @@ export const Search: React.FC<SearchProps> = ({ ideas, projects, profiles, commu
                           )}
                         </div>
                         <div className="truncate flex-1">
-                          <h4 className="font-bold text-sm text-konecta-navy group-hover:text-konecta-gold transition-colors truncate">{profile.full_name || 'Utilizador'}</h4>
+                          <div className="flex items-center gap-1.5 truncate">
+                            <h4 className="font-bold text-sm text-konecta-navy group-hover:text-konecta-gold transition-colors truncate">{profile.full_name || 'Utilizador'}</h4>
+                            <UserBadge profile={profile} size="xs" showPlan={true} />
+                          </div>
                           <p className="text-[10px] text-gray-400 uppercase tracking-widest">{profile.province || 'Angola'}</p>
                           {profile.bio && <p className="text-xs text-gray-500 truncate mt-0.5">{profile.bio}</p>}
                         </div>

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { d1Client } from '../lib/d1Client';
 import { uploadMediaToCloudinary } from '../lib/cloudinary';
+import { OrgBadge, isOrgVerified } from '../components/UserBadges';
 
 interface OrganizationsProps {
   user: any;
@@ -395,17 +396,14 @@ export const Organizations: React.FC<OrganizationsProps> = ({ user, onOpenAuth, 
                           org.name.charAt(0)
                         )}
                       </div>
-                      {isVerified && (
-                        <span className="bg-blue-50 text-blue-600 text-[10px] font-bold px-2.5 py-1 rounded-full flex items-center gap-1 border border-blue-100">
-                          <span className="material-symbols-outlined text-[14px]">verified</span>
-                          Verificada
-                        </span>
-                      )}
+                      <OrgBadge organization={org} size="sm" showLabel={true} />
                     </div>
 
-                    <h3 className="text-lg font-bold text-konecta-navy mb-1 group-hover:text-konecta-gold transition-colors">
-                      {org.name}
-                    </h3>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <h3 className="text-lg font-bold text-konecta-navy mb-1 group-hover:text-konecta-gold transition-colors">
+                        {org.name}
+                      </h3>
+                    </div>
                     
                     <div className="flex items-center gap-2 text-xs text-gray-500 mb-3">
                       <span className="material-symbols-outlined text-[16px] text-gray-400">location_on</span>

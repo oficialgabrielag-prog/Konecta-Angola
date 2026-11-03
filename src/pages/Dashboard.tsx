@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { d1Client } from '../lib/d1Client';
 import { NotificationItem } from '../types';
+import { useT } from '../i18n/LanguageContext';
 
 interface DashboardProps {
   user: any;
@@ -14,6 +15,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
   onOpenAuth,
   onNavigateTab
 }) => {
+  const t = useT();
   const [ideasCount, setIdeasCount] = useState(0);
   const [projectsCount, setProjectsCount] = useState(0);
   const [challengesCount, setChallengesCount] = useState(0);
@@ -59,12 +61,12 @@ export const Dashboard: React.FC<DashboardProps> = ({
         <div className="w-16 h-16 rounded-full bg-konecta-navy/5 flex items-center justify-center mx-auto mb-4 text-konecta-navy">
           <span className="material-symbols-outlined text-3xl">dashboard</span>
         </div>
-        <h2 className="text-2xl font-bold mb-3 text-konecta-navy">Painel de Controlo</h2>
+        <h2 className="text-2xl font-bold mb-3 text-konecta-navy">{t('dashboard.title')}</h2>
         <p className="text-gray-500 mb-8 text-sm leading-relaxed">
-          Inicia sessão para consultar as tuas métricas de impacto, projetos e notificações da rede KONECTA.
+          {t('dashboard.login_hint')}
         </p>
         <button onClick={onOpenAuth} className="btn-primary w-full text-xs py-3.5">
-          Entrar na Conta →
+          {t('profile.login_btn')}
         </button>
       </div>
     );
@@ -79,10 +81,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
       
       {/* Header */}
       <header className="mb-12">
-        <span className="feature-kicker">Visão Geral da Atividade</span>
-        <h1 className="hero-title">{user.user_metadata?.full_name || 'Inovador KONECTA'}</h1>
+        <span className="text-[10px] font-extrabold text-konecta-gold uppercase tracking-[0.2em]">{t('dashboard.overview')}</span>
+        <h1 className="hero-title">{user.user_metadata?.full_name || t('dashboard.default_user_name')}</h1>
         <p className="text-gray-500 mt-3 max-w-xl text-sm leading-relaxed">
-          Acompanha o teu progresso real, estatísticas de participação e as tuas contribuições para o ecossistema angolano.
+          {t('dashboard.subtitle')}
         </p>
       </header>
 
@@ -96,7 +98,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         >
           <span className="material-symbols-outlined text-konecta-gold mb-2 text-2xl">lightbulb</span>
           <span className="text-3xl font-black text-konecta-navy mb-1">{loading ? '...' : ideasCount}</span>
-          <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Minhas Ideias</span>
+          <span className="text-[9px] font-extrabold uppercase tracking-[0.2em] text-gray-400">{t('profile.ideas_tab')}</span>
         </motion.div>
 
         <motion.div 
@@ -108,7 +110,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         >
           <span className="material-symbols-outlined text-konecta-gold mb-2 text-2xl">folder_special</span>
           <span className="text-3xl font-black text-konecta-navy mb-1">{loading ? '...' : projectsCount}</span>
-          <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Projetos Ativos</span>
+          <span className="text-[9px] font-extrabold uppercase tracking-[0.2em] text-gray-400">{t('profile.projects_tab')}</span>
         </motion.div>
 
         <motion.div 
@@ -120,7 +122,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         >
           <span className="material-symbols-outlined text-konecta-gold mb-2 text-2xl">emoji_events</span>
           <span className="text-3xl font-black text-konecta-navy mb-1">{loading ? '...' : challengesCount}</span>
-          <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Desafios Aceites</span>
+          <span className="text-[9px] font-extrabold uppercase tracking-[0.2em] text-gray-400">{t('dashboard.challenges_accepted')}</span>
         </motion.div>
 
         <motion.div 
@@ -132,7 +134,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         >
           <span className="material-symbols-outlined text-konecta-gold mb-2 text-2xl">event</span>
           <span className="text-3xl font-black text-konecta-navy mb-1">{loading ? '...' : eventsCount}</span>
-          <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Inscrições Eventos</span>
+          <span className="text-[9px] font-extrabold uppercase tracking-[0.2em] text-gray-400">{t('dashboard.event_registrations')}</span>
         </motion.div>
 
         <motion.div 
@@ -144,7 +146,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         >
           <span className="material-symbols-outlined text-konecta-gold mb-2 text-2xl">bookmark</span>
           <span className="text-3xl font-black text-konecta-navy mb-1">{loading ? '...' : bookmarksCount}</span>
-          <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Favoritos Salvos</span>
+          <span className="text-[9px] font-extrabold uppercase tracking-[0.2em] text-gray-400">{t('dashboard.saved_bookmarks')}</span>
         </motion.div>
       </div>
 
@@ -156,13 +158,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
           <div className="flex items-center justify-between border-b border-gray-100 pb-3">
             <h3 className="text-base font-bold text-konecta-navy flex items-center gap-2">
               <span className="material-symbols-outlined text-konecta-gold text-[20px]">notifications</span>
-              Últimas Notificações
+              {t('dashboard.recent_notifications')}
             </h3>
             <button 
               onClick={() => navigate('notifications')}
-              className="text-xs font-bold text-konecta-navy hover:text-konecta-gold transition-colors"
+              className="text-[10px] font-extrabold text-konecta-navy hover:text-konecta-gold transition-colors uppercase tracking-[0.1em]"
             >
-              Ver todas →
+              {t('dashboard.view_all')}
             </button>
           </div>
 
@@ -171,7 +173,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
               <div className="p-8 text-center bg-white rounded-2xl border border-dashed border-gray-200">
                 <span className="material-symbols-outlined text-3xl text-gray-300 mb-2">notifications_none</span>
                 <p className="text-xs text-gray-400 italic">
-                  Ainda não tens notificações recentes registadas.
+                  {t('dashboard.notifications_empty')}
                 </p>
               </div>
             ) : (
@@ -196,7 +198,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         {/* Quick Actions */}
         <div className="lg:col-span-5 space-y-4">
           <h3 className="text-base font-bold text-konecta-navy border-b border-gray-100 pb-3">
-            Ações Rápidas
+            {t('dashboard.quick_actions')}
           </h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <button 
@@ -206,8 +208,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
               <span className="material-symbols-outlined mb-2 text-2xl text-konecta-gold group-hover:text-konecta-gold block">
                 add_circle
               </span>
-              <span className="font-bold text-sm block">Submeter Ideia</span>
-              <span className="text-[11px] text-gray-400 group-hover:text-white/70 block mt-1">Partilhar nova proposta</span>
+              <span className="font-bold text-sm block">{t('dashboard.submit_idea')}</span>
+              <span className="text-[11px] text-gray-400 group-hover:text-white/70 block mt-1">{t('dashboard.submit_idea_desc')}</span>
             </button>
 
             <button 
@@ -217,8 +219,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
               <span className="material-symbols-outlined mb-2 text-2xl text-konecta-gold group-hover:text-konecta-gold block">
                 folder_special
               </span>
-              <span className="font-bold text-sm block">Gerir Projetos</span>
-              <span className="text-[11px] text-gray-400 group-hover:text-white/70 block mt-1">Tarefas e equipas</span>
+              <span className="font-bold text-sm block">{t('dashboard.manage_projects')}</span>
+              <span className="text-[11px] text-gray-400 group-hover:text-white/70 block mt-1">{t('dashboard.manage_projects_desc')}</span>
             </button>
 
             <button 
@@ -228,8 +230,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
               <span className="material-symbols-outlined mb-2 text-2xl text-konecta-gold group-hover:text-konecta-gold block">
                 chat
               </span>
-              <span className="font-bold text-sm block">Mensagens</span>
-              <span className="text-[11px] text-gray-400 group-hover:text-white/70 block mt-1">Conversas privadas</span>
+              <span className="font-bold text-sm block">{t('nav.messages')}</span>
+              <span className="text-[11px] text-gray-400 group-hover:text-white/70 block mt-1">{t('dashboard.messages_desc')}</span>
             </button>
 
             <button 
@@ -239,8 +241,8 @@ export const Dashboard: React.FC<DashboardProps> = ({
               <span className="material-symbols-outlined mb-2 text-2xl text-konecta-gold group-hover:text-konecta-gold block">
                 explore
               </span>
-              <span className="font-bold text-sm block">Explorar Feed</span>
-              <span className="text-[11px] text-gray-400 group-hover:text-white/70 block mt-1">Iniciativas de Angola</span>
+              <span className="font-bold text-sm block">{t('dashboard.explore_feed')}</span>
+              <span className="text-[11px] text-gray-400 group-hover:text-white/70 block mt-1">{t('dashboard.explore_feed_desc')}</span>
             </button>
           </div>
         </div>

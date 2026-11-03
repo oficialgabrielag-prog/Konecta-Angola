@@ -61,6 +61,8 @@ export const d1Client: any = {
             username,
             display_name: displayName,
             bio: 'Membro da comunidade Konecta Angola',
+            province: data.province || 'Luanda',
+            municipality: data.municipality || '',
             avatar_url: null,
             cover_url: null,
             visibility: 'public',
@@ -75,6 +77,8 @@ export const d1Client: any = {
           username,
           display_name: displayName,
           bio: 'Membro da comunidade Konecta Angola',
+          province: data.province || 'Luanda',
+          municipality: data.municipality || '',
           avatar_url: null,
           cover_url: null,
           visibility: 'public'
@@ -84,7 +88,9 @@ export const d1Client: any = {
       const formattedProfile = {
         ...profile,
         id: profile.user_id,
-        full_name: profile.display_name
+        full_name: profile.display_name,
+        province: profile.province || data.province || 'Luanda',
+        municipality: profile.municipality || data.municipality || ''
       };
 
       const userObj = {
@@ -161,12 +167,16 @@ export const d1Client: any = {
       const formattedProfile = {
         ...profile,
         id: profile.user_id,
-        full_name: profile.display_name
+        full_name: profile.display_name,
+        province: profile.province || user.user_metadata?.province || 'Luanda',
+        municipality: profile.municipality || user.user_metadata?.municipality || ''
       };
 
       const userObj = {
         ...user,
         role: 'member',
+        province: formattedProfile.province,
+        municipality: formattedProfile.municipality,
         user_metadata: {
           ...user.user_metadata,
           ...formattedProfile
@@ -208,6 +218,8 @@ export const d1Client: any = {
             username,
             display_name: displayName,
             bio: 'Membro da comunidade Konecta Angola',
+            province: user.user_metadata?.province || 'Luanda',
+            municipality: user.user_metadata?.municipality || '',
             avatar_url: user.user_metadata?.avatar_url || null,
             cover_url: null,
             visibility: 'public',
@@ -220,19 +232,25 @@ export const d1Client: any = {
         profile = created || {
           user_id: user.id,
           username,
-          display_name: displayName
+          display_name: displayName,
+          province: user.user_metadata?.province || 'Luanda',
+          municipality: user.user_metadata?.municipality || ''
         };
       }
 
       const formattedProfile = {
         ...profile,
         id: profile.user_id,
-        full_name: profile.display_name
+        full_name: profile.display_name,
+        province: profile.province || user.user_metadata?.province || 'Luanda',
+        municipality: profile.municipality || user.user_metadata?.municipality || ''
       };
 
       const userObj = {
         ...user,
         role: 'member',
+        province: formattedProfile.province,
+        municipality: formattedProfile.municipality,
         user_metadata: {
           ...user.user_metadata,
           ...formattedProfile
@@ -262,7 +280,13 @@ export const d1Client: any = {
         .maybeSingle();
 
       if (data) {
-        const formatted = { ...data, id: data.user_id, full_name: data.display_name };
+        const formatted = { 
+          ...data, 
+          id: data.user_id, 
+          full_name: data.display_name,
+          province: data.province || 'Luanda',
+          municipality: data.municipality || ''
+        };
         return { data: wrapObject(formatted), error: null };
       }
       return { data: null, error };
@@ -277,6 +301,8 @@ export const d1Client: any = {
       if (data.cover_url !== undefined) payload.cover_url = data.cover_url;
       if (data.visibility !== undefined) payload.visibility = data.visibility;
       if (data.username !== undefined) payload.username = data.username;
+      if (data.province !== undefined) payload.province = data.province;
+      if (data.municipality !== undefined) payload.municipality = data.municipality;
 
       const { data: updated, error } = await supabase
         .from('profiles')
@@ -285,7 +311,13 @@ export const d1Client: any = {
         .select()
         .maybeSingle();
 
-      const formatted = updated ? { ...updated, id: updated.user_id, full_name: updated.display_name } : null;
+      const formatted = updated ? { 
+        ...updated, 
+        id: updated.user_id, 
+        full_name: updated.display_name,
+        province: updated.province || 'Luanda',
+        municipality: updated.municipality || ''
+      } : null;
       return {
         data: wrapObject(formatted),
         error
@@ -1067,33 +1099,42 @@ export const d1Client: any = {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return { data: null, error: { message: 'Não autenticado' } };
 
-      const { data: created, error } = await supabase
+      const cleanTitle = (data.title || '').trim();
+      const baseSlug = cleanTitle
+        .toLowerCase()
+        .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/(^-|-$)/g, '') || 'ideia';
+      const slug = `${baseSlug}-${Math.random().toString(36).substring(2, 8)}`;
+
+      const { data: insertedData, error: insertError } = await supabase
         .from('ideas')
         .insert({
-          title: data.title.trim(),
-          description: data.description.trim(),
-          category: data.category || 'Inovação',
-          status: data.status || 'open',
           author_id: user.id,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
+          title: cleanTitle,
+          slug,
+          summary: data.description?.trim().substring(0, 300) || '',
+          description: data.description?.trim() || '',
+          category: data.category || 'Inovação',
+          status: 'submitted',
+          visibility: 'public',
         })
         .select()
-        .single();
+        .maybeSingle();
 
-      if (error || !created) return { data: null, error };
+      if (insertError || !insertedData) return { data: null, error: insertError };
 
       const formatted = {
-        id: created.id,
-        title: created.title,
-        description: created.description,
-        category: created.category,
-        status: created.status,
-        author_id: created.author_id,
-        user_id: created.author_id,
+        id: insertedData.id,
+        title: insertedData.title,
+        description: insertedData.description,
+        category: insertedData.category,
+        status: insertedData.status,
+        author_id: insertedData.author_id,
+        user_id: insertedData.author_id,
         votes_count: 0,
         comments_count: 0,
-        created_at: created.created_at,
+        created_at: insertedData.created_at,
         profiles: { id: user.id, full_name: user.user_metadata?.full_name || 'Inovador Konecta' }
       };
 
@@ -1833,32 +1874,41 @@ export const d1Client: any = {
         });
       }
 
-      const formatted = data.map(r => ({
-        id: r.id,
-        author_id: r.author_id,
-        caption: r.caption,
-        video_url: r.video_url,
-        thumbnail_url: r.thumbnail_url,
-        format: r.format,
-        width: r.width,
-        height: r.height,
-        created_at: r.created_at,
-        likes_count: r.reel_reactions?.length || 0,
-        comments_count: r.reel_comments?.length || 0,
-        saves_count: r.reel_saves?.length || 0,
-        is_liked: currentUserId ? (r.reel_reactions || []).some((rx: any) => rx.user_id === currentUserId) : false,
-        is_saved: currentUserId ? (r.reel_saves || []).some((s: any) => s.user_id === currentUserId) : false,
-        profiles: profilesMap[r.author_id] || { id: r.author_id, full_name: 'Criador Konecta' },
-        music_info: r.reel_music_uses?.[0] ? {
-          track: r.reel_music_uses[0].music_tracks,
-          settings: {
-            startMs: r.reel_music_uses[0].start_ms,
-            endMs: r.reel_music_uses[0].end_ms,
-            musicVolume: r.reel_music_uses[0].music_volume,
-            originalVolume: r.reel_music_uses[0].original_audio_volume
-          }
-        } : null
-      }));
+      const formatted = data.map(r => {
+        const musicUse = Array.isArray(r.reel_music_uses) ? r.reel_music_uses[0] : r.reel_music_uses;
+        const trackObj = musicUse?.music_tracks 
+          ? (Array.isArray(musicUse.music_tracks) ? musicUse.music_tracks[0] : musicUse.music_tracks) 
+          : null;
+
+        return {
+          id: r.id,
+          author_id: r.author_id,
+          caption: r.caption,
+          video_url: r.video_url,
+          thumbnail_url: r.thumbnail_url,
+          format: r.format,
+          width: r.width,
+          height: r.height,
+          created_at: r.created_at,
+          likes_count: r.reel_reactions?.length || 0,
+          comments_count: r.reel_comments?.length || 0,
+          saves_count: r.reel_saves?.length || 0,
+          is_liked: currentUserId ? (r.reel_reactions || []).some((rx: any) => rx.user_id === currentUserId) : false,
+          is_saved: currentUserId ? (r.reel_saves || []).some((s: any) => s.user_id === currentUserId) : false,
+          profiles: profilesMap[r.author_id] || { id: r.author_id, full_name: 'Criador Konecta' },
+          music_info: musicUse && trackObj ? {
+            track: trackObj,
+            settings: {
+              startMs: musicUse.start_ms || 0,
+              endMs: musicUse.end_ms || 0,
+              musicVolume: musicUse.music_volume ?? 0.8,
+              originalVolume: musicUse.original_audio_volume ?? 1
+            }
+          } : null
+        };
+      });
+
+
 
       return { data: wrapArray(formatted), error: null };
     },
@@ -2153,7 +2203,7 @@ export const d1Client: any = {
           cover_photo_url: data.cover_photo_url || null,
           community_id: data.community_id || null,
           organizer_id: user.id,
-          status: 'published',
+          status: 'scheduled',
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
         })
@@ -2493,50 +2543,189 @@ export const d1Client: any = {
     },
 
     async getMessages(convId: string): Promise<any> {
+      const nowIso = new Date().toISOString();
       const { data: messages, error } = await supabase
         .from('messages')
         .select('*')
         .eq('conversation_id', convId)
+        .or(`expires_at.is.null,expires_at.gt.${nowIso}`)
         .order('created_at', { ascending: true });
+
+      if (error) {
+        console.error('Erro ao ler mensagens do Supabase:', error);
+      }
 
       const formatted = (messages || []).map(m => ({
         id: m.id,
         conversation_id: m.conversation_id,
         sender_id: m.sender_id,
         content: m.body,
-        media_url: m.media_url || null,
+        body: m.body,
+        media_url: m.attachment_url || null,
+        attachment_url: m.attachment_url || null,
+        message_type: m.message_type || (m.attachment_url ? 'image' : 'text'),
+        expires_at: m.expires_at,
         created_at: m.created_at
       }));
 
       return { data: wrapArray(formatted), error };
     },
 
-    async sendMessage(convId: string, content: string, mediaUrl?: string): Promise<any> {
+    async sendMessage(convId: string, content: string, mediaUrl?: string, expiresHours?: number, messageType?: string): Promise<any> {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return { data: null, error: { message: 'Não autenticado' } };
 
+      const trimmedContent = (content || '').trim();
+      let determinedType = messageType;
+      if (!determinedType) {
+        if (mediaUrl) {
+          const lower = (mediaUrl + ' ' + trimmedContent).toLowerCase();
+          if (lower.includes('nota de voz') || lower.includes('.webm') || lower.match(/\.(mp3|wav|ogg|m4a)(\?.*)?$/i)) {
+            determinedType = 'audio';
+          } else if (lower.match(/\.(mp4|mov|m4v|avi)(\?.*)?$/i)) {
+            determinedType = 'video';
+          } else {
+            determinedType = 'image';
+          }
+        } else {
+          determinedType = 'text';
+        }
+      }
+
+      const expiresAt = expiresHours && expiresHours > 0 
+        ? new Date(Date.now() + expiresHours * 3600 * 1000).toISOString() 
+        : null;
+
+      const insertPayload: any = {
+        conversation_id: convId,
+        sender_id: user.id,
+        body: trimmedContent || (mediaUrl ? 'Mídia enviada' : 'Mensagem'),
+        attachment_url: mediaUrl || null,
+        message_type: determinedType,
+        expires_at: expiresAt
+      };
+
       const { data: newMsg, error } = await supabase
         .from('messages')
-        .insert({
-          conversation_id: convId,
-          sender_id: user.id,
-          body: content.trim(),
-          media_url: mediaUrl || null,
-          created_at: new Date().toISOString()
-        })
+        .insert(insertPayload)
         .select()
         .single();
+
+      if (error) {
+        console.error('Erro no Supabase ao inserir mensagem:', error);
+        return { data: null, error };
+      }
 
       await supabase
         .from('conversations')
         .update({ updated_at: new Date().toISOString() })
         .eq('id', convId);
 
-      const formatted = newMsg ? { ...newMsg, content: newMsg.body } : null;
+      const formatted = newMsg ? {
+        id: newMsg.id,
+        conversation_id: newMsg.conversation_id,
+        sender_id: newMsg.sender_id,
+        content: newMsg.body,
+        body: newMsg.body,
+        media_url: newMsg.attachment_url || null,
+        attachment_url: newMsg.attachment_url || null,
+        message_type: newMsg.message_type,
+        expires_at: newMsg.expires_at,
+        created_at: newMsg.created_at
+      } : null;
+
       return {
         data: wrapObject(formatted),
-        error
+        error: null
       };
+    },
+
+    async getEligibleOnlineFriends(): Promise<any> {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return { data: wrapObject({ friends: [], isMyStatusVisible: true }), error: null };
+
+      // 1. Check current user privacy settings
+      const { data: userSetting } = await supabase
+        .from('user_settings')
+        .select('privacy_settings')
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+      const isMyStatusVisible = userSetting?.privacy_settings?.show_online_status !== false;
+
+      // 2. Fetch friend candidates: following, followers, accepted friend requests
+      const [followingRes, followersRes, friendReqsRes] = await Promise.all([
+        supabase.from('follows').select('following_id').eq('follower_id', user.id),
+        supabase.from('follows').select('follower_id').eq('following_id', user.id),
+        supabase.from('friend_requests').select('sender_id, receiver_id').eq('status', 'accepted').or(`sender_id.eq.${user.id},receiver_id.eq.${user.id}`)
+      ]);
+
+      const candidateIds = new Set<string>();
+      (followingRes.data || []).forEach(f => { if (f.following_id && f.following_id !== user.id) candidateIds.add(f.following_id); });
+      (followersRes.data || []).forEach(f => { if (f.follower_id && f.follower_id !== user.id) candidateIds.add(f.follower_id); });
+      (friendReqsRes.data || []).forEach(r => {
+        const other = r.sender_id === user.id ? r.receiver_id : r.sender_id;
+        if (other && other !== user.id) candidateIds.add(other);
+      });
+
+      // If friend pool is small, supplement with co-members in shared communities
+      if (candidateIds.size < 10) {
+        const { data: myComms } = await supabase
+          .from('community_members')
+          .select('community_id')
+          .eq('user_id', user.id);
+        const myCommIds = (myComms || []).map(c => c.community_id);
+        if (myCommIds.length > 0) {
+          const { data: coMembers } = await supabase
+            .from('community_members')
+            .select('user_id')
+            .in('community_id', myCommIds)
+            .neq('user_id', user.id)
+            .limit(30);
+          (coMembers || []).forEach(m => { if (m.user_id) candidateIds.add(m.user_id); });
+        }
+      }
+
+      if (candidateIds.size === 0) {
+        return { data: wrapObject({ friends: [], isMyStatusVisible }), error: null };
+      }
+
+      const idList = Array.from(candidateIds);
+
+      // 3. Batch query user_presence for all candidate IDs
+      const { data: presenceRows } = await supabase
+        .from('user_presence')
+        .select('user_id, last_seen_at, updated_at')
+        .in('user_id', idList);
+
+      const nowTime = Date.now();
+      const onlineUserIds = new Set<string>();
+      (presenceRows || []).forEach(p => {
+        const raw = p.last_seen_at || p.updated_at;
+        if (raw && (nowTime - new Date(raw).getTime() < 300000)) { // 5 minutes
+          onlineUserIds.add(p.user_id);
+        }
+      });
+
+      if (onlineUserIds.size === 0) {
+        return { data: wrapObject({ friends: [], isMyStatusVisible }), error: null };
+      }
+
+      // 4. Batch fetch profiles for online users
+      const { data: onlineProfiles } = await supabase
+        .from('profiles')
+        .select('*')
+        .in('user_id', Array.from(onlineUserIds));
+
+      const formattedFriends = (onlineProfiles || []).map(p => ({
+        ...p,
+        id: p.user_id,
+        user_id: p.user_id,
+        full_name: p.display_name || p.username || 'Membro',
+        display_name: p.display_name || p.username || 'Membro'
+      }));
+
+      return { data: wrapObject({ friends: formattedFriends, isMyStatusVisible }), error: null };
     },
 
     async deleteMessage(messageId: string): Promise<any> {
@@ -2560,15 +2749,21 @@ export const d1Client: any = {
       }
 
       try {
-        const { data: blocks } = await supabase
+        const { data: blocks, error: blockErr } = await supabase
           .from('user_blocks')
-          .select('id')
+          .select('blocker_id')
           .or(`and(blocker_id.eq.${user.id},blocked_id.eq.${targetUserId}),and(blocker_id.eq.${targetUserId},blocked_id.eq.${user.id})`);
+
+        if (blockErr) {
+          console.error('Erro ao verificar user_blocks:', blockErr);
+        }
 
         if (blocks && blocks.length > 0) {
           return { data: null, error: { message: 'Não é possível enviar mensagens a este utilizador devido a restrições de privacidade ou bloqueio.' } };
         }
-      } catch (e) {}
+      } catch (e) {
+        console.error('Exceção ao verificar user_blocks:', e);
+      }
 
       const { data: myMembers } = await supabase
         .from('conversation_members')
@@ -2652,19 +2847,50 @@ export const d1Client: any = {
         .eq('user_id', user.id)
         .order('created_at', { ascending: false });
 
-      const formatted = (notifs || []).map(n => ({
+      if (error || !notifs) {
+        if (error) console.error('Erro ao ler notificações:', error);
+        return { data: wrapArray([]), error };
+      }
+
+      const actorIds = Array.from(new Set(notifs.map(n => n.actor_id).filter(Boolean)));
+      const actorsMap: Record<string, any> = {};
+
+      if (actorIds.length > 0) {
+        const { data: profs } = await supabase
+          .from('profiles')
+          .select('*')
+          .in('user_id', actorIds);
+
+        (profs || []).forEach(p => {
+          actorsMap[p.user_id] = {
+            id: p.user_id,
+            user_id: p.user_id,
+            display_name: p.display_name || p.username || 'Membro',
+            full_name: p.display_name || p.username || 'Membro',
+            avatar_url: p.avatar_url,
+            username: p.username
+          };
+        });
+      }
+
+      const formatted = notifs.map(n => ({
         id: n.id,
         user_id: n.user_id,
+        actor_id: n.actor_id,
+        actor: actorsMap[n.actor_id] || null,
         title: n.title,
         message: n.body,
         body: n.body,
+        target_type: n.target_type,
+        target_id: n.target_id,
         read_at: n.read_at,
         read: Boolean(n.read_at),
         type: n.notification_type || n.type || 'system',
+        notification_type: n.notification_type || n.type || 'system',
         created_at: n.created_at
       }));
 
-      return { data: wrapArray(formatted), error };
+      return { data: wrapArray(formatted), error: null };
     },
 
     async markAllAsRead(): Promise<any> {
@@ -2700,7 +2926,7 @@ export const d1Client: any = {
         target_type: data.target_type,
         target_id: data.target_id,
         reason: data.reason,
-        status: 'pending',
+        status: 'open',
         created_at: new Date().toISOString()
       });
 
@@ -2740,28 +2966,32 @@ export const d1Client: any = {
 
   search: {
     async global(query: string): Promise<any> {
-      const clean = query.trim().toLowerCase();
+      const clean = query.trim();
       if (!clean) {
-        return { data: { ideas: [], profiles: [], projects: [], communities: [], events: [] } };
+        return { data: { ideas: [], posts: [], profiles: [], projects: [], communities: [], events: [], reels: [] } };
       }
 
-      const [postsRes, profsRes, commsRes] = await Promise.all([
-        supabase.from('posts').select('*, post_media(*)').ilike('body', `%${clean}%`).limit(10),
-        supabase.from('profiles').select('*').ilike('display_name', `%${clean}%`).limit(10),
-        supabase.from('communities').select('*').ilike('name', `%${clean}%`).limit(10)
+      const [postsRes, ideasRes, profsRes, commsRes, eventsRes, reelsRes] = await Promise.all([
+        supabase.from('posts').select('*, post_media(*), communities(*)').ilike('body', `%${clean}%`).limit(20),
+        supabase.from('ideas').select('*, profiles(*)').or(`title.ilike.%${clean}%,description.ilike.%${clean}%`).limit(20),
+        supabase.from('profiles').select('*').or(`display_name.ilike.%${clean}%,username.ilike.%${clean}%`).limit(20),
+        supabase.from('communities').select('*').or(`name.ilike.%${clean}%,description.ilike.%${clean}%`).limit(20),
+        supabase.from('events').select('*').or(`title.ilike.%${clean}%,description.ilike.%${clean}%`).limit(20),
+        supabase.from('reels').select('*, profiles(*)').ilike('caption', `%${clean}%`).limit(20)
       ]);
 
-      const ideas = (postsRes.data || []).map(p => ({
-        id: p.id,
-        title: p.body.slice(0, 50),
-        description: p.body,
+      const posts = (postsRes.data || []).map(p => ({
+        ...p,
+        content: p.body,
         image_url: p.post_media?.[0]?.media_url || null
       }));
+
+      const ideas = ideasRes.data || [];
 
       const profiles = (profsRes.data || []).map(p => ({
         ...p,
         id: p.user_id,
-        full_name: p.display_name
+        full_name: p.display_name || p.username || 'Membro'
       }));
 
       const communities = (commsRes.data || []).map(c => ({
@@ -2769,13 +2999,18 @@ export const d1Client: any = {
         image_url: c.avatar_url
       }));
 
+      const events = eventsRes.data || [];
+      const reels = reelsRes.data || [];
+
       return {
         data: {
           ideas,
+          posts,
           profiles,
           projects: communities,
           communities,
-          events: []
+          events,
+          reels
         }
       };
     }
@@ -2881,7 +3116,7 @@ export const d1Client: any = {
 
       const { data } = await supabase
         .from('music_library_admins')
-        .select('id')
+        .select('user_id')
         .eq('user_id', user.id)
         .maybeSingle();
       return !!data;
@@ -2912,7 +3147,6 @@ export const d1Client: any = {
       return { data: wrapObject(data), error };
     }
   },
-
   organizations: {
     async list(filter?: { category?: string; province?: string; search?: string; verified?: boolean; owner_id?: string; my_member?: string }): Promise<any> {
       let query = supabase
@@ -2927,7 +3161,9 @@ export const d1Client: any = {
         query = query.eq('province', filter.province);
       }
       if (filter?.verified !== undefined) {
-        query = query.eq('verified', filter.verified);
+        if (filter.verified) {
+          query = query.eq('verification_status', 'verified');
+        }
       }
       if (filter?.owner_id) {
         query = query.eq('owner_id', filter.owner_id);
@@ -2950,7 +3186,11 @@ export const d1Client: any = {
         ...org,
         followers_count: org.organization_followers?.length || 0,
         members_count: org.organization_members?.length || 0,
-        image_url: org.logo_url || org.cover_url
+        image_url: org.logo_url || org.cover_url,
+        website: org.website_url || org.website,
+        email: org.contact_email || org.email,
+        phone: org.contact_phone || org.phone,
+        verified: org.verification_status === 'verified'
       }));
 
       return { data: wrapArray(formatted), error: null };
@@ -2969,7 +3209,11 @@ export const d1Client: any = {
         ...data,
         followers_count: data.organization_followers?.length || 0,
         members_count: data.organization_members?.length || 0,
-        image_url: data.logo_url || data.cover_url
+        image_url: data.logo_url || data.cover_url,
+        website: data.website_url || data.website,
+        email: data.contact_email || data.email,
+        phone: data.contact_phone || data.phone,
+        verified: data.verification_status === 'verified'
       };
       return { data: wrapObject(formatted), error: null };
     },
@@ -2987,7 +3231,11 @@ export const d1Client: any = {
         ...data,
         followers_count: data.organization_followers?.length || 0,
         members_count: data.organization_members?.length || 0,
-        image_url: data.logo_url || data.cover_url
+        image_url: data.logo_url || data.cover_url,
+        website: data.website_url || data.website,
+        email: data.contact_email || data.email,
+        phone: data.contact_phone || data.phone,
+        verified: data.verification_status === 'verified'
       };
       return { data: wrapObject(formatted), error: null };
     },
@@ -3016,7 +3264,7 @@ export const d1Client: any = {
         .replace(/(^-|-$)/g, '') || 'org';
       const slug = `${baseSlug}-${Date.now().toString().slice(-4)}`;
 
-      let { data, error } = await supabase
+      const { data, error } = await supabase
         .from('organizations')
         .insert({
           name: payload.name.trim(),
@@ -3026,56 +3274,29 @@ export const d1Client: any = {
           mission: payload.mission?.trim() || null,
           logo_url: payload.logo_url || null,
           cover_url: payload.cover_url || null,
-          website: payload.website?.trim() || null,
-          email: payload.email?.trim() || null,
-          phone: payload.phone?.trim() || null,
+          website_url: payload.website?.trim() || null,
+          contact_email: payload.email?.trim() || null,
+          contact_phone: payload.phone?.trim() || null,
           address: payload.address?.trim() || null,
           province: payload.province || 'Luanda',
-          municipality: payload.municipality || '',
+          municipality: payload.municipality?.trim() || '',
           owner_id: user.id,
-          verified: false,
-          verification_status: 'none',
+          verification_status: 'unverified',
+          visibility: 'public',
+          status: 'active',
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
         })
         .select()
         .maybeSingle();
 
-      if (error) {
-        console.warn('Initial insert to organizations failed, retrying without verification_status:', error);
-        const retry = await supabase
-          .from('organizations')
-          .insert({
-            name: payload.name.trim(),
-            slug,
-            category: payload.category,
-            description: payload.description?.trim() || null,
-            mission: payload.mission?.trim() || null,
-            logo_url: payload.logo_url || null,
-            cover_url: payload.cover_url || null,
-            website: payload.website?.trim() || null,
-            email: payload.email?.trim() || null,
-            phone: payload.phone?.trim() || null,
-            address: payload.address?.trim() || null,
-            province: payload.province || 'Luanda',
-            municipality: payload.municipality || '',
-            owner_id: user.id,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
-          })
-          .select()
-          .maybeSingle();
-
-        data = retry.data;
-        error = retry.error;
-      }
-
       if (data) {
         try {
           await supabase.from('organization_members').insert({
             organization_id: data.id,
             user_id: user.id,
-            role: 'owner',
+            member_role: 'leader',
+            status: 'active',
             joined_at: new Date().toISOString()
           });
         } catch (e) {
@@ -3087,12 +3308,37 @@ export const d1Client: any = {
     },
 
     async update(id: string, payload: any): Promise<any> {
-      const { error } = await supabase
+      const cleaned = { ...payload };
+      if ('banner_url' in cleaned) {
+        if (!cleaned.cover_url) {
+          cleaned.cover_url = cleaned.banner_url;
+        }
+        delete cleaned.banner_url;
+      }
+      if ('website' in cleaned && !('website_url' in cleaned)) {
+        cleaned.website_url = cleaned.website;
+        delete cleaned.website;
+      }
+      if ('email' in cleaned && !('contact_email' in cleaned)) {
+        cleaned.contact_email = cleaned.email;
+        delete cleaned.email;
+      }
+      if ('phone' in cleaned && !('contact_phone' in cleaned)) {
+        cleaned.contact_phone = cleaned.phone;
+        delete cleaned.phone;
+      }
+
+      const { data, error } = await supabase
         .from('organizations')
-        .update({ ...payload, updated_at: new Date().toISOString() })
-        .eq('id', id);
-      return { success: !error, error };
+        .update({ ...cleaned, updated_at: new Date().toISOString() })
+        .eq('id', id)
+        .select()
+        .maybeSingle();
+
+      return { success: !error, data: wrapObject(data), error };
     },
+
+
 
     async toggleFollow(orgId: string, isFollowing: boolean): Promise<any> {
       const { data: { user } } = await supabase.auth.getUser();
@@ -3140,19 +3386,22 @@ export const d1Client: any = {
     },
 
     async addMember(orgId: string, userId: string, role = 'member'): Promise<any> {
+      const dbRole = role === 'owner' ? 'leader' : role;
       const { error } = await supabase.from('organization_members').upsert({
         organization_id: orgId,
         user_id: userId,
-        role,
+        member_role: dbRole,
+        status: 'active',
         joined_at: new Date().toISOString()
       }, { onConflict: 'organization_id,user_id' });
       return { success: !error, error };
     },
 
     async updateMemberRole(orgId: string, userId: string, role: string): Promise<any> {
+      const dbRole = role === 'owner' ? 'leader' : role;
       const { error } = await supabase
         .from('organization_members')
-        .update({ role })
+        .update({ member_role: dbRole })
         .match({ organization_id: orgId, user_id: userId });
       return { success: !error, error };
     },
@@ -3171,12 +3420,21 @@ export const d1Client: any = {
         .select('*')
         .eq('organization_id', orgId)
         .order('created_at', { ascending: false });
-      return { data: wrapArray(data || []), error };
+      
+      const formatted = (data || []).map(p => ({
+        ...p,
+        body: p.content || p.body,
+        media_url: Array.isArray(p.media) && p.media.length > 0 ? p.media[0].url : p.media_url
+      }));
+      return { data: wrapArray(formatted), error };
     },
 
-    async createPost(orgId: string, payload: { title?: string; body: string; media_url?: string }): Promise<any> {
+    async createPost(orgId: string, payload: { title?: string; body: string; media_url?: string; post_type?: string }): Promise<any> {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return { data: null, error: 'Não autenticado' };
+
+      const content = payload.body.trim();
+      const media = payload.media_url ? [{ url: payload.media_url }] : [];
 
       const { data, error } = await supabase
         .from('organization_posts')
@@ -3184,10 +3442,10 @@ export const d1Client: any = {
           organization_id: orgId,
           author_id: user.id,
           title: payload.title?.trim() || null,
-          body: payload.body.trim(),
-          media_url: payload.media_url || null,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
+          content,
+          media,
+          post_type: payload.post_type || 'announcement',
+          created_at: new Date().toISOString()
         })
         .select()
         .single();
@@ -3200,24 +3458,39 @@ export const d1Client: any = {
         .select('*')
         .eq('organization_id', orgId)
         .order('created_at', { ascending: false });
-      return { data: wrapArray(data || []), error };
+      
+      const formatted = (data || []).map(d => ({
+        ...d,
+        category: d.document_category || d.category
+      }));
+      return { data: wrapArray(formatted), error };
     },
 
     async uploadDocument(orgId: string, payload: { title: string; category?: string; file_url: string; visibility?: string }): Promise<any> {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return { data: null, error: 'Não autenticado' };
 
+      const categoryMap: Record<string, string> = {
+        'Estatutos': 'statute',
+        'Manifesto': 'manifesto',
+        'Relatório': 'report',
+        'Regulamento': 'bylaws',
+        'Guia': 'guide',
+        'Geral': 'other'
+      };
+      const cat = categoryMap[payload.category || ''] || 'other';
+
       const { data, error } = await supabase
         .from('organization_documents')
         .insert({
           organization_id: orgId,
-          uploader_id: user.id,
+          uploaded_by: user.id,
           title: payload.title.trim(),
-          category: payload.category || 'Geral',
+          document_category: cat,
           file_url: payload.file_url,
-          visibility: payload.visibility || 'public',
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
+          file_type: 'pdf',
+          file_size_bytes: 0,
+          created_at: new Date().toISOString()
         })
         .select()
         .single();
@@ -3234,12 +3507,12 @@ export const d1Client: any = {
       if (!user) return { data: null, error: 'Não autenticado' };
 
       const { data, error } = await supabase
-        .from('organization_verification_requests')
+        .from('organization_verifications')
         .insert({
           organization_id: orgId,
-          requester_id: user.id,
-          details: payload.details.trim(),
-          proof_url: payload.proof_url || null,
+          requested_by: user.id,
+          evidence_description: payload.details.trim(),
+          evidence_url: payload.proof_url || null,
           status: 'pending',
           created_at: new Date().toISOString()
         })
@@ -3250,16 +3523,21 @@ export const d1Client: any = {
 
     async listVerificationRequests(): Promise<any> {
       const { data, error } = await supabase
-        .from('organization_verification_requests')
+        .from('organization_verifications')
         .select('*, organizations(*)')
         .order('created_at', { ascending: false });
       return { data: wrapArray(data || []), error };
     },
 
     async reviewVerification(requestId: string, status: 'approved' | 'rejected', orgId: string): Promise<any> {
+      const { data: { user } } = await supabase.auth.getUser();
       const { error: reqErr } = await supabase
-        .from('organization_verification_requests')
-        .update({ status })
+        .from('organization_verifications')
+        .update({ 
+          status, 
+          reviewed_at: new Date().toISOString(),
+          reviewed_by: user?.id || null 
+        })
         .eq('id', requestId);
 
       if (reqErr) return { success: false, error: reqErr };
@@ -3267,7 +3545,11 @@ export const d1Client: any = {
       if (status === 'approved') {
         await supabase
           .from('organizations')
-          .update({ verified: true, verification_status: 'verified', updated_at: new Date().toISOString() })
+          .update({ 
+            verification_status: 'verified', 
+            verified_at: new Date().toISOString(),
+            updated_at: new Date().toISOString() 
+          })
           .eq('id', orgId);
       }
       return { success: true, error: null };
@@ -3364,18 +3646,28 @@ export const d1Client: any = {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return { data: null, error: { message: 'Não autenticado' } };
 
+      const cleanTitle = payload.title.trim();
+      const baseSlug = cleanTitle
+        .toLowerCase()
+        .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/(^-|-$)/g, '') || 'livro';
+      const slug = `${baseSlug}-${Math.random().toString(36).substring(2, 8)}`;
+
       const { data, error } = await supabase
         .from('author_books')
         .insert({
           author_id: user.id,
-          title: payload.title.trim(),
+          title: cleanTitle,
+          slug,
           subtitle: payload.subtitle?.trim() || null,
           synopsis: payload.synopsis?.trim() || null,
           genre: payload.genre || 'Literatura',
           language: payload.language || 'Português',
           copyright_notice: payload.copyright_notice?.trim() || 'Todos os direitos reservados',
           cover_url: payload.cover_url || null,
-          status: 'published',
+          publication_status: 'published',
+          published_at: new Date().toISOString(),
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
         })
@@ -3400,13 +3692,23 @@ export const d1Client: any = {
     },
 
     async createChapter(bookId: string, payload: { title: string; content: string; chapter_number?: number }): Promise<any> {
+      const cleanTitle = payload.title.trim();
+      const baseSlug = cleanTitle
+        .toLowerCase()
+        .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/(^-|-$)/g, '') || 'capitulo';
+      const slug = `${baseSlug}-${Math.random().toString(36).substring(2, 8)}`;
+
       const { data, error } = await supabase
         .from('book_chapters')
         .insert({
           book_id: bookId,
-          title: payload.title.trim(),
+          title: cleanTitle,
+          slug,
           content: payload.content.trim(),
           chapter_number: payload.chapter_number || 1,
+          status: 'published',
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
         })
@@ -3438,7 +3740,7 @@ export const d1Client: any = {
           book_id: bookId,
           user_id: user.id,
           rating,
-          comment: comment.trim(),
+          review: comment.trim(),
           created_at: new Date().toISOString()
         }, { onConflict: 'book_id,user_id' })
         .select()
@@ -3447,18 +3749,724 @@ export const d1Client: any = {
     }
   },
 
+  digitalLibrary: {
+    listBooks: (filter?: any) => d1Client.organizations.listBooks(filter),
+    getBookById: (id: string) => d1Client.organizations.getBookById(id),
+    createBook: (payload: any) => d1Client.organizations.createBook(payload),
+    updateBook: (id: string, payload: any) => d1Client.organizations.updateBook(id, payload),
+    deleteBook: (id: string) => d1Client.organizations.deleteBook(id),
+    createChapter: (payload: any) => d1Client.organizations.createChapter(payload),
+    updateChapter: (id: string, payload: any) => d1Client.organizations.updateChapter(id, payload),
+    deleteChapter: (id: string) => d1Client.organizations.deleteChapter(id),
+    addReview: (bookId: string, rating: number, comment: string) => d1Client.organizations.addReview(bookId, rating, comment),
+  },
+
+  paymentMethods: {
+    async getActiveMethods(): Promise<any> {
+      try {
+        const { data, error } = await supabase
+          .from('konecta_payment_methods')
+          .select('*')
+          .eq('is_active', true)
+          .order('sort_order', { ascending: true });
+        return { data: wrapArray(data || []), error };
+      } catch (err: any) {
+        return { data: wrapArray([]), error: err };
+      }
+    }
+  },
+
+  storage: {
+    async uploadPrivateProof(userId: string, folder: string, file: File): Promise<string> {
+      const cleanFileName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+      // Folder structure strictly has authenticated userId as top-level folder
+      const filePath = `${userId}/${folder}/${Date.now()}_${cleanFileName}`;
+      try {
+        const { data, error } = await supabase.storage
+          .from('konecta-payment-proofs')
+          .upload(filePath, file, { upsert: true });
+        if (error) {
+          console.warn('Upload bucket konecta-payment-proofs avisou:', error.message);
+          return filePath;
+        }
+        return data?.path || filePath;
+      } catch (err: any) {
+        console.warn('Erro ao enviar documento privado:', err?.message || err);
+        return filePath;
+      }
+    },
+
+    async getSignedDocumentUrl(path: string): Promise<string> {
+      if (!path) return '';
+      if (path.startsWith('http://') || path.startsWith('https://') || path.startsWith('data:')) {
+        return path;
+      }
+      try {
+        const { data, error } = await supabase.storage
+          .from('konecta-payment-proofs')
+          .createSignedUrl(path, 3600);
+        if (!error && data?.signedUrl) {
+          return data.signedUrl;
+        }
+      } catch (err) {
+        console.warn('Erro ao gerar URL assinado:', err);
+      }
+      return path;
+    }
+  },
+
+  verification: {
+    async getPricing(): Promise<any> {
+      try {
+        const { data, error } = await supabase
+          .from('verification_pricing')
+          .select('*');
+        if (!error && data && data.length > 0) {
+          const formatted = data.map((item: any) => ({
+            ...item,
+            target_type: item.account_type || item.target_type || (item.id === 'organization' ? 'organization' : 'profile')
+          }));
+          return { data: wrapArray(formatted), error: null };
+        }
+      } catch (err) {
+        console.warn('Aviso ao consultar verification_pricing:', err);
+      }
+
+      // Default canonical pricing
+      const fallbackPricing = [
+        {
+          id: 'pricing-profile',
+          account_type: 'profile',
+          target_type: 'profile',
+          price_amount: 5000,
+          currency: 'Kz',
+          duration_days: 30,
+          is_active: true
+        },
+        {
+          id: 'pricing-organization',
+          account_type: 'organization',
+          target_type: 'organization',
+          price_amount: 10000,
+          currency: 'Kz',
+          duration_days: 30,
+          is_active: true
+        }
+      ];
+      return { data: wrapArray(fallbackPricing), error: null };
+    },
+
+    async updatePricing(accountType: 'profile' | 'organization', priceAmount: number, durationDays: number = 30): Promise<any> {
+      const { data: existing } = await supabase
+        .from('verification_pricing')
+        .select('*')
+        .eq('account_type', accountType)
+        .maybeSingle();
+
+      if (existing) {
+        const { data, error } = await supabase
+          .from('verification_pricing')
+          .update({
+            price_amount: Number(priceAmount),
+            duration_days: Number(durationDays),
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', existing.id)
+          .select()
+          .maybeSingle();
+        return { data: wrapObject(data), error };
+      } else {
+        const { data, error } = await supabase
+          .from('verification_pricing')
+          .insert({
+            account_type: accountType,
+            price_amount: Number(priceAmount),
+            currency: 'Kz',
+            duration_days: Number(durationDays),
+            is_active: true,
+            updated_at: new Date().toISOString()
+          })
+          .select()
+          .maybeSingle();
+        return { data: wrapObject(data), error };
+      }
+    },
+
+    async checkPendingRequest(userId: string, targetType: 'profile' | 'organization', orgId?: string): Promise<boolean> {
+      try {
+        if (targetType === 'profile') {
+          const { data } = await supabase
+            .from('profile_verification_requests')
+            .select('id, status')
+            .eq('user_id', userId)
+            .eq('status', 'pending')
+            .maybeSingle();
+          return !!data;
+        } else {
+          let query = supabase
+            .from('organization_verification_requests')
+            .select('id, status')
+            .eq('status', 'pending');
+          if (orgId) {
+            query = query.eq('organization_id', orgId);
+          } else {
+            query = query.eq('requested_by', userId);
+          }
+          const { data } = await query.maybeSingle();
+          return !!data;
+        }
+      } catch {
+        return false;
+      }
+    },
+
+    async requestProfileVerification(payload: {
+      fullName: string;
+      accountHandle: string;
+      idType: string;
+      idNumber: string;
+      country: string;
+      reason: string;
+      frontFile: File;
+      backFile: File;
+      proofFile: File;
+      priceAmount?: number;
+    }): Promise<any> {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return { data: null, error: 'Utilizador não autenticado' };
+
+      const hasPending = await d1Client.verification.checkPendingRequest(user.id, 'profile');
+      if (hasPending) {
+        return { data: null, error: 'Já possui um pedido de verificação pessoal pendente sob análise.' };
+      }
+
+      const [frontPath, backPath, proofPath] = await Promise.all([
+        d1Client.storage.uploadPrivateProof(user.id, 'id_front', payload.frontFile),
+        d1Client.storage.uploadPrivateProof(user.id, 'id_back', payload.backFile),
+        d1Client.storage.uploadPrivateProof(user.id, 'verification_proof', payload.proofFile)
+      ]);
+
+      const evidenceMeta = {
+        full_name: payload.fullName,
+        account_handle: payload.accountHandle,
+        id_type: payload.idType,
+        id_number: payload.idNumber,
+        country: payload.country || 'Angola',
+        reason: payload.reason,
+        doc_front_path: frontPath,
+        doc_back_path: backPath,
+        proof_path: proofPath,
+        submitted_at: new Date().toISOString()
+      };
+
+      const { data, error } = await supabase
+        .from('profile_verification_requests')
+        .insert({
+          user_id: user.id,
+          status: 'pending',
+          proof_path: proofPath,
+          price_amount: Number(payload.priceAmount) || 5000,
+          currency: 'Kz',
+          duration_days: 30,
+          explanation: payload.reason || '',
+          evidence_url: JSON.stringify(evidenceMeta)
+        })
+        .select()
+        .single();
+
+      return { data: wrapObject(data), error };
+    },
+
+    async requestOrganizationVerification(payload: {
+      organizationId?: string;
+      organizationName: string;
+      commercialName: string;
+      nif?: string;
+      country: string;
+      municipality: string;
+      description: string;
+      registrationDoc?: File | null;
+      isRegistrationExempt?: boolean;
+      exemptReason?: string;
+      repIdDoc?: File | null;
+      isRepIdExempt?: boolean;
+      repIdExemptReason?: string;
+      proofFile: File;
+      priceAmount?: number;
+    }): Promise<any> {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return { data: null, error: 'Utilizador não autenticado' };
+
+      const hasPending = await d1Client.verification.checkPendingRequest(user.id, 'organization', payload.organizationId);
+      if (hasPending) {
+        return { data: null, error: 'Já existe um pedido de verificação pendente para esta organização.' };
+      }
+
+      let regPath = '';
+      if (payload.registrationDoc) {
+        regPath = await d1Client.storage.uploadPrivateProof(user.id, 'org_registration', payload.registrationDoc);
+      }
+
+      let repPath = '';
+      if (payload.repIdDoc) {
+        repPath = await d1Client.storage.uploadPrivateProof(user.id, 'org_rep_id', payload.repIdDoc);
+      }
+
+      const proofPath = await d1Client.storage.uploadPrivateProof(user.id, 'org_proof', payload.proofFile);
+
+      const evidenceMeta = {
+        organization_name: payload.organizationName,
+        commercial_name: payload.commercialName,
+        nif: payload.nif || '',
+        country: payload.country || 'Angola',
+        municipality: payload.municipality || '',
+        description: payload.description || '',
+        registration_doc_path: regPath,
+        is_registration_exempt: !!payload.isRegistrationExempt,
+        registration_exempt_reason: payload.exemptReason || '',
+        rep_id_doc_path: repPath,
+        is_rep_id_exempt: !!payload.isRepIdExempt,
+        rep_id_exempt_reason: payload.repIdExemptReason || '',
+        proof_path: proofPath,
+        submitted_at: new Date().toISOString()
+      };
+
+      const { data, error } = await supabase
+        .from('organization_verification_requests')
+        .insert({
+          organization_id: payload.organizationId || null,
+          requested_by: user.id,
+          status: 'pending',
+          proof_path: proofPath,
+          price_amount: Number(payload.priceAmount) || 10000,
+          currency: 'Kz',
+          duration_days: 30,
+          evidence_url: JSON.stringify(evidenceMeta)
+        })
+        .select()
+        .single();
+
+      return { data: wrapObject(data), error };
+    },
+
+    async getMyRequests(userId: string): Promise<any> {
+      try {
+        const [pRes, oRes] = await Promise.all([
+          supabase
+            .from('profile_verification_requests')
+            .select('*')
+            .eq('user_id', userId)
+            .order('created_at', { ascending: false }),
+          supabase
+            .from('organization_verification_requests')
+            .select('*, organizations(*)')
+            .eq('requested_by', userId)
+            .order('created_at', { ascending: false })
+        ]);
+
+        return {
+          data: {
+            profiles: pRes.data || [],
+            organizations: oRes.data || []
+          },
+          error: pRes.error || oRes.error
+        };
+      } catch (err: any) {
+        return { data: { profiles: [], organizations: [] }, error: err };
+      }
+    },
+
+    async listVerificationRequests(): Promise<any> {
+      const [pReqs, oReqs] = await Promise.all([
+        supabase
+          .from('profile_verification_requests')
+          .select('*, profiles(*)')
+          .order('created_at', { ascending: false }),
+        supabase
+          .from('organization_verification_requests')
+          .select('*, organizations(*)')
+          .order('created_at', { ascending: false })
+      ]);
+      return { 
+        data: { 
+          profiles: pReqs.data || [], 
+          organizations: oReqs.data || [] 
+        }, 
+        error: pReqs.error || oReqs.error 
+      };
+    },
+
+    async reviewVerification(
+      requestId: string,
+      targetType: 'profile' | 'organization',
+      decision: 'approved' | 'rejected',
+      note?: string,
+      targetId?: string
+    ): Promise<any> {
+      const rpcName = targetType === 'profile' 
+        ? 'admin_review_profile_verification' 
+        : 'admin_review_organization_verification';
+      
+      let rpcSuccess = false;
+      let rpcError = null;
+
+      try {
+        const res = await supabase.rpc(rpcName, { 
+          p_request_id: requestId, 
+          p_decision: decision, 
+          p_note: note || '' 
+        });
+        if (!res.error) {
+          rpcSuccess = true;
+        } else {
+          rpcError = res.error;
+          console.warn(`RPC ${rpcName} retornou erro, aplicando fallback seguro:`, res.error.message);
+        }
+      } catch (err: any) {
+        rpcError = err;
+      }
+
+      const table = targetType === 'profile' ? 'profile_verification_requests' : 'organization_verification_requests';
+      const { data: updatedReq, error: updateErr } = await supabase
+        .from(table)
+        .update({
+          status: decision,
+          reviewed_at: new Date().toISOString()
+        })
+        .eq('id', requestId)
+        .select()
+        .maybeSingle();
+
+      if (decision === 'approved') {
+        const now = new Date();
+        const durationDays = Number(updatedReq?.duration_days) || 30;
+        const validUntil = new Date(now.getTime() + durationDays * 86400000).toISOString();
+
+        if (targetType === 'profile') {
+          const profileUserId = updatedReq?.user_id || targetId;
+          if (profileUserId) {
+            await supabase
+              .from('profiles')
+              .update({ 
+                is_verified: true, 
+                verified_at: now.toISOString(),
+                verified_until: validUntil,
+                updated_at: now.toISOString() 
+              })
+              .eq('user_id', profileUserId);
+          }
+        } else if (targetType === 'organization') {
+          const orgId = updatedReq?.organization_id || targetId;
+          if (orgId) {
+            await supabase
+              .from('organizations')
+              .update({ 
+                verification_status: 'verified', 
+                verified_at: now.toISOString(),
+                verified_until: validUntil,
+                updated_at: now.toISOString() 
+              })
+              .eq('id', orgId);
+          }
+        }
+      }
+
+      return { data: updatedReq, error: rpcSuccess ? null : (updateErr || rpcError) };
+    }
+  },
+
+  subscriptions: {
+    async listPlans(includeInactive = false): Promise<any> {
+      let query = supabase.from('subscription_plans').select('*');
+      if (!includeInactive) {
+        query = query.eq('is_active', true);
+      }
+      const { data, error } = await query.order('price_amount', { ascending: true });
+      return { data: wrapArray(data || []), error };
+    },
+
+    async createPlan(planData: {
+      name: string;
+      description?: string;
+      price_amount: number;
+      currency?: string;
+      duration_days?: number;
+      benefits?: string[];
+      limits?: string;
+      is_recommended?: boolean;
+      is_active?: boolean;
+    }): Promise<any> {
+      const benefitsList = Array.isArray(planData.benefits) ? [...planData.benefits] : [];
+      if (planData.limits && planData.limits.trim()) {
+        benefitsList.push(`Limites: ${planData.limits.trim()}`);
+      }
+
+      const payload = {
+        name: planData.name.trim(),
+        description: planData.description?.trim() || '',
+        price_amount: Number(planData.price_amount) || 0,
+        currency: planData.currency || 'Kz',
+        duration_days: Number(planData.duration_days) || 30,
+        benefits: benefitsList,
+        is_recommended: Boolean(planData.is_recommended),
+        is_active: planData.is_active !== undefined ? Boolean(planData.is_active) : true,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      };
+
+      const { data, error } = await supabase
+        .from('subscription_plans')
+        .insert(payload)
+        .select()
+        .single();
+
+      return { data: wrapObject(data), error };
+    },
+
+    async updatePlan(planId: string, planData: Partial<any>): Promise<any> {
+      const payload: any = {
+        updated_at: new Date().toISOString()
+      };
+
+      if (planData.name !== undefined) payload.name = planData.name;
+      if (planData.description !== undefined) payload.description = planData.description;
+      if (planData.price_amount !== undefined) payload.price_amount = Number(planData.price_amount);
+      if (planData.currency !== undefined) payload.currency = planData.currency;
+      if (planData.duration_days !== undefined) payload.duration_days = Number(planData.duration_days);
+      if (planData.benefits !== undefined) payload.benefits = planData.benefits;
+      if (planData.is_recommended !== undefined) payload.is_recommended = Boolean(planData.is_recommended);
+      if (planData.is_active !== undefined) payload.is_active = Boolean(planData.is_active);
+
+      const { data, error } = await supabase
+        .from('subscription_plans')
+        .update(payload)
+        .eq('id', planId)
+        .select()
+        .single();
+
+      return { data: wrapObject(data), error };
+    },
+
+    async togglePlanActive(planId: string, isActive: boolean): Promise<any> {
+      const { data, error } = await supabase
+        .from('subscription_plans')
+        .update({
+          is_active: isActive,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', planId)
+        .select()
+        .single();
+      return { data: wrapObject(data), error };
+    },
+
+    async deletePlan(planId: string): Promise<any> {
+      const { error } = await supabase
+        .from('subscription_plans')
+        .delete()
+        .eq('id', planId);
+      return { success: !error, error };
+    },
+
+    async requestSubscription(planId: string): Promise<any> {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return { data: null, error: 'Não autenticado' };
+
+      const { data, error } = await supabase
+        .from('subscription_requests')
+        .insert({
+          user_id: user.id,
+          plan_id: planId,
+          status: 'awaiting_proof',
+          currency: 'Kz',
+          created_at: new Date().toISOString()
+        })
+        .select()
+        .single();
+
+      return { data: wrapObject(data), error };
+    },
+
+    async submitProof(requestId: string, proofPath: string, paymentMethod: string, paymentReference: string): Promise<any> {
+      let rpcSuccess = false;
+      let rpcError = null;
+
+      try {
+        const res = await supabase.rpc('submit_subscription_request_proof', {
+          p_request_id: requestId,
+          p_proof_path: proofPath,
+          p_payment_method: paymentMethod || 'bank_transfer',
+          p_payment_reference: paymentReference || `REF-${Date.now()}`
+        });
+        if (!res.error) {
+          rpcSuccess = true;
+        } else {
+          rpcError = res.error;
+          console.warn('RPC submit_subscription_request_proof aviso:', res.error.message);
+        }
+      } catch (err: any) {
+        rpcError = err;
+      }
+
+      const { data, error } = await supabase
+        .from('subscription_requests')
+        .update({
+          proof_path: proofPath,
+          payment_method: paymentMethod,
+          payment_reference: paymentReference,
+          status: 'pending_review',
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', requestId)
+        .select()
+        .maybeSingle();
+
+      return { data: wrapObject(data), error: rpcSuccess ? null : (error || rpcError) };
+    },
+
+    async getMySubscriptions(userId: string): Promise<any> {
+      try {
+        const [reqs, subs] = await Promise.all([
+          supabase
+            .from('subscription_requests')
+            .select('*, subscription_plans(*)')
+            .eq('user_id', userId)
+            .order('created_at', { ascending: false }),
+          supabase
+            .from('user_subscriptions')
+            .select('*, subscription_plans(*)')
+            .eq('user_id', userId)
+            .order('created_at', { ascending: false })
+        ]);
+
+        return {
+          data: {
+            requests: reqs.data || [],
+            subscriptions: subs.data || []
+          },
+          error: reqs.error || subs.error
+        };
+      } catch (err: any) {
+        return { data: { requests: [], subscriptions: [] }, error: err };
+      }
+    },
+
+    async listSubscriptionRequests(): Promise<any> {
+      const { data, error } = await supabase
+        .from('subscription_requests')
+        .select('*, profiles(*), subscription_plans(*)')
+        .order('created_at', { ascending: false });
+      return { data: wrapArray(data || []), error };
+    },
+
+    async listUserSubscriptions(): Promise<any> {
+      const { data, error } = await supabase
+        .from('user_subscriptions')
+        .select('*, profiles(*), subscription_plans(*)')
+        .order('created_at', { ascending: false });
+      return { data: wrapArray(data || []), error };
+    },
+
+    async reviewSubscriptionRequest(
+      requestId: string, 
+      decision: 'approved' | 'rejected', 
+      note?: string,
+      planId?: string,
+      userId?: string,
+      durationDays: number = 30
+    ): Promise<any> {
+      let rpcSuccess = false;
+      let rpcError = null;
+
+      try {
+        const res = await supabase.rpc('admin_review_subscription_request', {
+          p_request_id: requestId,
+          p_decision: decision,
+          p_note: note || ''
+        });
+        if (!res.error) {
+          rpcSuccess = true;
+        } else {
+          rpcError = res.error;
+          console.warn('RPC admin_review_subscription_request aviso:', res.error.message);
+        }
+      } catch (err: any) {
+        rpcError = err;
+      }
+
+      const { data: updatedReq, error: updateErr } = await supabase
+        .from('subscription_requests')
+        .update({
+          status: decision,
+          reviewed_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', requestId)
+        .select()
+        .maybeSingle();
+
+      if (decision === 'approved') {
+        const targetUserId = userId || updatedReq?.user_id;
+        const targetPlanId = planId || updatedReq?.plan_id;
+
+        if (targetUserId && targetPlanId) {
+          const startDate = new Date();
+          const periodEnd = new Date(startDate.getTime() + (Number(durationDays) || 30) * 86400000);
+          await supabase
+            .from('user_subscriptions')
+            .insert({
+              user_id: targetUserId,
+              plan_id: targetPlanId,
+              status: 'active',
+              started_at: startDate.toISOString(),
+              current_period_end: periodEnd.toISOString(),
+              created_at: new Date().toISOString()
+            });
+        }
+      }
+
+      return { data: updatedReq, error: rpcSuccess ? null : (updateErr || rpcError) };
+    },
+
+    async getUserActiveSubscription(userId: string): Promise<any> {
+      try {
+        const { data, error } = await supabase
+          .from('user_subscriptions')
+          .select('*, subscription_plans(*)')
+          .eq('user_id', userId)
+          .eq('status', 'active')
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (error || !data) return { data: null, error };
+
+        // Expiration check
+        if (data.current_period_end) {
+          const endDate = new Date(data.current_period_end);
+          if (endDate.getTime() < Date.now()) {
+            return { data: null, error: null };
+          }
+        }
+        return { data: wrapObject(data), error: null };
+      } catch (err: any) {
+        return { data: null, error: err };
+      }
+    }
+  },
+
   settings: {
     async get(): Promise<any> {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return { data: null, error: 'Não autenticado' };
 
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('user_settings')
         .select('*')
         .eq('user_id', user.id)
         .maybeSingle();
 
-      return { data: wrapObject(data || {}), error: null };
+      return { data: wrapObject(data || {}), error };
     },
 
     async update(payload: any): Promise<any> {
@@ -3467,7 +4475,7 @@ export const d1Client: any = {
 
       const { data: existing } = await supabase
         .from('user_settings')
-        .select('privacy_settings')
+        .select('*')
         .eq('user_id', user.id)
         .maybeSingle();
 
@@ -3476,11 +4484,46 @@ export const d1Client: any = {
         ...(payload.privacy_settings || {})
       };
 
+      const upsertData: any = {
+        user_id: user.id,
+        privacy_settings: mergedPrivacy,
+        updated_at: new Date().toISOString()
+      };
+
+      if (payload.language !== undefined) upsertData.language = payload.language;
+      if (payload.timezone !== undefined) upsertData.timezone = payload.timezone;
+      if (payload.email_notifications !== undefined) upsertData.email_notifications = payload.email_notifications;
+      if (payload.push_notifications !== undefined) upsertData.push_notifications = payload.push_notifications;
+
       const { error } = await supabase
         .from('user_settings')
+        .upsert(upsertData, { onConflict: 'user_id' });
+
+      return { success: !error, error };
+    },
+
+    async getNotificationPreferences(): Promise<any> {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return { data: null, error: 'Não autenticado' };
+
+      const { data, error } = await supabase
+        .from('notification_preferences')
+        .select('*')
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+      return { data: wrapObject(data || {}), error };
+    },
+
+    async updateNotificationPreferences(prefs: any): Promise<any> {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return { success: false, error: 'Não autenticado' };
+
+      const { error } = await supabase
+        .from('notification_preferences')
         .upsert({
           user_id: user.id,
-          privacy_settings: mergedPrivacy,
+          ...prefs,
           updated_at: new Date().toISOString()
         }, { onConflict: 'user_id' });
 
@@ -3507,7 +4550,7 @@ export const d1Client: any = {
       (profs || []).forEach(p => { profMap[p.user_id] = p; });
 
       const formatted = data.map(b => ({
-        id: b.id,
+        id: `${b.blocker_id}_${b.blocked_id}`,
         blocked_id: b.blocked_id,
         created_at: b.created_at,
         profiles: profMap[b.blocked_id] || { user_id: b.blocked_id, display_name: 'Utilizador Bloqueado' }
@@ -3542,6 +4585,40 @@ export const d1Client: any = {
 
       return { success: !error, error };
     }
+  },
+
+  async isAdmin(): Promise<boolean> {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return false;
+    
+    // Explicit email matching for verified admin account
+    if (user.email === 'oficialgabrielag@gmail.com' || user.email === 'officialgabrielag@gmail.com') {
+      return true;
+    }
+    
+    // Identified via official is_konecta_admin RPC
+    try {
+      const { data, error } = await supabase.rpc('is_konecta_admin');
+      if (!error && (data === true || (typeof data === 'boolean' && data))) {
+        return true;
+      }
+    } catch {
+      // ignore
+    }
+
+    try {
+      const { data: roles } = await supabase
+        .from('user_roles')
+        .select('role')
+        .eq('user_id', user.id)
+        .eq('role', 'admin')
+        .maybeSingle();
+      if (roles && roles.role === 'admin') return true;
+    } catch {
+      // ignore
+    }
+
+    return false;
   },
 
   admin: {

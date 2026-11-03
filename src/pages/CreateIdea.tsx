@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Upload, X } from 'lucide-react';
 import { uploadToCloudinary } from '../lib/cloudinary';
 import { d1Client } from '../lib/d1Client';
+import { useT } from '../context/LanguageContext';
 
 interface CreateIdeaProps {
   user: any;
@@ -11,6 +12,7 @@ interface CreateIdeaProps {
 }
 
 export const CreateIdea: React.FC<CreateIdeaProps> = ({ user, onOpenAuth, onIdeaCreated, setCurrentTab }) => {
+  const { t } = useT();
   const [title, setTitle] = useState('');
   const [category, setCategory] = useState('Tecnologia');
   const [province, setProvince] = useState('Luanda');
@@ -28,9 +30,9 @@ export const CreateIdea: React.FC<CreateIdeaProps> = ({ user, onOpenAuth, onIdea
   if (!user) {
     return (
       <div className="max-w-md mx-auto py-32 px-6 text-center">
-        <h2 className="text-2xl font-bold mb-4 text-konecta-navy uppercase tracking-tighter">Partilhar Ideia</h2>
-        <p className="text-gray-500 mb-8 text-sm">Inicia sessão na tua conta para partilhares iniciativas com a comunidade KONECTA.</p>
-        <button onClick={onOpenAuth} className="btn-primary w-full text-xs py-3.5">Entrar na Conta →</button>
+        <h2 className="text-2xl font-bold mb-4 text-konecta-navy uppercase tracking-tighter">{t('create.share_idea_title')}</h2>
+        <p className="text-gray-500 mb-8 text-sm">{t('create.idea_desc')}</p>
+        <button onClick={onOpenAuth} className="btn-primary w-full text-xs py-3.5">{t('common.enter')} →</button>
       </div>
     );
   }
@@ -39,7 +41,7 @@ export const CreateIdea: React.FC<CreateIdeaProps> = ({ user, onOpenAuth, onIdea
     const file = e.target.files?.[0];
     if (file) {
       if (file.size > 10 * 1024 * 1024) {
-        setError('A imagem é muito grande. O limite máximo é 10MB.');
+        setError(t('error.general'));
         return;
       }
       if (imagePreview) URL.revokeObjectURL(imagePreview);
@@ -54,7 +56,7 @@ export const CreateIdea: React.FC<CreateIdeaProps> = ({ user, onOpenAuth, onIdea
       e.preventDefault();
     }
     if (!title.trim() || !description.trim()) {
-      setError('Por favor, preencha o título e a descrição da sua ideia.');
+      setError(t('error.general'));
       return;
     }
 
@@ -69,7 +71,7 @@ export const CreateIdea: React.FC<CreateIdeaProps> = ({ user, onOpenAuth, onIdea
             setUploadProgress(progress);
           });
         } catch (imgErr: any) {
-          setError(imgErr?.message || 'Falha no envio da imagem para o Cloudinary. O título e descrição foram preservados.');
+          setError(imgErr?.message || t('error.general'));
           setSubmitting(false);
           return;
         }
@@ -86,7 +88,7 @@ export const CreateIdea: React.FC<CreateIdeaProps> = ({ user, onOpenAuth, onIdea
 
       const res = await d1Client.ideas.create(ideaPayload);
       if (res.error) {
-        throw new Error(res.error.message || 'Erro ao guardar ideia.');
+        throw new Error(res.error.message || t('error.general'));
       }
 
       setSuccess(true);
@@ -98,7 +100,7 @@ export const CreateIdea: React.FC<CreateIdeaProps> = ({ user, onOpenAuth, onIdea
       }, 1000);
     } catch (err: any) {
       console.error('Erro ao submeter ideia:', err?.message || err);
-      setError(err?.message || 'Erro ao publicar a sua ideia. Por favor, tente novamente.');
+      setError(err?.message || t('error.general'));
     } finally {
       setSubmitting(false);
     }
@@ -113,12 +115,12 @@ export const CreateIdea: React.FC<CreateIdeaProps> = ({ user, onOpenAuth, onIdea
           className="text-xs font-bold uppercase tracking-widest text-gray-500 hover:text-konecta-navy transition-colors flex items-center gap-2 mb-8"
         >
           <span className="material-symbols-outlined text-[18px]">arrow_back</span>
-          Voltar ao Início
+          {t('create.back_to_home')}
         </button>
-        <span className="feature-kicker">Nova Iniciativa</span>
-        <h1 className="hero-title">Partilhar uma Ideia</h1>
+        <span className="feature-kicker">{t('create.new_initiative')}</span>
+        <h1 className="hero-title">{t('create.share_idea_title')}</h1>
         <p className="text-gray-500 mt-2 max-w-xl text-sm leading-relaxed">
-          Tens uma solução para um problema em Angola? Partilha com a comunidade KONECTA e encontra colaboradores para tornar o projeto real.
+          {t('create.share_idea_subtitle')}
         </p>
       </header>
 
@@ -127,8 +129,8 @@ export const CreateIdea: React.FC<CreateIdeaProps> = ({ user, onOpenAuth, onIdea
           <div className="w-16 h-16 rounded-full bg-green-500 text-white flex items-center justify-center mx-auto shadow-md">
             <span className="material-symbols-outlined text-3xl">check</span>
           </div>
-          <h2 className="text-2xl font-bold text-green-900">Ideia Publicada com Sucesso!</h2>
-          <p className="text-sm text-green-700">A tua iniciativa foi publicada e já está visível para toda a rede.</p>
+          <h2 className="text-2xl font-bold text-green-900">{t('create.success_title')}</h2>
+          <p className="text-sm text-green-700">{t('create.success_desc')}</p>
         </div>
       ) : (
         <form onSubmit={handleSubmit} className="grid grid-cols-1 lg:grid-cols-2 gap-12">
@@ -138,7 +140,7 @@ export const CreateIdea: React.FC<CreateIdeaProps> = ({ user, onOpenAuth, onIdea
                 <div className="flex items-start gap-3">
                   <span className="material-symbols-outlined text-amber-600 shrink-0 text-xl">sync_problem</span>
                   <div>
-                    <p className="font-bold text-sm text-konecta-navy mb-1">Aviso de Publicação</p>
+                    <p className="font-bold text-sm text-konecta-navy mb-1">{t('create.error_title')}</p>
                     <p className="text-gray-600 font-normal leading-relaxed">{error}</p>
                   </div>
                 </div>
@@ -148,28 +150,28 @@ export const CreateIdea: React.FC<CreateIdeaProps> = ({ user, onOpenAuth, onIdea
                   disabled={submitting}
                   className="btn-primary py-2 px-5 text-xs whitespace-nowrap self-end sm:self-center"
                 >
-                  {submitting ? 'A tentar...' : 'Tentar Novamente'}
+                  {submitting ? t('create.trying') : t('create.retry')}
                 </button>
               </div>
             )}
 
             <div className="space-y-2">
               <label className="text-xs font-bold uppercase tracking-widest text-konecta-navy">
-                Título da Ideia <span className="text-red-500">*</span>
+                {t('create.idea_title')} <span className="text-red-500">*</span>
               </label>
               <input
                 type="text"
                 required
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                placeholder="Ex: Sistema de Rega Solar Comunitária"
+                placeholder={t('create.idea_title_placeholder')}
                 className="w-full bg-white border border-gray-200 rounded-2xl px-6 py-4 text-sm focus:outline-none focus:border-konecta-gold shadow-xs text-konecta-navy"
               />
             </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <label className="text-xs font-bold uppercase tracking-widest text-konecta-navy">Categoria</label>
+                <label className="text-xs font-bold uppercase tracking-widest text-konecta-navy">{t('create.category')}</label>
                 <select
                   value={category}
                   onChange={(e) => setCategory(e.target.value)}
@@ -182,7 +184,7 @@ export const CreateIdea: React.FC<CreateIdeaProps> = ({ user, onOpenAuth, onIdea
               </div>
 
               <div className="space-y-2">
-                <label className="text-xs font-bold uppercase tracking-widest text-konecta-navy">Província</label>
+                <label className="text-xs font-bold uppercase tracking-widest text-konecta-navy">{t('create.province')}</label>
                 <select
                   value={province}
                   onChange={(e) => setProvince(e.target.value)}
@@ -197,14 +199,14 @@ export const CreateIdea: React.FC<CreateIdeaProps> = ({ user, onOpenAuth, onIdea
 
             <div className="space-y-2">
               <label className="text-xs font-bold uppercase tracking-widest text-konecta-navy">
-                Descrição Detalhada <span className="text-red-500">*</span>
+                {t('create.detailed_desc')} <span className="text-red-500">*</span>
               </label>
               <textarea
                 required
                 rows={8}
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                placeholder="Descreve o problema que queres resolver e como a tua ideia funciona..."
+                placeholder={t('create.detailed_desc_placeholder')}
                 className="w-full bg-white border border-gray-200 rounded-2xl px-6 py-4 text-sm focus:outline-none focus:border-konecta-gold resize-none shadow-xs text-konecta-navy"
               />
             </div>
@@ -212,7 +214,7 @@ export const CreateIdea: React.FC<CreateIdeaProps> = ({ user, onOpenAuth, onIdea
 
           <div className="space-y-8">
             <div className="space-y-2">
-              <label className="text-xs font-bold uppercase tracking-widest text-konecta-navy">Imagem de Capa (Opcional)</label>
+              <label className="text-xs font-bold uppercase tracking-widest text-konecta-navy">{t('create.cover_image')}</label>
               
               {imagePreview ? (
                 <div className="relative rounded-3xl overflow-hidden bg-gray-50 border border-gray-200 aspect-square flex items-center justify-center group shadow-xs">
@@ -227,7 +229,7 @@ export const CreateIdea: React.FC<CreateIdeaProps> = ({ user, onOpenAuth, onIdea
                   {submitting && uploadProgress > 0 && (
                     <div className="absolute inset-0 bg-konecta-navy/70 backdrop-blur-xs flex flex-col items-center justify-center">
                       <div className="w-10 h-10 border-4 border-konecta-gold border-t-transparent rounded-full animate-spin mb-3"></div>
-                      <span className="text-white text-xs font-bold uppercase tracking-widest">A carregar {uploadProgress}%</span>
+                      <span className="text-white text-xs font-bold uppercase tracking-widest">{t('common.loading')} {uploadProgress}%</span>
                     </div>
                   )}
                 </div>
@@ -236,23 +238,23 @@ export const CreateIdea: React.FC<CreateIdeaProps> = ({ user, onOpenAuth, onIdea
                   <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mb-4 group-hover:bg-konecta-gold group-hover:text-konecta-navy transition-colors">
                     <Upload className="w-6 h-6" />
                   </div>
-                  <span className="text-xs font-bold text-gray-400 uppercase tracking-widest group-hover:text-konecta-navy transition-colors">Carregar Fotografia</span>
-                  <p className="text-[10px] text-gray-400 mt-2">PNG, JPG até 10MB</p>
+                  <span className="text-xs font-bold text-gray-400 uppercase tracking-widest group-hover:text-konecta-navy transition-colors">{t('create.upload_photo')}</span>
+                  <p className="text-[10px] text-gray-400 mt-2">{t('create.upload_hint')}</p>
                   <input type="file" accept="image/*" onChange={handleImageChange} className="hidden" />
                 </label>
               )}
             </div>
 
             <div className="bg-konecta-navy rounded-3xl p-6 text-white space-y-3 shadow-md">
-              <h3 className="text-xs font-bold text-konecta-gold uppercase tracking-widest">Recomendações de Publicação</h3>
+              <h3 className="text-xs font-bold text-konecta-gold uppercase tracking-widest">{t('create.recommendations')}</h3>
               <ul className="space-y-3 text-xs opacity-80 leading-relaxed">
                 <li className="flex gap-2.5">
                   <span className="material-symbols-outlined text-[16px] text-konecta-gold">check_circle</span>
-                  Seja claro sobre o problema local que pretende resolver em Angola.
+                  {t('create.recommendation_1')}
                 </li>
                 <li className="flex gap-2.5">
                   <span className="material-symbols-outlined text-[16px] text-konecta-gold">check_circle</span>
-                  Fotografias do protótipo ou local aumentam a taxa de apoio.
+                  {t('create.recommendation_2')}
                 </li>
               </ul>
             </div>
@@ -262,7 +264,7 @@ export const CreateIdea: React.FC<CreateIdeaProps> = ({ user, onOpenAuth, onIdea
               disabled={submitting}
               className="btn-gold w-full py-4 text-sm font-extrabold uppercase tracking-widest shadow-lg hover:brightness-105 transition-all"
             >
-              {submitting ? 'A Publicar...' : 'Publicar na Rede KONECTA'}
+              {submitting ? t('create.publishing') : t('create.publish_btn')}
             </button>
           </div>
         </form>

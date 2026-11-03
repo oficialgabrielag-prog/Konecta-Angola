@@ -1,5 +1,6 @@
 import React from 'react';
 import { CommentItem } from '../types';
+import { UserBadge } from './UserBadges';
 
 interface CommentCardProps {
   comment: CommentItem;
@@ -19,8 +20,9 @@ export const CommentCard: React.FC<CommentCardProps> = ({ comment }) => {
       </div>
       <div className="flex-1">
         <div className="flex items-center justify-between mb-2">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <span className="font-bold text-sm text-konecta-navy">{comment.profiles?.full_name || 'Utilizador Konecta'}</span>
+            <UserBadge profile={comment.profiles} size="xs" showPlan={true} />
             <span className="text-[10px] font-bold text-konecta-gold uppercase tracking-wider px-2 py-0.5 bg-konecta-navy/5 rounded-full">
               {comment.profiles?.province || 'Angola'}
             </span>

@@ -4,6 +4,7 @@ import { Idea, CommentItem } from '../types';
 import { d1Client } from '../lib/d1Client';
 import { shareContent } from '../lib/share';
 import { CommentCard } from '../components/CommentCard';
+import { useUI } from '../context/UIContext';
 
 interface PostDetailProps {
   idea: Idea;
@@ -22,6 +23,7 @@ export const PostDetail: React.FC<PostDetailProps> = ({
   onRequireAuth,
   onImageClick
 }) => {
+  const { openShareSheet, showToast } = useUI();
   const [comments, setComments] = useState<CommentItem[]>(() => {
     try {
       const cached = localStorage.getItem(`konecta_comments_${idea.id}`);
@@ -195,8 +197,8 @@ export const PostDetail: React.FC<PostDetailProps> = ({
         setReportReason('');
       }, 1500);
     } catch (err: any) {
-      console.warn('Aviso ao submeter denúncia:', err?.message || err);
-      alert(err?.message || 'Erro ao submeter denúncia.');
+      console.error('Erro ao submeter denúncia:', err);
+      showToast(err?.message || 'Erro ao submeter denúncia.', 'error');
     } finally {
       setSubmittingReport(false);
     }
@@ -353,21 +355,14 @@ export const PostDetail: React.FC<PostDetailProps> = ({
               </div>
 
               <button 
-                onClick={async () => {
-                  const shareData = {
+                onClick={() => {
+                  openShareSheet({
+                    targetId: idea.id,
+                    targetType: 'idea',
                     title: idea.title,
-                    text: idea.description,
-                    url: window.location.href
-                  };
-                  if (navigator.share && navigator.canShare && navigator.canShare(shareData)) {
-                    try {
-                      await navigator.share(shareData);
-                      return;
-                    } catch (err: any) {
-                      if (err.name === 'AbortError') return;
-                    }
-                  }
-                  setShowShareModal(true);
+                    authorName: idea.profiles?.full_name || 'Utilizador',
+                    thumbnail: idea.image_url || undefined
+                  });
                 }}
                 className="flex items-center gap-1.5 text-xs font-bold text-gray-500 hover:text-konecta-navy transition-colors py-1.5 px-3 rounded-lg hover:bg-gray-100"
               >

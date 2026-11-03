@@ -18,10 +18,19 @@ export const Footer: React.FC<{ onNavigateTab?: (tab: string) => void }> = ({ on
         </div>
         
         <div>
-          <h4 className="font-bold mb-6 uppercase text-xs tracking-widest text-konecta-gold">Plataforma & Legal</h4>
+          <h4 className="font-bold mb-6 uppercase text-xs tracking-widest text-konecta-gold">Plataforma & Serviços</h4>
           <nav className="flex flex-col gap-3 text-xs opacity-75">
+            <button onClick={() => onNavigateTab && onNavigateTab('plans')} className="text-left hover:text-konecta-gold transition-colors">
+              Planos & Subscrições
+            </button>
+            <button onClick={() => onNavigateTab && onNavigateTab('verification')} className="text-left hover:text-konecta-gold transition-colors">
+              Selo de Verificação Oficial
+            </button>
             <button onClick={() => onNavigateTab && onNavigateTab('policy-center')} className="text-left hover:text-konecta-gold transition-colors">
               Centro de Políticas & Privacidade
+            </button>
+            <button onClick={() => onNavigateTab && onNavigateTab('privacy-policy')} className="text-left hover:text-konecta-gold transition-colors font-bold text-konecta-gold">
+              Política de Privacidade (Tela Única)
             </button>
             <button onClick={() => onNavigateTab && onNavigateTab('settings')} className="text-left hover:text-konecta-gold transition-colors">
               Configurações da Conta

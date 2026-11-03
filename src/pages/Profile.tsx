@@ -3,6 +3,8 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Idea, Project, Post, Follow } from '../types';
 import { uploadToCloudinary } from '../lib/cloudinary';
 import { d1Client } from '../lib/d1Client';
+import { useT } from '../i18n/LanguageContext';
+import { UserBadge } from '../components/UserBadges';
 
 interface ProfileProps {
   user: any;
@@ -23,6 +25,7 @@ export const Profile: React.FC<ProfileProps> = ({
   onIdeaCreated,
   onDeleteIdea,
 }) => {
+  const t = useT();
   const [uploading, setUploading] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [newPostText, setNewPostText] = useState('');
@@ -42,6 +45,7 @@ export const Profile: React.FC<ProfileProps> = ({
   const [showFollowModal, setShowFollowModal] = useState<'followers' | 'following' | null>(null);
 
   // Edit Profile Modal
+  const [profileData, setProfileData] = useState<any>(null);
   const [showEditModal, setShowEditModal] = useState(false);
   const [editFullName, setEditFullName] = useState('');
   const [editBio, setEditBio] = useState('');
@@ -65,11 +69,13 @@ export const Profile: React.FC<ProfileProps> = ({
       const d1Res = await d1Client.profiles.get(user.id);
       if (d1Res.data?.data) {
         const profile = d1Res.data.data;
+        setProfileData(profile);
         setEditFullName(profile.full_name || user.user_metadata?.full_name || user.full_name || '');
         setEditBio(profile.bio || '');
         setEditProvince(profile.province || 'Luanda');
         setEditMunicipality(profile.municipality || '');
       } else {
+        setProfileData(user);
         setEditFullName(user.user_metadata?.full_name || user.full_name || '');
       }
     } catch (err: any) {
@@ -129,7 +135,7 @@ export const Profile: React.FC<ProfileProps> = ({
       fetchUserPosts();
     } catch (err: any) {
       console.warn('Aviso ao atualizar fotografia de perfil:', err?.message || err);
-      alert(err?.message || 'Erro ao atualizar fotografia.');
+      alert(err?.message || t('profile.update_photo_err'));
     } finally {
       setUploading(false);
     }
@@ -170,21 +176,21 @@ export const Profile: React.FC<ProfileProps> = ({
       fetchUserPosts();
     } catch (err: any) {
       console.warn('Aviso ao publicar post:', err?.message || err);
-      alert(err?.message || 'Erro ao publicar.');
+      alert(err?.message || t('profile.publish_err'));
     } finally {
       setPublishing(false);
     }
   };
 
   const handleDeletePost = async (id: string) => {
-    if (!window.confirm('Tens a certeza que queres eliminar esta publicação?')) return;
+    if (!window.confirm(t('profile.delete_post_confirm'))) return;
     
     try {
       await d1Client.posts.delete(id);
       setUserPosts(prev => prev.filter(p => p.id !== id));
     } catch (err: any) {
       console.warn('Aviso ao eliminar post:', err?.message || err);
-      alert(err?.message || 'Erro ao eliminar publicação.');
+      alert(err?.message || t('profile.delete_post_err'));
     }
   };
 
@@ -212,7 +218,7 @@ export const Profile: React.FC<ProfileProps> = ({
       onIdeaCreated();
     } catch (err: any) {
       console.warn('Aviso ao guardar perfil:', err?.message || err);
-      alert(err?.message || 'Erro ao atualizar dados do perfil.');
+      alert(err?.message || t('profile.save_err'));
     } finally {
       setSavingProfile(false);
     }
@@ -221,9 +227,9 @@ export const Profile: React.FC<ProfileProps> = ({
   if (!user) {
     return (
       <div className="max-w-md mx-auto py-32 px-6 text-center">
-        <h2 className="text-2xl font-bold mb-4 text-konecta-navy uppercase tracking-tighter">O Teu Perfil</h2>
-        <p className="text-gray-500 mb-8 text-sm">Inicia sessão para gerires as tuas publicações, projetos e rede de conexões.</p>
-        <button onClick={onOpenAuth} className="btn-primary w-full text-xs py-3.5">Entrar na Conta →</button>
+        <h2 className="text-2xl font-bold mb-4 text-konecta-navy uppercase tracking-tighter">{t('profile.title')}</h2>
+        <p className="text-gray-500 mb-8 text-sm">{t('profile.login_hint')}</p>
+        <button onClick={onOpenAuth} className="btn-primary w-full text-xs py-3.5">{t('profile.login_btn')}</button>
       </div>
     );
   }
@@ -252,17 +258,20 @@ export const Profile: React.FC<ProfileProps> = ({
                 </div>
               )}
             </div>
-            <label className="absolute -bottom-2 -right-2 bg-konecta-gold text-konecta-navy w-10 h-10 rounded-full flex items-center justify-center cursor-pointer hover:scale-110 transition-transform shadow-lg border-2 border-white" title="Mudar fotografia de perfil">
+            <label className="absolute -bottom-2 -right-2 bg-konecta-gold text-konecta-navy w-10 h-10 rounded-full flex items-center justify-center cursor-pointer hover:scale-110 transition-transform shadow-lg border-2 border-white" title={t('profile.change_avatar')}>
               <span className="material-symbols-outlined text-[20px]">photo_camera</span>
               <input type="file" accept="image/*" onChange={handleAvatarChange} className="hidden" />
             </label>
           </div>
 
           <div className="flex-1 text-center md:text-left space-y-2">
-            <span className="text-[10px] font-bold text-konecta-gold uppercase tracking-[0.2em] bg-konecta-gold/10 px-2.5 py-1 rounded-full border border-konecta-gold/20 inline-block">
-              Inovador Registado
+            <span className="text-[10px] font-extrabold text-konecta-gold uppercase tracking-[0.2em] inline-block">
+              {t('profile.innovator_badge')}
             </span>
-            <h1 className="text-3xl lg:text-4xl font-extrabold text-konecta-navy">{fullName}</h1>
+            <div className="flex items-center justify-center md:justify-start gap-2 flex-wrap">
+              <h1 className="text-3xl lg:text-4xl font-extrabold text-konecta-navy">{fullName}</h1>
+              <UserBadge profile={profileData} size="md" showLabel={true} showPlan={true} />
+            </div>
             <p className="text-gray-500 text-sm font-medium">
               @{user.email?.split('@')[0]} · {editProvince || 'Angola'}
             </p>
@@ -280,14 +289,14 @@ export const Profile: React.FC<ProfileProps> = ({
                 className="text-xs font-bold text-konecta-navy hover:text-konecta-gold transition-colors"
               >
                 <span className="font-black text-sm mr-1">{followers.length}</span> 
-                <span className="text-gray-400 font-normal">Seguidores</span>
+                <span className="text-gray-400 font-normal uppercase tracking-widest text-[9px]">{t('profile.followers')}</span>
               </button>
               <button 
                 onClick={() => setShowFollowModal('following')}
                 className="text-xs font-bold text-konecta-navy hover:text-konecta-gold transition-colors"
               >
                 <span className="font-black text-sm mr-1">{following.length}</span> 
-                <span className="text-gray-400 font-normal">A Seguir</span>
+                <span className="text-gray-400 font-normal uppercase tracking-widest text-[9px]">{t('profile.following')}</span>
               </button>
             </div>
           </div>
@@ -298,7 +307,7 @@ export const Profile: React.FC<ProfileProps> = ({
               className="btn-primary py-2.5 px-6 text-xs flex items-center gap-1.5"
             >
               <span className="material-symbols-outlined text-[16px]">edit</span>
-              Editar Perfil
+              {t('profile.edit_btn')}
             </button>
           </div>
         </div>
@@ -309,28 +318,28 @@ export const Profile: React.FC<ProfileProps> = ({
             onClick={() => setActiveTab('posts')} 
             className={`pb-3 text-xs font-bold uppercase tracking-widest transition-all relative ${activeTab === 'posts' ? 'text-konecta-navy' : 'text-gray-400 hover:text-konecta-navy'}`}
           >
-            Publicações ({userPosts.length})
+            {t('profile.posts_tab')} ({userPosts.length})
             {activeTab === 'posts' && <div className="absolute bottom-0 left-0 right-0 h-1 bg-konecta-gold rounded-full" />}
           </button>
           <button 
             onClick={() => setActiveTab('ideas')} 
             className={`pb-3 text-xs font-bold uppercase tracking-widest transition-all relative ${activeTab === 'ideas' ? 'text-konecta-navy' : 'text-gray-400 hover:text-konecta-navy'}`}
           >
-            Minhas Ideias ({userIdeas.length})
+            {t('profile.ideas_tab')} ({userIdeas.length})
             {activeTab === 'ideas' && <div className="absolute bottom-0 left-0 right-0 h-1 bg-konecta-gold rounded-full" />}
           </button>
           <button 
             onClick={() => setActiveTab('projects')} 
             className={`pb-3 text-xs font-bold uppercase tracking-widest transition-all relative ${activeTab === 'projects' ? 'text-konecta-navy' : 'text-gray-400 hover:text-konecta-navy'}`}
           >
-            Projetos Ativos ({userProjects.length})
+            {t('profile.projects_tab')} ({userProjects.length})
             {activeTab === 'projects' && <div className="absolute bottom-0 left-0 right-0 h-1 bg-konecta-gold rounded-full" />}
           </button>
           <button 
             onClick={() => setActiveTab('bookmarks')} 
             className={`pb-3 text-xs font-bold uppercase tracking-widest transition-all relative ${activeTab === 'bookmarks' ? 'text-konecta-navy' : 'text-gray-400 hover:text-konecta-navy'}`}
           >
-            Favoritos ({bookmarkedPosts.length})
+            {t('profile.bookmarks_tab')} ({bookmarkedPosts.length})
             {activeTab === 'bookmarks' && <div className="absolute bottom-0 left-0 right-0 h-1 bg-konecta-gold rounded-full" />}
           </button>
         </div>
@@ -345,7 +354,7 @@ export const Profile: React.FC<ProfileProps> = ({
             {/* Quick Post Box */}
             <section className="bg-white rounded-3xl p-6 border border-gray-100 shadow-sm space-y-4">
               <textarea 
-                placeholder="Partilha uma nova atualização, ideia rápida ou reflexão..."
+                placeholder={t('profile.post_placeholder')}
                 value={newPostText}
                 onChange={(e) => setNewPostText(e.target.value)}
                 className="w-full bg-gray-50 border-none focus:ring-1 focus:ring-konecta-navy rounded-2xl p-4 text-sm resize-none text-konecta-navy"
@@ -377,7 +386,7 @@ export const Profile: React.FC<ProfileProps> = ({
                   className="flex items-center gap-2 text-xs font-bold text-gray-500 hover:text-konecta-navy transition-colors px-3 py-1.5 rounded-lg hover:bg-gray-100"
                 >
                   <span className="material-symbols-outlined text-[20px] text-konecta-gold">add_photo_alternate</span>
-                  Adicionar Foto
+                  {t('profile.add_photo')}
                 </button>
                 <input type="file" ref={fileInputRef} accept="image/*" onChange={handlePhotoSelect} className="hidden" />
                 <button 
@@ -385,7 +394,7 @@ export const Profile: React.FC<ProfileProps> = ({
                   disabled={publishing || (!newPostText.trim() && !pendingImage)} 
                   className="btn-primary py-2.5 px-7 text-xs"
                 >
-                  {publishing ? 'A publicar...' : 'Publicar'}
+                  {publishing ? t('profile.publishing') : t('profile.publish_btn')}
                 </button>
               </div>
             </section>
@@ -398,20 +407,26 @@ export const Profile: React.FC<ProfileProps> = ({
                 </div>
               ) : userPosts.length === 0 ? (
                 <div className="text-center py-20 bg-white rounded-3xl border border-dashed border-gray-200">
-                  <p className="text-gray-400 italic text-sm">Ainda não partilhaste nenhuma publicação no teu perfil.</p>
+                  <p className="text-gray-400 italic text-sm">{t('profile.posts_empty')}</p>
                 </div>
               ) : (
                 userPosts.map((post) => (
                   <article key={post.id} className="bg-white rounded-3xl p-6 sm:p-8 border border-gray-100 shadow-sm group">
                     <div className="flex items-center justify-between mb-4">
                       <div className="flex items-center gap-3">
-                        <span className="text-[10px] font-bold text-konecta-gold uppercase tracking-widest">Publicação Pessoal</span>
+                        {post.communities ? (
+                          <span className="text-[10px] font-extrabold text-konecta-navy uppercase tracking-[0.1em]">
+                            {t('home.in')} {post.communities.name}
+                          </span>
+                        ) : (
+                          <span className="text-[10px] font-extrabold text-konecta-gold uppercase tracking-widest">{t('profile.personal_post')}</span>
+                        )}
                         <span className="metadata-text">{new Date(post.created_at || '').toLocaleDateString('pt-AO')}</span>
                       </div>
                       <button 
                         onClick={() => handleDeletePost(post.id)} 
                         className="text-red-400 hover:text-red-600 hover:bg-red-50 p-2 rounded-full transition-all"
-                        title="Eliminar publicação"
+                        title={t('profile.delete_post')}
                       >
                         <span className="material-symbols-outlined text-[20px]">delete</span>
                       </button>
@@ -439,27 +454,27 @@ export const Profile: React.FC<ProfileProps> = ({
             {userIdeas.length === 0 ? (
               <div className="text-center py-20 bg-white rounded-3xl border border-dashed border-gray-200">
                 <span className="material-symbols-outlined text-5xl text-gray-200 mb-2">lightbulb</span>
-                <p className="text-gray-400 italic text-sm">Ainda não registaste nenhuma ideia comunitária.</p>
+                <p className="text-gray-400 italic text-sm">{t('profile.ideas_empty')}</p>
               </div>
             ) : (
               userIdeas.map((idea) => (
                 <div key={idea.id} className="card-konecta p-6 flex flex-col sm:flex-row justify-between items-start gap-4">
                   <div className="space-y-2 flex-1">
-                    <span className="text-[10px] font-bold text-konecta-gold uppercase tracking-widest">{idea.category}</span>
+                    <span className="text-[10px] font-extrabold text-konecta-gold uppercase tracking-[0.2em]">{idea.category}</span>
                     <h3 className="text-xl font-bold text-konecta-navy">{idea.title}</h3>
                     <p className="text-xs text-gray-500 line-clamp-2 leading-relaxed">{idea.description}</p>
                     <span className="text-[10px] text-gray-400 block pt-2">
-                      {idea.votes_count || 0} apoios · {new Date(idea.created_at || '').toLocaleDateString('pt-AO')}
+                      {idea.votes_count || 0} {idea.votes_count === 1 ? 'apoio' : 'apoios'} · {new Date(idea.created_at || '').toLocaleDateString('pt-AO')}
                     </span>
                   </div>
                   <button
                     onClick={() => {
-                      if (window.confirm('Tens a certeza de que queres eliminar esta ideia da plataforma KONECTA? Esta ação é irreversível.')) {
+                      if (window.confirm(t('profile.delete_idea_confirm'))) {
                         onDeleteIdea(idea.id);
                       }
                     }}
                     className="text-red-500 hover:bg-red-50 p-2 rounded-xl transition-colors shrink-0"
-                    title="Eliminar ideia"
+                    title={t('profile.delete_idea')}
                   >
                     <span className="material-symbols-outlined text-[20px]">delete</span>
                   </button>
@@ -475,14 +490,14 @@ export const Profile: React.FC<ProfileProps> = ({
             {userProjects.length === 0 ? (
               <div className="text-center py-20 bg-white rounded-3xl border border-dashed border-gray-200">
                 <span className="material-symbols-outlined text-5xl text-gray-200 mb-2">folder_open</span>
-                <p className="text-gray-400 italic text-sm">Não lideras nenhum projeto ativo de momento.</p>
+                <p className="text-gray-400 italic text-sm">{t('profile.projects_empty')}</p>
               </div>
             ) : (
               userProjects.map((p) => (
                 <div key={p.id} className="card-konecta p-6">
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-[10px] font-bold text-konecta-gold uppercase tracking-widest">{p.category}</span>
-                    <span className="text-xs font-bold text-green-600 bg-green-50 px-2.5 py-1 rounded-full">{p.status}</span>
+                    <span className="text-[10px] font-extrabold text-konecta-gold uppercase tracking-[0.2em]">{p.category}</span>
+                    <span className="text-[9px] font-black text-green-600 uppercase tracking-widest">{p.status}</span>
                   </div>
                   <h3 className="text-xl font-bold text-konecta-navy mb-2">{p.title}</h3>
                   <p className="text-xs text-gray-500 leading-relaxed">{p.description}</p>
@@ -502,7 +517,7 @@ export const Profile: React.FC<ProfileProps> = ({
             ) : bookmarkedPosts.length === 0 ? (
               <div className="text-center py-20 bg-white rounded-3xl border border-dashed border-gray-200">
                 <span className="material-symbols-outlined text-5xl text-gray-200 mb-2">bookmark_border</span>
-                <p className="text-gray-400 italic text-sm">Ainda não guardaste nenhuma publicação nos favoritos.</p>
+                <p className="text-gray-400 italic text-sm">{t('profile.bookmarks_empty')}</p>
               </div>
             ) : (
               bookmarkedPosts.map((post) => (
@@ -515,7 +530,7 @@ export const Profile: React.FC<ProfileProps> = ({
                     </div>
                     <div>
                       <h4 className="font-bold text-sm text-konecta-navy">{post.profiles?.full_name || 'Utilizador'}</h4>
-                      <p className="text-[10px] text-gray-400 uppercase">{post.profiles?.province || 'Angola'}</p>
+                      <p className="text-[10px] text-gray-400 font-extrabold uppercase tracking-widest">{post.profiles?.province || 'Angola'}</p>
                     </div>
                   </div>
                   <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">{post.content}</p>
@@ -539,7 +554,7 @@ export const Profile: React.FC<ProfileProps> = ({
               className="bg-white rounded-3xl p-6 sm:p-8 max-w-lg w-full shadow-2xl space-y-5"
             >
               <div className="flex items-center justify-between border-b border-gray-100 pb-3">
-                <h3 className="text-xl font-bold text-konecta-navy">Editar Dados do Perfil</h3>
+                <h3 className="text-xl font-bold text-konecta-navy">{t('profile.edit_modal_title')}</h3>
                 <button onClick={() => setShowEditModal(false)} className="text-gray-400 hover:text-konecta-navy">
                   <span className="material-symbols-outlined">close</span>
                 </button>
@@ -548,7 +563,7 @@ export const Profile: React.FC<ProfileProps> = ({
               <form onSubmit={handleSaveProfile} className="space-y-4">
                 <div>
                   <label className="block text-xs font-bold text-konecta-navy uppercase tracking-wider mb-1">
-                    Nome Completo
+                    {t('profile.full_name')}
                   </label>
                   <input
                     type="text"
@@ -561,13 +576,13 @@ export const Profile: React.FC<ProfileProps> = ({
 
                 <div>
                   <label className="block text-xs font-bold text-konecta-navy uppercase tracking-wider mb-1">
-                    Biografia / Ocupação
+                    {t('profile.bio')}
                   </label>
                   <textarea
                     rows={3}
                     value={editBio}
                     onChange={(e) => setEditBio(e.target.value)}
-                    placeholder="Conta um pouco sobre a tua experiência, projetos e áreas de interesse..."
+                    placeholder={t('profile.bio_placeholder')}
                     className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 text-sm resize-none"
                   />
                 </div>
@@ -575,7 +590,7 @@ export const Profile: React.FC<ProfileProps> = ({
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-xs font-bold text-konecta-navy uppercase tracking-wider mb-1">
-                      Província
+                      {t('create.province')}
                     </label>
                     <select
                       value={editProvince}
@@ -605,13 +620,13 @@ export const Profile: React.FC<ProfileProps> = ({
 
                   <div>
                     <label className="block text-xs font-bold text-konecta-navy uppercase tracking-wider mb-1">
-                      Município
+                      {t('profile.municipality')}
                     </label>
                     <input
                       type="text"
                       value={editMunicipality}
                       onChange={(e) => setEditMunicipality(e.target.value)}
-                      placeholder="Ex: Cazenga, Kilamba Kiaxi"
+                      placeholder={t('profile.municipality_placeholder')}
                       className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-xs"
                     />
                   </div>
@@ -623,14 +638,14 @@ export const Profile: React.FC<ProfileProps> = ({
                     onClick={() => setShowEditModal(false)}
                     className="px-4 py-2 text-xs font-bold text-gray-500 hover:text-konecta-navy"
                   >
-                    Cancelar
+                    {t('common.cancel')}
                   </button>
                   <button
                     type="submit"
                     disabled={savingProfile || !editFullName.trim()}
                     className="btn-primary py-2 px-6 text-xs"
                   >
-                    {savingProfile ? 'A gravar...' : 'Guardar Alterações'}
+                    {savingProfile ? t('profile.saving') : t('profile.save_btn')}
                   </button>
                 </div>
               </form>
@@ -651,7 +666,7 @@ export const Profile: React.FC<ProfileProps> = ({
             >
               <div className="flex items-center justify-between border-b border-gray-100 pb-3">
                 <h3 className="text-lg font-bold text-konecta-navy">
-                  {showFollowModal === 'followers' ? 'Seguidores' : 'A Seguir'}
+                  {showFollowModal === 'followers' ? t('profile.followers') : t('profile.following')}
                 </h3>
                 <button onClick={() => setShowFollowModal(null)} className="text-gray-400 hover:text-konecta-navy">
                   <span className="material-symbols-outlined">close</span>
@@ -661,7 +676,7 @@ export const Profile: React.FC<ProfileProps> = ({
               <div className="max-h-72 overflow-y-auto space-y-2">
                 {(showFollowModal === 'followers' ? followers : following).length === 0 ? (
                   <p className="text-xs text-gray-400 italic text-center py-8">
-                    Nenhum utilizador registado nesta lista ainda.
+                    {t('profile.follow_empty')}
                   </p>
                 ) : (
                   (showFollowModal === 'followers' ? followers : following).map((item) => (
@@ -673,7 +688,7 @@ export const Profile: React.FC<ProfileProps> = ({
                       </div>
                       <div>
                         <p className="font-bold text-xs text-konecta-navy">{item.profiles?.full_name || 'Utilizador'}</p>
-                        <p className="text-[10px] text-gray-400 uppercase">{item.profiles?.province || 'Angola'}</p>
+                        <p className="text-[10px] text-gray-400 font-extrabold uppercase tracking-widest">{item.profiles?.province || 'Angola'}</p>
                       </div>
                     </div>
                   ))

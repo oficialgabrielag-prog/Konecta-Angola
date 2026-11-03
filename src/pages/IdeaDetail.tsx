@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Idea, CommentItem, Profile } from '../types';
 import { d1Client } from '../lib/d1Client';
+import { useUI } from '../context/UIContext';
 import { KonectaRealtimeService } from '../lib/realtime';
 
 interface IdeaDetailProps {
@@ -22,6 +23,7 @@ export const IdeaDetail: React.FC<IdeaDetailProps> = ({
   const [idea, setIdea] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'visao-geral' | 'discussao' | 'colaboradores' | 'votacoes' | 'configuracoes'>('visao-geral');
+  const { openShareSheet } = useUI();
 
   // Sub-data
   const [comments, setComments] = useState<CommentItem[]>([]);
@@ -191,15 +193,28 @@ export const IdeaDetail: React.FC<IdeaDetailProps> = ({
             <h1 className="text-2xl sm:text-3xl font-black text-konecta-navy">{idea.title}</h1>
           </div>
 
-          <button
-            onClick={handleToggleVote}
-            className={`btn-gold py-2.5 px-6 text-xs font-bold shadow-md flex items-center gap-2 self-start md:self-auto transition-transform active:scale-95 ${
-              isVoted ? 'bg-amber-500 text-white' : ''
-            }`}
-          >
-            <span className="material-symbols-outlined text-[18px]">thumb_up</span>
-            <span>{isVoted ? 'Apoiado' : 'Apoiar esta Ideia'} ({voteCount})</span>
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={handleToggleVote}
+              className={`btn-gold py-2.5 px-6 text-xs font-bold shadow-md flex items-center gap-2 self-start md:self-auto transition-transform active:scale-95 ${
+                isVoted ? 'bg-amber-500 text-white' : ''
+              }`}
+            >
+              <span className="material-symbols-outlined text-[18px]">thumb_up</span>
+              <span>{isVoted ? 'Apoiado' : 'Apoiar esta Ideia'} ({voteCount})</span>
+            </button>
+            <button 
+              onClick={() => openShareSheet({
+                targetId: idea.id,
+                targetType: 'idea',
+                title: idea.title,
+                authorName: idea.profiles?.full_name || 'Inovador'
+              })}
+              className="p-3 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-full transition-all active:scale-95"
+            >
+              <span className="material-symbols-outlined text-[20px]">share</span>
+            </button>
+          </div>
         </div>
 
         {/* Author info */}

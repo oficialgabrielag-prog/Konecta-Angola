@@ -2,6 +2,7 @@ import React from 'react';
 import { Post } from '../types';
 import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { UserBadge } from './UserBadges';
 
 interface PostCardProps {
   post: Post;
@@ -42,7 +43,10 @@ export const PostCard: React.FC<PostCardProps> = ({ post }) => {
             className="w-10 h-10 rounded-full mr-3 border border-gray-100 shadow-sm" 
           />
           <div>
-            <h3 className="font-bold text-konecta-navy text-sm">{post.profiles?.full_name || 'Utilizador'}</h3>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <h3 className="font-bold text-konecta-navy text-sm">{post.profiles?.full_name || 'Utilizador'}</h3>
+              <UserBadge profile={post.profiles} size="xs" showPlan={true} />
+            </div>
             <p className="text-[10px] text-gray-400 uppercase tracking-wider font-medium">
               {formatDistanceToNow(new Date(post.created_at), { addSuffix: true, locale: ptBR })}
             </p>

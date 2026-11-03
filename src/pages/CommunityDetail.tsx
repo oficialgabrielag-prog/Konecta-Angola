@@ -4,6 +4,7 @@ import { Community, Post, CommunityMember, CommunityAnnouncement, CommunityRule,
 import { d1Client } from '../lib/d1Client';
 import { uploadToCloudinary } from '../lib/cloudinary';
 import { KonectaRealtimeService } from '../lib/realtime';
+import { useToast } from '../context/UIContext';
 
 interface CommunityDetailProps {
   communityId: string;
@@ -22,6 +23,7 @@ export const CommunityDetail: React.FC<CommunityDetailProps> = ({
   onSelectUser,
   onImageClick,
 }) => {
+  const { showToast } = useToast();
   const [community, setCommunity] = useState<Community | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<string>('inicio');
@@ -210,7 +212,8 @@ export const CommunityDetail: React.FC<CommunityDetailProps> = ({
         setPostImagePreview(null);
       }
     } catch (err: any) {
-      alert(err.message || 'Erro ao publicar no feed da comunidade.');
+      console.error('Erro ao publicar no feed da comunidade:', err);
+      showToast(err.message || 'Erro ao publicar no feed da comunidade.', 'error');
     } finally {
       setPublishingPost(false);
     }
@@ -281,8 +284,9 @@ export const CommunityDetail: React.FC<CommunityDetailProps> = ({
         setAnnTitle('');
         setAnnBody('');
       }
-    } catch (e) {
-      alert('Erro ao publicar anúncio.');
+    } catch (e: any) {
+      console.error('Erro ao publicar anúncio:', e);
+      showToast('Erro ao publicar anúncio.', 'error');
     } finally {
       setPublishingAnn(false);
     }
@@ -300,8 +304,9 @@ export const CommunityDetail: React.FC<CommunityDetailProps> = ({
         setRuleTitle('');
         setRuleBody('');
       }
-    } catch (e) {
-      alert('Erro ao adicionar regra.');
+    } catch (e: any) {
+      console.error('Erro ao adicionar regra:', e);
+      showToast('Erro ao adicionar regra.', 'error');
     } finally {
       setPublishingRule(false);
     }
@@ -336,9 +341,10 @@ export const CommunityDetail: React.FC<CommunityDetailProps> = ({
         visibility: editVisibility
       } : null);
 
-      alert('Configurações da comunidade guardadas com sucesso!');
+      showToast('Configurações da comunidade guardadas com sucesso!', 'success');
     } catch (err: any) {
-      alert(err.message || 'Erro ao guardar configurações.');
+      console.error('Erro ao guardar configurações:', err);
+      showToast(err.message || 'Erro ao guardar configurações.', 'error');
     } finally {
       setSavingSettings(false);
     }
@@ -349,8 +355,9 @@ export const CommunityDetail: React.FC<CommunityDetailProps> = ({
       const url = await uploadToCloudinary(file);
       if (type === 'avatar') setEditAvatar(url);
       else setEditCover(url);
-    } catch (err) {
-      alert('Erro ao carregar imagem para o Cloudinary.');
+    } catch (err: any) {
+      console.error('Erro ao carregar imagem para o Cloudinary:', err);
+      showToast('Erro ao carregar imagem para o Cloudinary.', 'error');
     }
   };
 

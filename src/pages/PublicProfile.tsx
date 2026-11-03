@@ -3,6 +3,8 @@ import { motion } from 'motion/react';
 import { Profile, Idea, Project, Post } from '../types';
 import { d1Client } from '../lib/d1Client';
 import { shareContent } from '../lib/share';
+import { useT } from '../i18n/LanguageContext';
+import { UserBadge } from '../components/UserBadges';
 
 interface PublicProfileProps {
   userId: string;
@@ -19,6 +21,7 @@ export const PublicProfile: React.FC<PublicProfileProps> = ({
   onSelectIdea,
   onBack,
 }) => {
+  const t = useT();
   const [profile, setProfile] = useState<Profile | null>(null);
   const [userIdeas, setUserIdeas] = useState<Idea[]>([]);
   const [userPosts, setUserPosts] = useState<Post[]>([]);
@@ -124,7 +127,7 @@ export const PublicProfile: React.FC<PublicProfileProps> = ({
             className="text-xs font-bold uppercase tracking-widest text-gray-500 hover:text-konecta-navy transition-colors flex items-center gap-2 group"
           >
             <span className="material-symbols-outlined text-[18px] group-hover:-translate-x-1 transition-transform">arrow_back</span>
-            Voltar
+            {t('common.back')}
           </button>
 
           <div className="flex flex-col md:flex-row items-center md:items-end gap-8">
@@ -139,10 +142,13 @@ export const PublicProfile: React.FC<PublicProfileProps> = ({
             </div>
 
             <div className="flex-1 text-center md:text-left space-y-2">
-              <span className="text-[10px] font-bold text-konecta-gold uppercase tracking-[0.2em] bg-konecta-gold/10 px-2.5 py-1 rounded-full border border-konecta-gold/20 inline-block">
-                Perfil Público
+              <span className="text-[10px] font-extrabold text-konecta-gold uppercase tracking-[0.2em] inline-block">
+                {t('profile.public_profile')}
               </span>
-              <h1 className="text-3xl lg:text-4xl font-extrabold text-konecta-navy">{fullName}</h1>
+              <div className="flex items-center justify-center md:justify-start gap-2 flex-wrap">
+                <h1 className="text-3xl lg:text-4xl font-extrabold text-konecta-navy">{fullName}</h1>
+                <UserBadge profile={profile} size="md" showLabel={true} showPlan={true} />
+              </div>
               <p className="text-gray-500 text-sm font-medium">
                 {profile?.province || 'Angola'} {profile?.municipality ? `· ${profile.municipality}` : ''}
               </p>
@@ -156,11 +162,11 @@ export const PublicProfile: React.FC<PublicProfileProps> = ({
               <div className="flex items-center justify-center md:justify-start gap-6 pt-2 text-xs font-bold text-konecta-navy">
                 <div>
                   <span className="font-black text-sm mr-1">{followersCount}</span>
-                  <span className="text-gray-400 font-normal">Seguidores</span>
+                  <span className="text-gray-400 font-normal uppercase tracking-widest text-[9px]">{t('profile.followers')}</span>
                 </div>
                 <div>
                   <span className="font-black text-sm mr-1">{followingCount}</span>
-                  <span className="text-gray-400 font-normal">A Seguir</span>
+                  <span className="text-gray-400 font-normal uppercase tracking-widest text-[9px]">{t('profile.following')}</span>
                 </div>
               </div>
             </div>
@@ -174,20 +180,20 @@ export const PublicProfile: React.FC<PublicProfileProps> = ({
                     isFollowing ? 'bg-gray-100 text-gray-700 hover:bg-red-50 hover:text-red-600 border border-gray-200' : ''
                   }`}
                 >
-                  {followLoading ? '...' : isFollowing ? 'A Seguir ✓' : '+ Seguir Utilizador'}
+                  {followLoading ? '...' : isFollowing ? t('profile.following_status') : t('profile.follow_btn')}
                 </button>
               )}
               <button
                 onClick={async () => {
                   const res = await shareContent({
-                    title: `Perfil de ${fullName} no KONECTA`,
-                    text: profile?.bio || `Conheça o perfil de ${fullName} na plataforma KONECTA Angola`,
+                    title: t('profile.share_title').replace('{name}', fullName),
+                    text: profile?.bio || t('profile.share_text').replace('{name}', fullName),
                     url: window.location.href
                   });
                   if (res.message && res.copied) alert(res.message);
                 }}
                 className="w-10 h-10 rounded-full border border-gray-200 hover:border-konecta-navy flex items-center justify-center text-konecta-navy transition-colors bg-white shadow-xs"
-                title="Partilhar Perfil"
+                title={t('profile.share_profile')}
               >
                 <span className="material-symbols-outlined text-[18px]">share</span>
               </button>
@@ -200,21 +206,21 @@ export const PublicProfile: React.FC<PublicProfileProps> = ({
               onClick={() => setActiveTab('posts')} 
               className={`pb-2 text-xs font-bold uppercase tracking-widest transition-all relative ${activeTab === 'posts' ? 'text-konecta-navy' : 'text-gray-400 hover:text-konecta-navy'}`}
             >
-              Publicações ({userPosts.length})
+              {t('profile.posts_tab')} ({userPosts.length})
               {activeTab === 'posts' && <div className="absolute bottom-0 left-0 right-0 h-1 bg-konecta-gold rounded-full" />}
             </button>
             <button 
               onClick={() => setActiveTab('ideas')} 
               className={`pb-2 text-xs font-bold uppercase tracking-widest transition-all relative ${activeTab === 'ideas' ? 'text-konecta-navy' : 'text-gray-400 hover:text-konecta-navy'}`}
             >
-              Ideias ({userIdeas.length})
+              {t('profile.ideas_tab')} ({userIdeas.length})
               {activeTab === 'ideas' && <div className="absolute bottom-0 left-0 right-0 h-1 bg-konecta-gold rounded-full" />}
             </button>
             <button 
               onClick={() => setActiveTab('projects')} 
               className={`pb-2 text-xs font-bold uppercase tracking-widest transition-all relative ${activeTab === 'projects' ? 'text-konecta-navy' : 'text-gray-400 hover:text-konecta-navy'}`}
             >
-              Projetos ({userProjects.length})
+              {t('profile.projects_tab')} ({userProjects.length})
               {activeTab === 'projects' && <div className="absolute bottom-0 left-0 right-0 h-1 bg-konecta-gold rounded-full" />}
             </button>
           </div>
@@ -230,13 +236,13 @@ export const PublicProfile: React.FC<PublicProfileProps> = ({
           <div className="space-y-6">
             {userPosts.length === 0 ? (
               <div className="py-20 text-center bg-white rounded-3xl border border-dashed border-gray-200">
-                <p className="text-gray-400 italic text-sm">Este utilizador ainda não publicou no feed.</p>
+                <p className="text-gray-400 italic text-sm">{t('profile.posts_empty_public')}</p>
               </div>
             ) : (
               userPosts.map((post) => (
                 <article key={post.id} className="card-konecta p-6 sm:p-8">
                   <div className="flex items-center gap-3 mb-4">
-                    <span className="text-[10px] font-bold text-konecta-gold uppercase tracking-widest">Feed Social</span>
+                    <span className="text-[10px] font-extrabold text-konecta-gold uppercase tracking-[0.2em]">{t('nav.feed')}</span>
                     <span className="metadata-text">{new Date(post.created_at).toLocaleDateString('pt-AO')}</span>
                   </div>
                   <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">{post.content}</p>
@@ -255,7 +261,7 @@ export const PublicProfile: React.FC<PublicProfileProps> = ({
             {userIdeas.length === 0 ? (
               <div className="py-20 text-center bg-white rounded-3xl border border-dashed border-gray-200">
                 <span className="material-symbols-outlined text-4xl text-gray-300 mb-2">lightbulb</span>
-                <p className="text-gray-400 italic text-sm">Este utilizador ainda não submeteu ideias.</p>
+                <p className="text-gray-400 italic text-sm">{t('profile.ideas_empty_public')}</p>
               </div>
             ) : (
               userIdeas.map((idea) => (
@@ -265,9 +271,9 @@ export const PublicProfile: React.FC<PublicProfileProps> = ({
                   className="card-konecta p-6 cursor-pointer hover:border-konecta-gold/50 transition-all"
                 >
                   <div className="flex items-center gap-2 mb-2">
-                    <span className="text-[10px] font-bold text-konecta-gold uppercase">{idea.category}</span>
+                    <span className="text-[10px] font-extrabold text-konecta-gold uppercase tracking-[0.2em]">{idea.category}</span>
                     <span className="text-gray-300">·</span>
-                    <span className="text-[10px] text-gray-400">{idea.province || 'Angola'}</span>
+                    <span className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">{idea.province || 'Angola'}</span>
                   </div>
                   <h3 className="text-xl font-bold text-konecta-navy mb-2">{idea.title}</h3>
                   <p className="text-xs text-gray-500 line-clamp-2 leading-relaxed">{idea.description}</p>
@@ -283,14 +289,14 @@ export const PublicProfile: React.FC<PublicProfileProps> = ({
             {userProjects.length === 0 ? (
               <div className="py-20 text-center bg-white rounded-3xl border border-dashed border-gray-200">
                 <span className="material-symbols-outlined text-4xl text-gray-300 mb-2">folder_open</span>
-                <p className="text-gray-400 italic text-sm">Este utilizador não lidera nenhum projeto no momento.</p>
+                <p className="text-gray-400 italic text-sm">{t('profile.projects_empty_public')}</p>
               </div>
             ) : (
               userProjects.map((p) => (
                 <div key={p.id} className="card-konecta p-6">
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-[10px] font-bold text-konecta-gold uppercase">{p.category}</span>
-                    <span className="text-xs font-bold text-green-600 bg-green-50 px-2.5 py-1 rounded-full">{p.status}</span>
+                    <span className="text-[10px] font-extrabold text-konecta-gold uppercase tracking-[0.2em]">{p.category}</span>
+                    <span className="text-[9px] font-black text-green-600 uppercase tracking-widest">{p.status}</span>
                   </div>
                   <h3 className="text-xl font-bold text-konecta-navy mb-2">{p.title}</h3>
                   <p className="text-xs text-gray-500 leading-relaxed">{p.description}</p>

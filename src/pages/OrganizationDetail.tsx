@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { d1Client } from '../lib/d1Client';
 import { uploadMediaToCloudinary } from '../lib/cloudinary';
+import { useToast } from '../context/UIContext';
+import { OrgBadge } from '../components/UserBadges';
 
 interface OrganizationDetailProps {
   slug: string;
@@ -11,6 +13,7 @@ interface OrganizationDetailProps {
 }
 
 export const OrganizationDetail: React.FC<OrganizationDetailProps> = ({ slug, user, onOpenAuth, onBack }) => {
+  const { showToast } = useToast();
   const [org, setOrg] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'geral' | 'publicacoes' | 'documentos' | 'membros' | 'sobre'>('geral');
@@ -40,6 +43,137 @@ export const OrganizationDetail: React.FC<OrganizationDetailProps> = ({ slug, us
   const [showVerifyModal, setShowVerifyModal] = useState(false);
   const [verifyDetails, setVerifyDetails] = useState('');
   const [submittingVerify, setSubmittingVerify] = useState(false);
+
+  // Edit Organization modal
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editName, setEditName] = useState('');
+  const [editCategory, setEditCategory] = useState('church');
+  const [editDescription, setEditDescription] = useState('');
+  const [editMission, setEditMission] = useState('');
+  const [editWebsite, setEditWebsite] = useState('');
+  const [editEmail, setEditEmail] = useState('');
+  const [editPhone, setEditPhone] = useState('');
+  const [editAddress, setEditAddress] = useState('');
+  const [editProvince, setEditProvince] = useState('Luanda');
+  const [editMunicipality, setEditMunicipality] = useState('');
+  const [editLogoUrl, setEditLogoUrl] = useState('');
+  const [editCoverUrl, setEditCoverUrl] = useState('');
+  const [uploadingEditLogo, setUploadingEditLogo] = useState(false);
+  const [uploadingEditCover, setUploadingEditCover] = useState(false);
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+
+  const categories = [
+    { key: 'church', label: 'Igrejas' },
+    { key: 'political_party', label: 'Partidos Políticos' },
+    { key: 'civic_movement', label: 'Movimentos Cívicos' },
+    { key: 'writer_poet', label: 'Escritores e Poetas' },
+    { key: 'association', label: 'Associações' },
+    { key: 'ngo', label: 'ONGs' },
+    { key: 'school_university', label: 'Escolas e Universidades' },
+    { key: 'other', label: 'Outras Instituições' }
+  ];
+
+  const provinces = [
+    'Luanda', 'Benguela', 'Huambo', 'Huíla', 'Cabinda', 'Cuanza Sul', 
+    'Cuanza Norte', 'Malanje', 'Uíge', 'Zaire', 'Lunda Norte', 'Lunda Sul',
+    'Bié', 'Moxico', 'Quando Cubango', 'Namibe', 'Cunene', 'Bengo'
+  ];
+
+  const openEditModal = () => {
+    if (!org) return;
+    setEditName(org.name || '');
+    setEditCategory(org.category || 'church');
+    setEditDescription(org.description || '');
+    setEditMission(org.mission || '');
+    setEditWebsite(org.website_url || org.website || '');
+    setEditEmail(org.contact_email || org.email || '');
+    setEditPhone(org.contact_phone || org.phone || '');
+    setEditAddress(org.address || '');
+    setEditProvince(org.province || 'Luanda');
+    setEditMunicipality(org.municipality || '');
+    setEditLogoUrl(org.logo_url || '');
+    setEditCoverUrl(org.cover_url || '');
+    setEditError(null);
+    setShowEditModal(true);
+  };
+
+  const handleEditLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingEditLogo(true);
+    setEditError(null);
+    try {
+      const res = await uploadMediaToCloudinary(file);
+      setEditLogoUrl(res.secure_url);
+    } catch (err: any) {
+      setEditError(err.message || 'Erro ao carregar logótipo.');
+    } finally {
+      setUploadingEditLogo(false);
+    }
+  };
+
+  const handleEditCoverUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingEditCover(true);
+    setEditError(null);
+    try {
+      const res = await uploadMediaToCloudinary(file);
+      setEditCoverUrl(res.secure_url);
+    } catch (err: any) {
+      setEditError(err.message || 'Erro ao carregar capa.');
+    } finally {
+      setUploadingEditCover(false);
+    }
+  };
+
+  const handleSaveEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!org || savingEdit || uploadingEditLogo || uploadingEditCover) return;
+    if (!editName.trim()) {
+      setEditError('Por favor, introduza o nome da organização.');
+      return;
+    }
+
+    setSavingEdit(true);
+    setEditError(null);
+    try {
+      let formattedWebsite = editWebsite.trim();
+      if (formattedWebsite && !/^https?:\/\//i.test(formattedWebsite)) {
+        formattedWebsite = `https://${formattedWebsite}`;
+      }
+
+      const updatePayload = {
+        name: editName.trim(),
+        category: editCategory,
+        description: editDescription.trim() || null,
+        mission: editMission.trim() || null,
+        website_url: formattedWebsite || null,
+        contact_email: editEmail.trim() || null,
+        contact_phone: editPhone.trim() || null,
+        address: editAddress.trim() || null,
+        province: editProvince,
+        municipality: editMunicipality.trim() || '',
+        logo_url: editLogoUrl || null,
+        cover_url: editCoverUrl || null
+      };
+
+      const res = await d1Client.organizations.update(org.id, updatePayload);
+      if (res.error) {
+        throw new Error(res.error.message || 'Erro ao atualizar organização.');
+      }
+
+      setShowEditModal(false);
+      showToast('Organização atualizada com sucesso!', 'success');
+      fetchOrgDetail();
+    } catch (err: any) {
+      console.error('Erro em handleSaveEdit:', err);
+      setEditError(err.message || 'Erro ao guardar alterações.');
+    } finally {
+      setSavingEdit(false);
+    }
+  };
 
   useEffect(() => {
     fetchOrgDetail();
@@ -109,8 +243,10 @@ export const OrganizationDetail: React.FC<OrganizationDetailProps> = ({ slug, us
       setPostBody('');
       setPostMediaUrl('');
       fetchOrgDetail();
+      showToast('Publicação criada com sucesso!', 'success');
     } catch (err: any) {
-      alert(err.message || 'Erro ao publicar.');
+      console.error('Erro ao publicar na organização:', err);
+      showToast(err.message || 'Erro ao publicar.', 'error');
     } finally {
       setPosting(false);
     }
@@ -130,8 +266,10 @@ export const OrganizationDetail: React.FC<OrganizationDetailProps> = ({ slug, us
       setDocTitle('');
       setDocFileUrl('');
       fetchOrgDetail();
+      showToast('Documento institucional carregado com sucesso!', 'success');
     } catch (err: any) {
-      alert(err.message || 'Erro ao enviar documento.');
+      console.error('Erro ao enviar documento:', err);
+      showToast(err.message || 'Erro ao enviar documento.', 'error');
     } finally {
       setUploadingDoc(false);
     }
@@ -145,9 +283,10 @@ export const OrganizationDetail: React.FC<OrganizationDetailProps> = ({ slug, us
       await d1Client.organizations.requestVerification(org.id, { details: verifyDetails.trim() });
       setShowVerifyModal(false);
       setVerifyDetails('');
-      alert('Pedido de verificação enviado com sucesso. Aguarde análise da administração.');
+      showToast('Pedido de verificação enviado com sucesso. Aguarda análise da administração.', 'success');
     } catch (err: any) {
-      alert(err.message || 'Erro ao solicitar verificação.');
+      console.error('Erro ao solicitar verificação:', err);
+      showToast(err.message || 'Erro ao solicitar verificação.', 'error');
     } finally {
       setSubmittingVerify(false);
     }
@@ -196,13 +335,11 @@ export const OrganizationDetail: React.FC<OrganizationDetailProps> = ({ slug, us
                 <span className="bg-konecta-navy text-white text-[10px] font-black uppercase px-3 py-1 rounded-full">
                   {org.category}
                 </span>
-                {org.verified && (
-                  <span className="bg-blue-50 text-blue-600 text-[10px] font-bold px-3 py-1 rounded-full flex items-center gap-1 border border-blue-100">
-                    <span className="material-symbols-outlined text-[14px]">verified</span> Verificada
-                  </span>
-                )}
+                <OrgBadge organization={org} size="sm" showLabel={true} />
               </div>
-              <h1 className="text-2xl sm:text-3xl font-black text-konecta-navy">{org.name}</h1>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h1 className="text-2xl sm:text-3xl font-black text-konecta-navy">{org.name}</h1>
+              </div>
               <p className="text-xs text-gray-500 mt-1">{org.province}{org.municipality ? `, ${org.municipality}` : ''}</p>
             </div>
           </div>
@@ -217,6 +354,16 @@ export const OrganizationDetail: React.FC<OrganizationDetailProps> = ({ slug, us
             >
               {isFollowing ? 'A seguir ✓' : 'Seguir Organização'}
             </button>
+
+            {isOwner && (
+              <button
+                onClick={openEditModal}
+                className="btn-secondary py-2.5 px-5 text-xs flex items-center gap-1.5 shadow-sm"
+              >
+                <span className="material-symbols-outlined text-sm">edit</span>
+                Editar Organização
+              </button>
+            )}
 
             {isOwner && !org.verified && (
               <button
@@ -527,6 +674,183 @@ export const OrganizationDetail: React.FC<OrganizationDetailProps> = ({ slug, us
                 <div className="flex justify-end gap-3 pt-2">
                   <button type="button" onClick={() => setShowVerifyModal(false)} className="text-xs text-gray-500">Cancelar</button>
                   <button type="submit" disabled={submittingVerify || !verifyDetails.trim()} className="btn-gold py-2 px-5 text-xs">Enviar Pedido</button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Edit Organization Modal */}
+      <AnimatePresence>
+        {showEditModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-konecta-navy/60 backdrop-blur-sm overflow-y-auto">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white rounded-[32px] max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-2xl p-6 sm:p-8 space-y-6"
+            >
+              <div className="flex items-center justify-between border-b border-gray-100 pb-4">
+                <h3 className="text-xl font-bold text-konecta-navy">Editar Informações da Organização</h3>
+                <button onClick={() => setShowEditModal(false)} className="text-gray-400 hover:text-konecta-navy">
+                  <span className="material-symbols-outlined">close</span>
+                </button>
+              </div>
+
+              <form onSubmit={handleSaveEdit} className="space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold text-konecta-navy uppercase tracking-wider mb-1">Nome da Organização</label>
+                    <input
+                      type="text"
+                      required
+                      value={editName}
+                      onChange={(e) => setEditName(e.target.value)}
+                      placeholder="Ex: Igreja Evangélica / Editora Luanda"
+                      className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-xs"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-konecta-navy uppercase tracking-wider mb-1">Categoria</label>
+                    <select
+                      value={editCategory}
+                      onChange={(e) => setEditCategory(e.target.value)}
+                      className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 text-xs font-medium"
+                    >
+                      {categories.map(c => <option key={c.key} value={c.key}>{c.label}</option>)}
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-konecta-navy uppercase tracking-wider mb-1">Descrição</label>
+                  <textarea
+                    rows={3}
+                    value={editDescription}
+                    onChange={(e) => setEditDescription(e.target.value)}
+                    placeholder="Breve resumo sobre a instituição ou autor..."
+                    className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 text-xs resize-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-konecta-navy uppercase tracking-wider mb-1">Missão</label>
+                  <input
+                    type="text"
+                    value={editMission}
+                    onChange={(e) => setEditMission(e.target.value)}
+                    placeholder="Missão ou propósito principal..."
+                    className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2 text-xs"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold text-konecta-navy uppercase tracking-wider mb-1">Província</label>
+                    <select
+                      value={editProvince}
+                      onChange={(e) => setEditProvince(e.target.value)}
+                      className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 text-xs font-medium"
+                    >
+                      {provinces.map(p => <option key={p} value={p}>{p}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-konecta-navy uppercase tracking-wider mb-1">Município</label>
+                    <input
+                      type="text"
+                      value={editMunicipality}
+                      onChange={(e) => setEditMunicipality(e.target.value)}
+                      placeholder="Ex: Luanda, Viana..."
+                      className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-xs"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold text-konecta-navy uppercase tracking-wider mb-1">Website</label>
+                    <input
+                      type="text"
+                      value={editWebsite}
+                      onChange={(e) => setEditWebsite(e.target.value)}
+                      placeholder="www.exemplo.ao"
+                      className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-xs"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-konecta-navy uppercase tracking-wider mb-1">Email</label>
+                    <input
+                      type="email"
+                      value={editEmail}
+                      onChange={(e) => setEditEmail(e.target.value)}
+                      placeholder="contacto@org.ao"
+                      className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-xs"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-konecta-navy uppercase tracking-wider mb-1">Telefone</label>
+                    <input
+                      type="text"
+                      value={editPhone}
+                      onChange={(e) => setEditPhone(e.target.value)}
+                      placeholder="+244 ..."
+                      className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-xs"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
+                  <div>
+                    <label className="block text-xs font-bold text-konecta-navy uppercase tracking-wider mb-1">Logótipo</label>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleEditLogoUpload}
+                      className="text-xs text-gray-500 file:mr-2 file:py-1.5 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-konecta-navy file:text-white"
+                    />
+                    {uploadingEditLogo && <span className="text-[10px] text-konecta-gold block mt-1">A carregar logótipo...</span>}
+                    {editLogoUrl && <img src={editLogoUrl} alt="" className="w-12 h-12 rounded-xl object-cover mt-2 border" />}
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-konecta-navy uppercase tracking-wider mb-1">Imagem de Capa</label>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleEditCoverUpload}
+                      className="text-xs text-gray-500 file:mr-2 file:py-1.5 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-konecta-navy file:text-white"
+                    />
+                    {uploadingEditCover && <span className="text-[10px] text-konecta-gold block mt-1">A carregar capa...</span>}
+                    {editCoverUrl && <img src={editCoverUrl} alt="" className="w-24 h-12 rounded-xl object-cover mt-2 border" />}
+                  </div>
+                </div>
+
+                {editError && (
+                  <div className="p-3 bg-red-50 text-red-600 rounded-xl text-xs font-semibold border border-red-200 flex items-center gap-2">
+                    <span className="material-symbols-outlined text-sm">error</span>
+                    <span>{editError}</span>
+                  </div>
+                )}
+
+                <div className="flex justify-end gap-3 pt-4 border-t border-gray-100">
+                  <button
+                    type="button"
+                    onClick={() => setShowEditModal(false)}
+                    className="px-5 py-2.5 text-xs font-bold text-gray-500 hover:text-konecta-navy"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={savingEdit || uploadingEditLogo || uploadingEditCover || !editName.trim()}
+                    className="btn-primary py-2.5 px-6 text-xs flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {(savingEdit || uploadingEditLogo || uploadingEditCover) && (
+                      <span className="animate-spin h-3.5 w-3.5 border-2 border-white border-t-transparent rounded-full" />
+                    )}
+                    {uploadingEditLogo || uploadingEditCover ? 'A carregar imagem...' : savingEdit ? 'A guardar...' : 'Guardar Alterações'}
+                  </button>
                 </div>
               </form>
             </motion.div>

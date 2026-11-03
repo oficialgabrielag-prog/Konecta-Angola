@@ -37,16 +37,14 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .card-konecta {
-  background: var(--color-konecta-surface);
-  border: 1px solid rgba(0, 0, 0, 0.04);
-  border-radius: 1.5rem;
-  padding: 1.5rem;
+  background: transparent;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  padding: 1.5rem 0;
   transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .card-konecta:hover {
   border-color: var(--color-konecta-gold);
-  box-shadow: 0 10px 30px -10px rgba(16, 45, 87, 0.1);
 }
 
 .btn-primary {

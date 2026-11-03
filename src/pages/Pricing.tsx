@@ -75,8 +75,8 @@ export const Pricing: React.FC<PricingProps> = ({ user, onOpenAuth, onNavigateTa
   ];
 
   const handleSelectPlan = async (planId: string) => {
-    if (planId === 'free') {
-      if (onNavigateTab) onNavigateTab('explore');
+    if (onNavigateTab) {
+      onNavigateTab('plans');
       return;
     }
 

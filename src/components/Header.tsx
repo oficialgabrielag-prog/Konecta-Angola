@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useT } from '../context/LanguageContext';
 
 interface HeaderProps {
   currentTab: string;
@@ -8,6 +9,7 @@ interface HeaderProps {
   onSignOut: () => void;
   unreadCount?: number;
   unreadMessagesCount?: number;
+  variant?: 'default' | 'overlay';
 }
 
 export const Header: React.FC<HeaderProps> = ({ 
@@ -17,22 +19,26 @@ export const Header: React.FC<HeaderProps> = ({
   isAdmin = false, 
   onSignOut, 
   unreadCount = 0,
-  unreadMessagesCount = 0
+  unreadMessagesCount = 0,
+  variant = 'default'
 }) => {
+  const { t } = useT();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const isOverlay = variant === 'overlay';
 
   const navItems = [
-    { id: 'home', label: 'Início', icon: 'home' },
-    { id: 'explore', label: 'Explorar', icon: 'explore' },
-    { id: 'community', label: 'Feed Social', icon: 'dynamic_feed' },
-    { id: 'reels', label: 'Reels', icon: 'smart_display' },
-    { id: 'organizations', label: 'Organizações', icon: 'corporate_fare' },
-    { id: 'library', label: 'Biblioteca', icon: 'menu_book' },
-    { id: 'communities', label: 'Comunidades', icon: 'groups' },
-    { id: 'projects', label: 'Projetos', icon: 'folder_special' },
-    { id: 'events', label: 'Eventos', icon: 'event' },
-    { id: 'challenges', label: 'Desafios', icon: 'emoji_events' },
-    { id: 'pricing', label: 'Planos', icon: 'payments' },
+    { id: 'home', label: t('nav.home'), icon: 'home' },
+    { id: 'explore', label: t('nav.explore'), icon: 'explore' },
+    { id: 'community', label: t('nav.feed'), icon: 'dynamic_feed' },
+    { id: 'reels', label: t('nav.reels'), icon: 'smart_display' },
+    { id: 'organizations', label: t('nav.organizations'), icon: 'corporate_fare' },
+    { id: 'library', label: t('nav.library'), icon: 'menu_book' },
+    { id: 'communities', label: t('nav.communities'), icon: 'groups' },
+    { id: 'projects', label: t('nav.projects'), icon: 'folder_special' },
+    { id: 'events', label: t('nav.events'), icon: 'event' },
+    { id: 'challenges', label: t('nav.challenges'), icon: 'emoji_events' },
+    { id: 'plans', label: 'Planos', icon: 'payments' },
+    { id: 'verification', label: 'Verificação', icon: 'verified_user' },
   ];
 
   const showAdminButton = isAdmin || (user && user.email === 'oficialgabrielag@gmail.com');
@@ -44,14 +50,20 @@ export const Header: React.FC<HeaderProps> = ({
 
   return (
     <>
-      <header className="px-4 sm:px-8 lg:px-12 h-20 border-b border-gray-100 flex justify-between items-center bg-white sticky top-0 z-50 backdrop-blur-md bg-white/95">
+      <header className={`px-4 sm:px-8 lg:px-12 h-20 flex justify-between items-center transition-all ${
+        isOverlay 
+          ? 'fixed top-0 left-0 right-0 z-50 bg-gradient-to-b from-black/80 via-black/40 to-transparent border-none text-white' 
+          : 'border-b border-gray-100 bg-white sticky top-0 z-50 backdrop-blur-md bg-white/95'
+      }`}>
         <div className="flex items-center gap-8 lg:gap-10">
           <button
             onClick={() => handleNavClick('home')}
             className="flex flex-col items-start group"
             aria-label="Página inicial Konecta"
           >
-            <span className="text-xl font-extrabold tracking-tighter text-konecta-navy group-hover:text-konecta-gold transition-colors">
+            <span className={`text-xl font-extrabold tracking-tighter transition-colors ${
+              isOverlay ? 'text-white group-hover:text-konecta-gold' : 'text-konecta-navy group-hover:text-konecta-gold'
+            }`}>
               KONECTA
             </span>
             <span className="text-[8px] font-bold uppercase tracking-[0.2em] text-konecta-gold -mt-1">
@@ -64,7 +76,11 @@ export const Header: React.FC<HeaderProps> = ({
               <button
                 key={item.id}
                 onClick={() => handleNavClick(item.id)}
-                className={`nav-link text-xs ${currentTab === item.id ? 'active' : ''}`}
+                className={`text-xs font-semibold transition-colors ${
+                  isOverlay 
+                    ? (currentTab === item.id ? 'text-konecta-gold font-bold' : 'text-white/80 hover:text-white') 
+                    : (currentTab === item.id ? 'nav-link active' : 'nav-link')
+                }`}
               >
                 {item.label}
               </button>
@@ -75,8 +91,12 @@ export const Header: React.FC<HeaderProps> = ({
         <div className="flex items-center gap-1.5 sm:gap-3">
           <button 
             onClick={() => handleNavClick('search')} 
-            className={`w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center rounded-full transition-all ${currentTab === 'search' ? 'bg-konecta-navy text-white shadow-md' : 'text-konecta-navy hover:bg-gray-100'}`}
-            title="Pesquisa Geral"
+            className={`w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center rounded-full transition-all ${
+              isOverlay
+                ? (currentTab === 'search' ? 'bg-konecta-gold text-konecta-navy' : 'text-white hover:bg-white/20')
+                : (currentTab === 'search' ? 'bg-konecta-navy text-white shadow-md' : 'text-konecta-navy hover:bg-gray-100')
+            }`}
+            title={t('common.search')}
             aria-label="Pesquisa geral"
           >
             <span className="material-symbols-outlined text-[20px] sm:text-[22px]">search</span>
@@ -87,8 +107,12 @@ export const Header: React.FC<HeaderProps> = ({
               {showAdminButton && (
                 <button 
                   onClick={() => handleNavClick('admin')} 
-                  className={`w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center rounded-full transition-all ${currentTab === 'admin' ? 'bg-konecta-navy text-konecta-gold shadow-md' : 'text-konecta-navy hover:bg-gray-100'}`}
-                  title="Painel de Administração"
+                  className={`w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center rounded-full transition-all ${
+                    isOverlay
+                      ? (currentTab === 'admin' ? 'bg-konecta-gold text-konecta-navy' : 'text-white hover:bg-white/20')
+                      : (currentTab === 'admin' ? 'bg-konecta-navy text-konecta-gold shadow-md' : 'text-konecta-navy hover:bg-gray-100')
+                  }`}
+                  title={t('nav.admin')}
                   aria-label="Painel de administração"
                 >
                   <span className="material-symbols-outlined text-[20px] sm:text-[22px]">admin_panel_settings</span>
@@ -97,8 +121,12 @@ export const Header: React.FC<HeaderProps> = ({
 
               <button 
                 onClick={() => handleNavClick('messages')} 
-                className={`w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center rounded-full transition-all relative ${currentTab === 'messages' ? 'bg-konecta-navy text-white shadow-md' : 'text-konecta-navy hover:bg-gray-100'}`}
-                title="Mensagens"
+                className={`w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center rounded-full transition-all relative ${
+                  isOverlay
+                    ? (currentTab === 'messages' ? 'bg-konecta-gold text-konecta-navy' : 'text-white hover:bg-white/20')
+                    : (currentTab === 'messages' ? 'bg-konecta-navy text-white shadow-md' : 'text-konecta-navy hover:bg-gray-100')
+                }`}
+                title={t('nav.messages')}
                 aria-label="Mensagens privadas"
               >
                 <span className="material-symbols-outlined text-[20px] sm:text-[22px]">forum</span>
@@ -111,8 +139,12 @@ export const Header: React.FC<HeaderProps> = ({
 
               <button 
                 onClick={() => handleNavClick('notifications')} 
-                className={`w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center rounded-full transition-all relative ${currentTab === 'notifications' ? 'bg-konecta-navy text-white shadow-md' : 'text-konecta-navy hover:bg-gray-100'}`}
-                title="Notificações"
+                className={`w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center rounded-full transition-all relative ${
+                  isOverlay
+                    ? (currentTab === 'notifications' ? 'bg-konecta-gold text-konecta-navy' : 'text-white hover:bg-white/20')
+                    : (currentTab === 'notifications' ? 'bg-konecta-navy text-white shadow-md' : 'text-konecta-navy hover:bg-gray-100')
+                }`}
+                title={t('nav.notifications')}
               >
                 <span className="material-symbols-outlined text-[20px] sm:text-[22px]">notifications</span>
                 {unreadCount > 0 && (
@@ -122,18 +154,22 @@ export const Header: React.FC<HeaderProps> = ({
                 )}
               </button>
 
-              <div className="h-6 w-px bg-gray-100 mx-1 hidden sm:block"></div>
+              <div className={`h-6 w-px mx-1 hidden sm:block ${isOverlay ? 'bg-white/20' : 'bg-gray-100'}`}></div>
               <button 
                 onClick={() => handleNavClick('settings')} 
-                className={`w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center rounded-full transition-all ${currentTab === 'settings' ? 'bg-konecta-navy text-white shadow-md' : 'text-konecta-navy hover:bg-gray-100'}`}
-                title="Configurações & Privacidade"
+                className={`w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center rounded-full transition-all ${
+                  isOverlay
+                    ? (currentTab === 'settings' ? 'bg-konecta-gold text-konecta-navy' : 'text-white hover:bg-white/20')
+                    : (currentTab === 'settings' ? 'bg-konecta-navy text-white shadow-md' : 'text-konecta-navy hover:bg-gray-100')
+                }`}
+                title={t('settings.title')}
               >
                 <span className="material-symbols-outlined text-[20px] sm:text-[22px]">settings</span>
               </button>
               <button 
                 onClick={() => handleNavClick('dashboard')} 
                 className={`w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center rounded-full transition-all ${currentTab === 'dashboard' ? 'bg-konecta-navy text-white shadow-md' : 'text-konecta-navy hover:bg-gray-100'}`}
-                title="Painel Pessoal"
+                title={t('nav.dashboard')}
               >
                 <span className="material-symbols-outlined text-[20px] sm:text-[22px]">dashboard</span>
               </button>
@@ -206,7 +242,7 @@ export const Header: React.FC<HeaderProps> = ({
                 }}
                 className="text-xs font-bold text-red-500 hover:text-red-700"
               >
-                Terminar Sessão
+                {t('common.signout')}
               </button>
             </div>
           )}

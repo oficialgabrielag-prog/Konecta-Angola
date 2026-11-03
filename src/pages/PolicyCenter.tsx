@@ -152,14 +152,22 @@ export const PolicyCenter: React.FC<PolicyCenterProps> = ({ onNavigateTab }) => 
 
           {activeDoc === 'privacy' && (
             <article className="space-y-6">
-              <div className="border-b border-gray-100 pb-4">
-                <span className="text-xs font-bold text-konecta-gold uppercase">Documento Oficial N.º 02</span>
-                <h2 className="text-2xl font-extrabold text-konecta-navy mt-1">Política de Privacidade e Proteção de Dados Pessoais</h2>
-                <div className="flex items-center gap-4 text-xs text-gray-400 mt-2">
-                  <span>Vigor: 01/11/2026</span>
-                  <span>•</span>
-                  <span>Última Atualização: 01/11/2026</span>
+              <div className="border-b border-gray-100 pb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                  <span className="text-xs font-bold text-konecta-gold uppercase">Documento Oficial N.º 02</span>
+                  <h2 className="text-2xl font-extrabold text-konecta-navy mt-1">Política de Privacidade e Proteção de Dados Pessoais</h2>
+                  <div className="flex items-center gap-4 text-xs text-gray-400 mt-2">
+                    <span>Vigor: 01/11/2026</span>
+                    <span>•</span>
+                    <span>Última Atualização: 01/11/2026</span>
+                  </div>
                 </div>
+                <button
+                  onClick={() => onNavigateTab('privacy-policy')}
+                  className="btn-gold text-xs py-2.5 px-5 whitespace-nowrap shadow-xs self-start sm:self-auto"
+                >
+                  Abrir em Tela Única
+                </button>
               </div>
 
               <section className="space-y-3">

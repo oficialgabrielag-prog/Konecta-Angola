@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Project, Idea, Profile as UserProfile, ProjectTask, Milestone, ProjectMember } from '../types';
 import { d1Client } from '../lib/d1Client';
+import { useUI } from '../context/UIContext';
+import { useT } from '../i18n/LanguageContext.ts';
 
 interface ProjectsProps {
   projects: Project[];
@@ -22,6 +24,8 @@ export const Projects: React.FC<ProjectsProps> = ({
   onSelectIdea,
   onSelectUser,
 }) => {
+  const t = useT();
+  const { openShareSheet, showToast } = useUI();
   const [activeTab, setActiveTab] = useState<'descobrir' | 'ideias' | 'projetos' | 'colaboradores' | 'minhas-iniciativas'>('descobrir');
 
   // Data states
@@ -88,15 +92,15 @@ export const Projects: React.FC<ProjectsProps> = ({
           category,
           status: 'open'
         });
-        alert('Ideia publicada com sucesso na comunidade Konecta!');
+        showToast(t('projects.idea_success'), 'success');
       } else {
         const res = await d1Client.projects.create({
           title: title.trim(),
           description: description.trim(),
           category
         });
-        if (res.error) throw new Error(res.error.message || 'Erro ao criar projeto.');
-        alert('Projeto criado com sucesso!');
+        if (res.error) throw new Error(res.error.message || t('projects.create_err'));
+        showToast(t('projects.project_success'), 'success');
         if (onRefreshProjects) onRefreshProjects();
       }
 
@@ -105,7 +109,8 @@ export const Projects: React.FC<ProjectsProps> = ({
       setDescription('');
       loadTabData(activeTab);
     } catch (err: any) {
-      alert(err.message || 'Erro ao criar iniciativa.');
+      console.error('Erro ao criar iniciativa:', err);
+      showToast(err.message || t('projects.apply_err'), 'error');
     } finally {
       setSubmitting(false);
     }
@@ -118,12 +123,13 @@ export const Projects: React.FC<ProjectsProps> = ({
     }
     try {
       const res = await d1Client.projects.convertIdeaToProject(ideaId);
-      if (res.error) throw new Error(res.error.message || 'Erro ao converter ideia.');
-      alert('Ideia convertida em projeto com sucesso! Já podes geri-la na aba Projetos.');
+      if (res.error) throw new Error(res.error.message || t('projects.convert_err'));
+      showToast(t('projects.convert_success'), 'success');
       if (onRefreshProjects) onRefreshProjects();
       setActiveTab('projetos');
     } catch (err: any) {
-      alert(err.message || 'Erro ao converter ideia.');
+      console.error('Erro ao converter ideia:', err);
+      showToast(err.message || t('projects.convert_err'), 'error');
     }
   };
 
@@ -148,10 +154,10 @@ export const Projects: React.FC<ProjectsProps> = ({
       {/* Header & Criar Iniciativa Button */}
       <header className="flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-gray-100 pb-8">
         <div>
-          <span className="feature-kicker">Inovação e Empreendedorismo</span>
-          <h1 className="hero-title">Projetos & Ideias Konecta</h1>
-          <p className="text-gray-500 mt-2 max-w-xl text-sm">
-            Descobre iniciativas transformadoras em Angola, apoia ideias inovadoras, junta-te a equipas e colabora na construção do futuro.
+          <span className="text-[10px] font-extrabold text-konecta-gold uppercase tracking-[0.2em]">{t('projects.kicker')}</span>
+          <h1 className="hero-title">{t('projects.title')}</h1>
+          <p className="text-gray-500 mt-2 max-w-xl text-sm leading-relaxed">
+            {t('projects.subtitle')}
           </p>
         </div>
         <button
@@ -162,18 +168,18 @@ export const Projects: React.FC<ProjectsProps> = ({
           className="btn-gold py-3 px-6 text-xs font-bold shadow-md flex items-center gap-2 self-start md:self-auto"
         >
           <span className="material-symbols-outlined text-[18px]">add_circle</span>
-          + Criar Iniciativa
+          {t('projects.create_btn')}
         </button>
       </header>
 
       {/* 5 Required Tabs */}
       <div className="flex items-center gap-2 overflow-x-auto pb-2 border-b border-gray-200">
         {[
-          { id: 'descobrir', label: 'Descobrir', icon: 'explore' },
-          { id: 'ideias', label: 'Ideias', icon: 'lightbulb', badge: ideas.length },
-          { id: 'projetos', label: 'Projetos', icon: 'folder_open', badge: projects.length },
-          { id: 'colaboradores', label: 'Colaboradores', icon: 'group', badge: contributors.length },
-          { id: 'minhas-iniciativas', label: 'Minhas Iniciativas', icon: 'person_pin' },
+          { id: 'descobrir', label: t('projects.tab_discover'), icon: 'explore' },
+          { id: 'ideias', label: t('projects.tab_ideas'), icon: 'lightbulb', badge: ideas.length },
+          { id: 'projetos', label: t('projects.tab_projects'), icon: 'folder_open', badge: projects.length },
+          { id: 'colaboradores', label: t('projects.tab_contributors'), icon: 'group', badge: contributors.length },
+          { id: 'minhas-iniciativas', label: t('projects.tab_my_initiatives'), icon: 'person_pin' },
         ].map(tab => (
           <button
             key={tab.id}
@@ -187,8 +193,8 @@ export const Projects: React.FC<ProjectsProps> = ({
             <span className="material-symbols-outlined text-[18px]">{tab.icon}</span>
             <span>{tab.label}</span>
             {tab.badge !== undefined && tab.badge > 0 && (
-              <span className={`text-[10px] px-2 py-0.5 rounded-full ${
-                activeTab === tab.id ? 'bg-konecta-gold text-konecta-navy font-bold' : 'bg-gray-200 text-gray-700'
+              <span className={`text-[10px] font-black uppercase tracking-widest px-1.5 ${
+                activeTab === tab.id ? 'text-konecta-gold' : 'text-gray-400'
               }`}>
                 {tab.badge}
               </span>
@@ -205,7 +211,7 @@ export const Projects: React.FC<ProjectsProps> = ({
             type="text"
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
-            placeholder="Pesquisar projetos, ideias ou competências..."
+            placeholder={t('projects.search_placeholder')}
             className="w-full bg-gray-50 border border-gray-200 rounded-2xl pl-12 pr-4 py-3 text-xs text-konecta-navy outline-none focus:ring-1 focus:ring-konecta-navy"
           />
         </div>
@@ -216,7 +222,7 @@ export const Projects: React.FC<ProjectsProps> = ({
             onChange={e => setSelectedCategory(e.target.value)}
             className="bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 text-xs text-konecta-navy outline-none"
           >
-            <option value="all">Todas as Categorias</option>
+            <option value="all">{t('projects.all_categories')}</option>
             <option value="Educação">Educação</option>
             <option value="Tecnologia">Tecnologia</option>
             <option value="Sustentabilidade">Sustentabilidade</option>
@@ -232,7 +238,7 @@ export const Projects: React.FC<ProjectsProps> = ({
                 onChange={e => setSelectedProvince(e.target.value)}
                 className="bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 text-xs text-konecta-navy outline-none"
               >
-                <option value="all">Todas as Províncias</option>
+                <option value="all">{t('projects.all_provinces')}</option>
                 <option value="Luanda">Luanda</option>
                 <option value="Benguela">Benguela</option>
                 <option value="Huambo">Huambo</option>
@@ -244,10 +250,10 @@ export const Projects: React.FC<ProjectsProps> = ({
                 onChange={e => setSelectedStatus(e.target.value)}
                 className="bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 text-xs text-konecta-navy outline-none"
               >
-                <option value="all">Todos os Estados</option>
-                <option value="active">Em Execução</option>
-                <option value="planning">Planeamento</option>
-                <option value="completed">Concluído</option>
+                <option value="all">{t('projects.all_statuses')}</option>
+                <option value="active">{t('projects.status_active')}</option>
+                <option value="planning">{t('projects.status_planning')}</option>
+                <option value="completed">{t('projects.status_completed')}</option>
               </select>
             </>
           )}
@@ -263,8 +269,8 @@ export const Projects: React.FC<ProjectsProps> = ({
             {/* Featured Projects Section */}
             <div className="space-y-6">
               <div className="flex items-center justify-between">
-                <h3 className="text-base font-extrabold text-konecta-navy uppercase tracking-wider">Projetos em Destaque</h3>
-                <button onClick={() => setActiveTab('projetos')} className="text-xs text-konecta-gold font-bold hover:underline">Ver todos →</button>
+                <h3 className="text-sm font-extrabold text-konecta-navy uppercase tracking-[0.2em]">{t('projects.featured_projects')}</h3>
+                <button onClick={() => setActiveTab('projetos')} className="text-xs text-konecta-gold font-bold hover:underline">{t('dashboard.view_all')}</button>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -276,18 +282,18 @@ export const Projects: React.FC<ProjectsProps> = ({
                   >
                     <div className="space-y-3">
                       <div className="flex items-center justify-between">
-                        <span className="text-[10px] font-bold text-konecta-gold uppercase tracking-widest bg-konecta-navy/5 px-3 py-1 rounded-full">
+                        <span className="text-[10px] font-extrabold text-konecta-gold uppercase tracking-[0.2em]">
                           {proj.category || 'Inovação'}
                         </span>
-                        <span className="text-[10px] text-gray-400">{proj.province || 'Angola'}</span>
+                        <span className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">{proj.province || 'Angola'}</span>
                       </div>
                       <h4 className="font-extrabold text-base text-konecta-navy group-hover:text-konecta-gold transition-colors">{proj.title}</h4>
                       <p className="text-xs text-gray-600 line-clamp-3 leading-relaxed">{proj.description}</p>
                     </div>
 
-                    <div className="pt-6 mt-6 border-t border-gray-50 flex items-center justify-between text-xs font-bold">
-                      <span className="text-gray-400">{(proj as any).members_count || 1} membros</span>
-                      <span className="text-konecta-navy flex items-center gap-1">Ver Workspace →</span>
+                    <div className="pt-6 mt-6 border-t border-gray-50 flex items-center justify-between text-[10px] font-black uppercase tracking-widest">
+                      <span className="text-gray-400">{(proj as any).members_count || 1} {t('projects.members')}</span>
+                      <span className="text-konecta-navy flex items-center gap-1">{t('projects.view_workspace')}</span>
                     </div>
                   </div>
                 ))}
@@ -297,8 +303,8 @@ export const Projects: React.FC<ProjectsProps> = ({
             {/* Trending Ideas Section */}
             <div className="space-y-6">
               <div className="flex items-center justify-between">
-                <h3 className="text-base font-extrabold text-konecta-navy uppercase tracking-wider">Ideias Populares</h3>
-                <button onClick={() => setActiveTab('ideias')} className="text-xs text-konecta-gold font-bold hover:underline">Ver todas →</button>
+                <h3 className="text-sm font-extrabold text-konecta-navy uppercase tracking-[0.2em]">{t('projects.popular_ideas')}</h3>
+                <button onClick={() => setActiveTab('ideias')} className="text-xs text-konecta-gold font-bold hover:underline">{t('dashboard.view_all')}</button>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -323,15 +329,26 @@ export const Projects: React.FC<ProjectsProps> = ({
                     <div className="pt-4 border-t border-gray-50 flex items-center justify-between">
                       <button
                         onClick={() => handleConvertIdea(idea.id)}
-                        className="btn-gold py-1.5 px-3 text-[11px] font-bold"
+                        className="btn-gold py-1.5 px-3 text-[10px] font-black uppercase tracking-widest"
                       >
-                        Converter em Projeto
+                        {t('projects.convert_btn')}
+                      </button>
+                      <button
+                        onClick={() => openShareSheet({
+                          targetId: idea.id,
+                          targetType: 'idea',
+                          title: idea.title,
+                          authorName: idea.profiles?.full_name || t('dashboard.default_user_name')
+                        })}
+                        className="text-gray-400 hover:text-konecta-gold transition-colors"
+                      >
+                        <span className="material-symbols-outlined">share</span>
                       </button>
                       <button
                         onClick={() => onSelectIdea && onSelectIdea(idea.id)}
-                        className="text-xs font-bold text-konecta-navy hover:underline"
+                        className="text-[10px] font-black text-konecta-navy hover:underline uppercase tracking-widest"
                       >
-                        Ver Detalhes
+                        {t('projects.details')}
                       </button>
                     </div>
                   </div>
@@ -345,12 +362,12 @@ export const Projects: React.FC<ProjectsProps> = ({
         {activeTab === 'ideias' && (
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="space-y-6">
             <div className="flex items-center justify-between">
-              <h3 className="text-sm font-bold uppercase tracking-wider text-konecta-navy">Banco de Ideias ({filteredIdeas.length})</h3>
+              <h3 className="text-sm font-extrabold uppercase tracking-[0.2em] text-konecta-navy">{t('projects.ideas_bank')} ({filteredIdeas.length})</h3>
               <button
                 onClick={() => { setCreationType('idea'); setShowCreateModal(true); }}
                 className="btn-primary py-2 px-4 text-xs font-bold"
               >
-                + Publicar Ideia
+                {t('projects.publish_idea')}
               </button>
             </div>
 
@@ -359,7 +376,7 @@ export const Projects: React.FC<ProjectsProps> = ({
             ) : filteredIdeas.length === 0 ? (
               <div className="p-16 text-center bg-white rounded-3xl border border-dashed border-gray-200">
                 <span className="material-symbols-outlined text-4xl text-gray-300 mb-2">lightbulb</span>
-                <p className="text-xs text-gray-400">Nenhuma ideia encontrada.</p>
+                <p className="text-xs text-gray-400 italic">{t('projects.ideas_empty')}</p>
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -381,15 +398,15 @@ export const Projects: React.FC<ProjectsProps> = ({
                     <div className="pt-4 border-t border-gray-50 flex items-center justify-between">
                       <button
                         onClick={() => handleConvertIdea(idea.id)}
-                        className="btn-gold py-1.5 px-3 text-[11px] font-bold"
+                        className="btn-gold py-1.5 px-3 text-[10px] font-black uppercase tracking-widest"
                       >
-                        Converter em Projeto
+                        {t('projects.convert_btn')}
                       </button>
                       <button
                         onClick={() => onSelectIdea && onSelectIdea(idea.id)}
-                        className="text-xs font-bold text-konecta-navy hover:underline"
+                        className="text-[10px] font-black text-konecta-navy hover:underline uppercase tracking-widest"
                       >
-                        Ver Ideia
+                        {t('projects.view_idea')}
                       </button>
                     </div>
                   </div>
@@ -403,19 +420,19 @@ export const Projects: React.FC<ProjectsProps> = ({
         {activeTab === 'projetos' && (
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="space-y-6">
             <div className="flex items-center justify-between">
-              <h3 className="text-sm font-bold uppercase tracking-wider text-konecta-navy">Projetos Ativos em Angola ({filteredProjects.length})</h3>
+              <h3 className="text-sm font-extrabold uppercase tracking-[0.2em] text-konecta-navy">{t('projects.active_projects')} ({filteredProjects.length})</h3>
               <button
                 onClick={() => { setCreationType('project'); setShowCreateModal(true); }}
                 className="btn-primary py-2 px-4 text-xs font-bold"
               >
-                + Criar Projeto
+                {t('projects.create_project')}
               </button>
             </div>
 
             {filteredProjects.length === 0 ? (
               <div className="p-16 text-center bg-white rounded-3xl border border-dashed border-gray-200">
                 <span className="material-symbols-outlined text-4xl text-gray-300 mb-2">folder_open</span>
-                <p className="text-xs text-gray-400">Nenhum projeto encontrado com os filtros selecionados.</p>
+                <p className="text-xs text-gray-400 italic">{t('projects.projects_empty')}</p>
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -427,13 +444,13 @@ export const Projects: React.FC<ProjectsProps> = ({
                   >
                     <div className="space-y-3">
                       <div className="flex items-center justify-between">
-                        <span className="text-[10px] font-bold text-konecta-gold uppercase tracking-widest bg-konecta-navy/5 px-3 py-1 rounded-full">
+                        <span className="text-[10px] font-extrabold text-konecta-gold uppercase tracking-[0.2em]">
                           {proj.category || 'Geral'}
                         </span>
-                        <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded ${
-                          proj.status === 'completed' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'
+                        <span className={`text-[9px] font-black uppercase tracking-widest ${
+                          proj.status === 'completed' ? 'text-green-600' : 'text-blue-600'
                         }`}>
-                          {proj.status === 'completed' ? 'Concluído' : 'Em Execução'}
+                          {proj.status === 'completed' ? t('projects.status_completed') : t('projects.status_active')}
                         </span>
                       </div>
                       <h4 className="font-extrabold text-base text-konecta-navy group-hover:text-konecta-gold transition-colors">{proj.title}</h4>
@@ -454,12 +471,12 @@ export const Projects: React.FC<ProjectsProps> = ({
         {/* TAB 4: COLABORADORES */}
         {activeTab === 'colaboradores' && (
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="space-y-6">
-            <h3 className="text-sm font-bold uppercase tracking-wider text-konecta-navy">Inovadores e Especialistas ({contributors.length})</h3>
+            <h3 className="text-sm font-extrabold uppercase tracking-[0.2em] text-konecta-navy">{t('projects.experts')} ({contributors.length})</h3>
             {loadingData ? (
               <div className="py-24 flex justify-center"><div className="animate-spin rounded-full h-8 w-8 border-t-2 border-konecta-navy"></div></div>
             ) : contributors.length === 0 ? (
               <div className="p-16 text-center bg-white rounded-3xl border border-dashed border-gray-200">
-                <p className="text-xs text-gray-400">Nenhum colaborador encontrado.</p>
+                <p className="text-xs text-gray-400 italic">{t('projects.contributors_empty')}</p>
               </div>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
@@ -480,11 +497,11 @@ export const Projects: React.FC<ProjectsProps> = ({
                     </div>
                     <div>
                       <h4 className="font-bold text-sm text-konecta-navy">{profile.full_name || (profile as any).display_name}</h4>
-                      <span className="text-[11px] text-konecta-gold font-bold uppercase tracking-wider block mt-0.5">
+                      <span className="text-[10px] text-konecta-gold font-extrabold uppercase tracking-[0.15em] block mt-0.5">
                         {profile.province || 'Luanda, Angola'}
                       </span>
                     </div>
-                    <p className="text-xs text-gray-500 line-clamp-2">{profile.bio || 'Membro da comunidade Konecta Angola.'}</p>
+                    <p className="text-xs text-gray-500 line-clamp-2">{profile.bio || t('projects.experts_bio')}</p>
                   </div>
                 ))}
               </div>
@@ -497,16 +514,16 @@ export const Projects: React.FC<ProjectsProps> = ({
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="space-y-8">
             {!user ? (
               <div className="p-16 text-center bg-white rounded-3xl border border-dashed border-gray-200 space-y-4">
-                <p className="text-xs text-gray-500">Inicia sessão para consultar as tuas ideias, projetos e candidaturas.</p>
-                <button onClick={onOpenAuth} className="btn-primary py-2 px-6 text-xs font-bold">Iniciar Sessão</button>
+                <p className="text-xs text-gray-500 italic">{t('projects.login_hint')}</p>
+                <button onClick={onOpenAuth} className="btn-primary py-2 px-6 text-xs font-bold">{t('profile.login_btn')}</button>
               </div>
             ) : (
               <div className="space-y-8">
                 {/* My Projects */}
                 <div className="space-y-4">
-                  <h3 className="text-sm font-bold uppercase tracking-wider text-konecta-navy">Os Meus Projetos Liderados</h3>
+                  <h3 className="text-sm font-extrabold uppercase tracking-[0.2em] text-konecta-navy">{t('projects.my_led_projects')}</h3>
                   {projects.filter(p => (p as any).owner_id === user.id || p.leader_id === user.id).length === 0 ? (
-                    <p className="text-xs text-gray-400 italic">Ainda não criaste nenhum projeto.</p>
+                    <p className="text-xs text-gray-400 italic">{t('projects.my_projects_empty')}</p>
                   ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       {projects.filter(p => (p as any).owner_id === user.id || p.leader_id === user.id).map(proj => (
@@ -517,9 +534,9 @@ export const Projects: React.FC<ProjectsProps> = ({
                         >
                           <div>
                             <h4 className="font-bold text-sm text-konecta-navy">{proj.title}</h4>
-                            <span className="text-[10px] text-konecta-gold uppercase font-bold">{proj.category}</span>
+                            <span className="text-[10px] text-konecta-gold font-extrabold uppercase tracking-widest">{proj.category}</span>
                           </div>
-                          <span className="text-xs font-bold text-konecta-navy">Gerir Workspace →</span>
+                          <span className="text-[10px] font-black uppercase tracking-widest text-konecta-navy">{t('projects.manage_workspace')}</span>
                         </div>
                       ))}
                     </div>
@@ -528,9 +545,9 @@ export const Projects: React.FC<ProjectsProps> = ({
 
                 {/* My Applications */}
                 <div className="space-y-4">
-                  <h3 className="text-sm font-bold uppercase tracking-wider text-konecta-navy">Minhas Candidaturas de Colaboração</h3>
+                  <h3 className="text-sm font-extrabold uppercase tracking-[0.2em] text-konecta-navy">{t('projects.my_applications')}</h3>
                   {myApplications.length === 0 ? (
-                    <p className="text-xs text-gray-400 italic">Ainda não submeteste nenhuma candidatura a projetos.</p>
+                    <p className="text-xs text-gray-400 italic">{t('projects.my_applications_empty')}</p>
                   ) : (
                     <div className="space-y-3">
                       {myApplications.map(app => (
@@ -539,11 +556,11 @@ export const Projects: React.FC<ProjectsProps> = ({
                             <h4 className="font-bold text-sm text-konecta-navy">{app.projects?.title || 'Projeto Konecta'}</h4>
                             <p className="text-xs text-gray-500 line-clamp-1 mt-0.5">{app.message}</p>
                           </div>
-                          <span className={`text-[10px] font-bold uppercase px-3 py-1 rounded-full ${
-                            app.status === 'accepted' ? 'bg-green-100 text-green-700' :
-                            app.status === 'rejected' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'
+                          <span className={`text-[9px] font-black uppercase tracking-widest ${
+                            app.status === 'accepted' ? 'text-green-600' :
+                            app.status === 'rejected' ? 'text-red-600' : 'text-amber-600'
                           }`}>
-                            {app.status === 'accepted' ? 'Aceite' : app.status === 'rejected' ? 'Rejeitada' : 'Pendente'}
+                            {app.status === 'accepted' ? t('projects.status_completed') : app.status === 'rejected' ? 'Rejeitada' : 'Pendente'}
                           </span>
                         </div>
                       ))}
@@ -568,7 +585,7 @@ export const Projects: React.FC<ProjectsProps> = ({
               className="bg-white rounded-3xl p-6 sm:p-8 max-w-lg w-full shadow-2xl space-y-6"
             >
               <div className="flex items-center justify-between border-b border-gray-100 pb-4">
-                <h3 className="text-xl font-bold text-konecta-navy">Criar Nova Iniciativa Konecta</h3>
+                <h3 className="text-xl font-bold text-konecta-navy">{t('projects.create_modal_title')}</h3>
                 <button onClick={() => setShowCreateModal(false)} className="text-gray-400 hover:text-konecta-navy">
                   <span className="material-symbols-outlined">close</span>
                 </button>
@@ -580,21 +597,21 @@ export const Projects: React.FC<ProjectsProps> = ({
                   onClick={() => setCreationType('idea')}
                   className={`flex-1 py-2.5 rounded-xl text-xs font-bold transition-all ${creationType === 'idea' ? 'bg-konecta-navy text-white shadow-xs' : 'text-gray-600'}`}
                 >
-                  Ideia Inovadora
+                  {t('projects.type_idea')}
                 </button>
                 <button
                   type="button"
                   onClick={() => setCreationType('project')}
                   className={`flex-1 py-2.5 rounded-xl text-xs font-bold transition-all ${creationType === 'project' ? 'bg-konecta-navy text-white shadow-xs' : 'text-gray-600'}`}
                 >
-                  Projeto Real
+                  {t('projects.type_project')}
                 </button>
               </div>
 
               <form onSubmit={handleCreateInitiative} className="space-y-4">
                 <div>
                   <label className="block text-xs font-bold text-konecta-navy uppercase tracking-wider mb-1.5">
-                    Título da {creationType === 'idea' ? 'Ideia' : 'Projeto'}
+                    {t('projects.form_title').replace('{type}', creationType === 'idea' ? t('create.idea') : t('nav.projects'))}
                   </label>
                   <input
                     type="text"
@@ -608,7 +625,7 @@ export const Projects: React.FC<ProjectsProps> = ({
 
                 <div>
                   <label className="block text-xs font-bold text-konecta-navy uppercase tracking-wider mb-1.5">
-                    Descrição Detalhada
+                    {t('create.detailed_desc')}
                   </label>
                   <textarea
                     required
@@ -623,7 +640,7 @@ export const Projects: React.FC<ProjectsProps> = ({
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-xs font-bold text-konecta-navy uppercase tracking-wider mb-1.5">
-                      Categoria
+                      {t('create.category')}
                     </label>
                     <select
                       value={category}
@@ -641,7 +658,7 @@ export const Projects: React.FC<ProjectsProps> = ({
 
                   <div>
                     <label className="block text-xs font-bold text-konecta-navy uppercase tracking-wider mb-1.5">
-                      Província
+                      {t('create.province')}
                     </label>
                     <select
                       value={province}
@@ -662,14 +679,14 @@ export const Projects: React.FC<ProjectsProps> = ({
                     onClick={() => setShowCreateModal(false)}
                     className="px-5 py-2.5 text-xs font-bold text-gray-500"
                   >
-                    Cancelar
+                    {t('common.cancel')}
                   </button>
                   <button
                     type="submit"
                     disabled={submitting || !title.trim() || !description.trim()}
                     className="btn-primary py-2.5 px-6 text-xs"
                   >
-                    {submitting ? 'A publicar...' : `Publicar ${creationType === 'idea' ? 'Ideia' : 'Projeto'}`}
+                    {submitting ? t('profile.publishing') : `${t('common.publish')} ${creationType === 'idea' ? t('create.idea') : t('nav.projects')}`}
                   </button>
                 </div>
               </form>

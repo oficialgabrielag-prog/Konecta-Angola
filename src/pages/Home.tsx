@@ -5,6 +5,9 @@ import { d1Client } from '../lib/d1Client';
 import { uploadToCloudinary } from '../lib/cloudinary';
 import { KonectaRealtimeService } from '../lib/realtime';
 import { PostCardSkeleton, IdeaCardSkeleton } from '../components/Skeletons';
+import { useUI } from '../context/UIContext';
+import { ContentMenu } from '../components/ContentMenu';
+import { useT } from '../context/LanguageContext';
 
 interface HomeProps {
   setCurrentTab: (tab: string) => void;
@@ -33,6 +36,7 @@ export const Home: React.FC<HomeProps> = ({
   onRequireAuth,
   onImageClick,
 }) => {
+  const { t } = useT();
   const heroImage = "/src/assets/images/hero_konecta_innovation_1793239577568.jpg";
 
   const [feedType, setFeedType] = useState<'all' | 'ideas' | 'posts' | 'communities' | 'reels'>('all');
@@ -50,6 +54,51 @@ export const Home: React.FC<HomeProps> = ({
   const [loadingPosts, setLoadingPosts] = useState(false);
   const [userLikes, setUserLikes] = useState<Record<string, boolean>>({});
   const [userBookmarks, setUserBookmarks] = useState<Record<string, boolean>>({});
+  
+  const { openShareSheet, showToast } = useUI();
+
+  const handleDeletePost = async (postId: string) => {
+    if (!confirm('Tens a certeza que pretendes eliminar esta publicação?')) return;
+    try {
+      const res = await d1Client.posts.delete(postId);
+      if (res.error) throw res.error;
+      setPosts(prev => prev.filter(p => p.id !== postId));
+      showToast('Publicação eliminada com sucesso.', 'info');
+    } catch (err: any) {
+      console.error('Erro ao eliminar publicação:', err);
+      showToast('Não foi possível eliminar a publicação.', 'error');
+    }
+  };
+
+  const handleReportContent = async (targetId: string, targetType: string) => {
+    const reason = window.prompt('Motivo da denúncia (ex: Conteúdo inapropriado, spam, assédio):');
+    if (!reason || !reason.trim()) return;
+    try {
+      const res = await d1Client.reports.create({
+        target_id: targetId,
+        target_type: targetType,
+        reason: reason.trim()
+      });
+      if (res.error) throw new Error(res.error);
+      showToast('Denúncia enviada. Obrigado.', 'success');
+    } catch (err: any) {
+      console.error('Erro ao submeter denúncia:', err);
+      showToast('Erro ao submeter denúncia.', 'error');
+    }
+  };
+
+  const handleBlockUser = async (targetUserId: string) => {
+    if (!confirm('Tens a certeza que pretendes bloquear este utilizador? O seu conteúdo será ocultado.')) return;
+    try {
+      const res = await d1Client.blocks.blockUser(targetUserId);
+      if (res.error) throw new Error(res.error);
+      setPosts(prev => prev.filter(p => p.user_id !== targetUserId && (p as any).author_id !== targetUserId));
+      showToast('Utilizador bloqueado. O conteúdo foi ocultado.', 'info');
+    } catch (err: any) {
+      console.error('Erro ao bloquear utilizador:', err);
+      showToast('Erro ao bloquear utilizador.', 'error');
+    }
+  };
 
   const handleToggleReelLike = async (reelId: string) => {
     if (!user) {
@@ -160,10 +209,18 @@ export const Home: React.FC<HomeProps> = ({
       const res = await d1Client.posts.list(30);
 
       if (res.data?.data && Array.isArray(res.data.data)) {
+        const fetchedPosts = res.data.data as Post[];
+        const commCount = fetchedPosts.filter(p => p.community_id).length;
+        console.debug(`[Feed Home] Publicações recebidas do Supabase: ${fetchedPosts.length} (das quais ${commCount} em comunidades)`);
+
         setPosts(prev => {
           const map = new Map<string, Post>();
-          prev.forEach(p => map.set(p.id, p));
-          res.data!.data.forEach((p: Post) => map.set(p.id, p));
+          // Put fresh posts from server first
+          fetchedPosts.forEach((p: Post) => map.set(p.id, p));
+          // Retain any pending posts from local state if not yet in server list
+          prev.forEach(p => {
+            if (!map.has(p.id)) map.set(p.id, p);
+          });
           const merged = Array.from(map.values()).sort(
             (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
           );
@@ -206,7 +263,7 @@ export const Home: React.FC<HomeProps> = ({
     const file = e.target.files?.[0];
     if (file) {
       if (file.size > 10 * 1024 * 1024) {
-        alert('A imagem é muito grande. O limite máximo é 10MB.');
+        alert(t('error.general'));
         return;
       }
       if (newPostImagePreview) URL.revokeObjectURL(newPostImagePreview);
@@ -222,7 +279,7 @@ export const Home: React.FC<HomeProps> = ({
       return;
     }
     if (!newPostContent.trim() && !newPostImage) {
-      alert('Por favor, escreve uma mensagem ou escolhe uma imagem para publicar.');
+      alert(t('home.post_comment_placeholder'));
       return;
     }
     if (publishing) return;
@@ -234,7 +291,7 @@ export const Home: React.FC<HomeProps> = ({
         try {
           imageUrl = await uploadToCloudinary(newPostImage, (p) => setUploadProgress(p));
         } catch (imgErr: any) {
-          alert(imgErr?.message || 'Falha no envio da imagem para o Cloudinary. O texto foi preservado no editor.');
+          alert(imgErr?.message || t('error.general'));
           setPublishing(false);
           return;
         }
@@ -275,7 +332,7 @@ export const Home: React.FC<HomeProps> = ({
       setUploadProgress(0);
     } catch (err: any) {
       console.error('Erro ao publicar no feed:', err?.message || err);
-      alert(err?.message || 'Erro ao publicar no feed. Por favor, tente novamente.');
+      alert(err?.message || t('error.general'));
     } finally {
       setPublishing(false);
     }
@@ -446,27 +503,27 @@ export const Home: React.FC<HomeProps> = ({
             className="max-w-3xl"
           >
             <span className="inline-block text-[11px] font-bold uppercase tracking-[0.25em] text-konecta-gold bg-konecta-gold/10 px-3 py-1.5 rounded-full mb-4 border border-konecta-gold/20">
-              Rede Nacional de Inovação
+              {t('home.innovation_network')}
             </span>
             <h1 className="text-white text-4xl sm:text-5xl lg:text-7xl font-extrabold leading-tight tracking-tight uppercase mb-6">
-              Ideias que unem.<br/>
-              <span className="text-konecta-gold">Pessoas que realizam.</span>
+              {t('home.hero_title')}<br/>
+              <span className="text-konecta-gold">{t('home.hero_subtitle')}</span>
             </h1>
             <p className="text-white/80 text-base sm:text-lg lg:text-xl mb-8 max-w-xl leading-relaxed">
-              Conectamos inovadores, empreendedores e cidadãos ativos em Angola para transformar desafios comunitários em soluções reais.
+              {t('home.hero_desc')}
             </p>
             <div className="flex flex-wrap gap-4">
               <button 
                 onClick={() => setCurrentTab('create')}
                 className="btn-gold px-8 py-3.5 text-xs sm:text-sm shadow-xl"
               >
-                Partilhar Nova Ideia
+                {t('create.share_idea')}
               </button>
               <button 
                 onClick={() => setCurrentTab('explore')}
                 className="bg-white/10 hover:bg-white/20 text-white border border-white/20 px-8 py-3.5 rounded-full font-bold text-xs sm:text-sm transition-all backdrop-blur-md"
               >
-                Explorar Iniciativas
+                {t('home.explore_btn')}
               </button>
             </div>
           </motion.div>
@@ -487,9 +544,9 @@ export const Home: React.FC<HomeProps> = ({
                   <div className="flex items-center gap-2">
                     <span className="w-2.5 h-2.5 rounded-full bg-konecta-gold animate-pulse"></span>
                     <h3 className="font-black text-konecta-navy text-base uppercase tracking-wider">
-                      Reels em Destaque
+                      {t('home.reels_featured')}
                     </h3>
-                    <span className="text-xs text-gray-400 font-medium hidden sm:inline">• Deslize para explorar</span>
+                    <span className="text-xs text-gray-400 font-medium hidden sm:inline">• {t('home.reels_scroll')}</span>
                   </div>
                   <div className="flex items-center gap-2">
                     {/* Navigation buttons for desktop/tablets */}
@@ -498,7 +555,7 @@ export const Home: React.FC<HomeProps> = ({
                         type="button"
                         onClick={() => scrollReels('left')}
                         className="w-8 h-8 rounded-full bg-gray-100 hover:bg-konecta-navy hover:text-white text-konecta-navy flex items-center justify-center transition-all shadow-xs"
-                        title="Reels anteriores"
+                        title={t('common.previous')}
                       >
                         <span className="material-symbols-outlined text-lg">chevron_left</span>
                       </button>
@@ -506,7 +563,7 @@ export const Home: React.FC<HomeProps> = ({
                         type="button"
                         onClick={() => scrollReels('right')}
                         className="w-8 h-8 rounded-full bg-gray-100 hover:bg-konecta-navy hover:text-white text-konecta-navy flex items-center justify-center transition-all shadow-xs"
-                        title="Mais reels"
+                        title={t('common.next')}
                       >
                         <span className="material-symbols-outlined text-lg">chevron_right</span>
                       </button>
@@ -515,7 +572,7 @@ export const Home: React.FC<HomeProps> = ({
                       onClick={() => setCurrentTab('reels')}
                       className="text-xs font-black text-konecta-navy bg-konecta-gold/20 hover:bg-konecta-gold px-3 py-1.5 rounded-full flex items-center gap-1 transition-all"
                     >
-                      <span>Ver no Reels ↗</span>
+                      <span>{t('home.reels_view_all')}</span>
                     </button>
                   </div>
                 </div>
@@ -549,7 +606,7 @@ export const Home: React.FC<HomeProps> = ({
                       <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/25 to-black/30 p-3.5 sm:p-4 flex flex-col justify-between pointer-events-none">
                         <div className="flex justify-between items-start">
                           <span className="bg-konecta-gold text-konecta-navy text-[10px] font-black px-2.5 py-1 rounded-full uppercase tracking-wider shadow-sm">
-                            Reel
+                            {t('nav.reels')}
                           </span>
                           <div className="w-8 h-8 rounded-full bg-white/25 backdrop-blur-md text-white flex items-center justify-center shadow border border-white/20 group-hover:scale-110 transition-transform">
                             <span className="material-symbols-outlined text-sm font-bold">play_arrow</span>
@@ -571,14 +628,14 @@ export const Home: React.FC<HomeProps> = ({
                           </div>
 
                           <p className="text-xs text-gray-200 line-clamp-2 leading-relaxed opacity-95 drop-shadow-xs">
-                            {reel.caption || 'Sem legenda'}
+                            {reel.caption || t('home.no_caption')}
                           </p>
                           
                           <div className="flex items-center justify-between mt-2.5 pt-2 border-t border-white/10 text-xs">
                             <div className="flex items-center gap-1.5 font-extrabold text-konecta-gold">
                               <span>❤️ {reel.likes_count || 0}</span>
                             </div>
-                            <span className="text-[11px] text-gray-300 font-medium">Toque para ver</span>
+                            <span className="text-[11px] text-gray-300 font-medium">{t('messages.select_hint')}</span>
                           </div>
                         </div>
                       </div>
@@ -605,7 +662,7 @@ export const Home: React.FC<HomeProps> = ({
                     <textarea
                       value={newPostContent}
                       onChange={(e) => setNewPostContent(e.target.value)}
-                      placeholder="Partilha uma reflexão, atualização ou novidade com a rede..."
+                      placeholder={t('home.feed_empty')}
                       className="w-full bg-gray-50 border-none focus:ring-1 focus:ring-konecta-gold rounded-2xl p-4 text-sm resize-none text-konecta-navy"
                       rows={3}
                     />
@@ -621,7 +678,7 @@ export const Home: React.FC<HomeProps> = ({
                         >
                           <img 
                             src={newPostImagePreview} 
-                            alt="Pré-visualização" 
+                            alt={t('common.loading')} 
                             className="w-28 h-28 object-cover rounded-xl border border-gray-200 shadow-sm"
                           />
                           <button
@@ -652,7 +709,7 @@ export const Home: React.FC<HomeProps> = ({
                         className="flex items-center gap-2 text-xs font-bold text-gray-500 hover:text-konecta-navy transition-colors px-3 py-1.5 rounded-lg hover:bg-gray-100"
                       >
                         <span className="material-symbols-outlined text-[20px] text-konecta-gold">add_photo_alternate</span>
-                        Anexar Imagem
+                        {t('home.attach_image')}
                       </button>
                       <input 
                         type="file" 
@@ -667,7 +724,7 @@ export const Home: React.FC<HomeProps> = ({
                         disabled={publishing}
                         className="btn-primary py-2 px-6 text-xs shadow-md"
                       >
-                        {publishing ? 'A publicar...' : 'Publicar no Feed'}
+                        {publishing ? t('common.loading') : t('home.post_comment_btn')}
                       </button>
                     </div>
                   </div>
@@ -676,11 +733,11 @@ export const Home: React.FC<HomeProps> = ({
             ) : (
               <div className="bg-gradient-to-r from-konecta-navy to-konecta-navy/90 text-white rounded-3xl p-6 sm:p-8 flex flex-col sm:flex-row items-center justify-between gap-6 shadow-md">
                 <div>
-                  <h3 className="font-bold text-lg mb-1">Junta-te à conversa da inovação angolana</h3>
-                  <p className="text-white/70 text-sm">Entra na tua conta para publicar atualizações, apoiar ideias e colaborar.</p>
+                  <h3 className="font-bold text-lg mb-1">{t('home.feed_empty')}</h3>
+                  <p className="text-white/70 text-sm">{t('home.feed_empty')}</p>
                 </div>
                 <button onClick={onRequireAuth} className="btn-gold whitespace-nowrap text-xs py-3 px-6 shrink-0">
-                  Entrar ou Registar
+                  {t('common.enter')}
                 </button>
               </div>
             )}
@@ -692,7 +749,7 @@ export const Home: React.FC<HomeProps> = ({
                   onClick={() => setFeedType('all')}
                   className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${feedType === 'all' ? 'bg-konecta-navy text-white shadow-sm' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}
                 >
-                  Tudo
+                  {t('nav.home')}
                 </button>
                 <button
                   onClick={() => setFeedType('reels')}
@@ -712,16 +769,16 @@ export const Home: React.FC<HomeProps> = ({
                 >
                   Publicações ({posts.filter(p => !p.community_id).length})
                 </button>
-                <button
-                  onClick={() => setFeedType('communities')}
-                  className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${feedType === 'communities' ? 'bg-konecta-navy text-white shadow-sm' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}
-                >
-                  Comunidades ({posts.filter(p => p.community_id).length})
-                </button>
+                  <button
+                    onClick={() => setFeedType('communities')}
+                    className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${feedType === 'communities' ? 'bg-konecta-navy text-white shadow-sm' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}
+                  >
+                    {t('nav.communities')} ({posts.filter(p => p.community_id).length})
+                  </button>
               </div>
 
               <span className="text-xs text-gray-400 font-medium hidden sm:inline">
-                Dados em tempo real
+                {t('messages.online_now')}
               </span>
             </div>
 
@@ -738,18 +795,18 @@ export const Home: React.FC<HomeProps> = ({
                   <div className="flex items-center justify-between mb-2">
                     <h3 className="font-extrabold text-slate-900 text-base sm:text-lg flex items-center gap-2">
                       <span className="material-symbols-outlined text-konecta-gold">movie</span>
-                      Reels em Fila (Deslize para a esquerda)
+                      {t('home.reels_queue')}
                     </h3>
                     <button 
                       onClick={() => setCurrentTab('reels')}
                       className="text-xs font-bold text-konecta-navy bg-konecta-gold hover:bg-yellow-400 px-3 py-1.5 rounded-full transition-all shadow"
                     >
-                      Tela cheia ↗
+                      {t('home.fullscreen')}
                     </button>
                   </div>
                   {reels.length === 0 ? (
                     <div className="bg-white rounded-2xl border border-gray-100 p-12 text-center text-gray-400">
-                      Nenhum Reel disponível de momento.
+                      {t('home.reels_empty')}
                     </div>
                   ) : (
                     <div className="flex flex-row gap-4 overflow-x-auto scrollbar-hide snap-x snap-mandatory py-2 px-1 touch-pan-x -mx-3 sm:mx-0 px-3 sm:px-0">
@@ -777,7 +834,7 @@ export const Home: React.FC<HomeProps> = ({
                           <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/25 to-black/30 p-3.5 sm:p-4 flex flex-col justify-between pointer-events-none">
                             <div className="flex justify-between items-start">
                               <span className="bg-konecta-gold text-konecta-navy text-[10px] font-black px-2.5 py-1 rounded-full uppercase tracking-wider shadow-sm">
-                                Reel
+                                {t('nav.reels')}
                               </span>
                               <div className="w-8 h-8 rounded-full bg-white/25 backdrop-blur-md text-white flex items-center justify-center shadow border border-white/20 group-hover:scale-110 transition-transform">
                                 <span className="material-symbols-outlined text-sm font-bold">play_arrow</span>
@@ -797,13 +854,13 @@ export const Home: React.FC<HomeProps> = ({
                                 </p>
                               </div>
                               <p className="text-xs text-gray-200 line-clamp-2 leading-relaxed opacity-95 drop-shadow-xs">
-                                {reel.caption || 'Sem descrição'}
+                                {reel.caption || t('home.no_caption')}
                               </p>
                               <div className="flex items-center justify-between mt-2.5 pt-2 border-t border-white/10 text-xs">
                                 <div className="flex items-center gap-1.5 font-extrabold text-konecta-gold">
                                   <span>❤️ {reel.likes_count || 0}</span>
                                 </div>
-                                <span className="text-[11px] text-gray-300 font-medium">Toque para ver</span>
+                                <span className="text-[11px] text-gray-300 font-medium">{t('home.reels_scroll')}</span>
                               </div>
                             </div>
                           </div>
@@ -833,7 +890,7 @@ export const Home: React.FC<HomeProps> = ({
                               </div>
                               <div>
                                 <h4 className="font-bold text-xs text-white">{reel.profiles?.full_name || 'Criador Konecta'}</h4>
-                                <span className="text-[10px] text-konecta-gold uppercase tracking-wider font-extrabold">Sugestão de Reel</span>
+                                <span className="text-[10px] text-konecta-gold uppercase tracking-wider font-extrabold">{t('home.reel_suggestion')}</span>
                               </div>
                             </div>
                             <button 
@@ -844,7 +901,7 @@ export const Home: React.FC<HomeProps> = ({
                               }} 
                               className="text-xs text-konecta-navy bg-konecta-gold hover:bg-yellow-400 font-black flex items-center gap-1 px-3 py-1.5 rounded-full transition-all shadow"
                             >
-                              Assistir no Reels ↗
+                              {t('home.reel_watch')}
                             </button>
                           </div>
 
@@ -870,7 +927,7 @@ export const Home: React.FC<HomeProps> = ({
                           </div>
 
                           <div className="mt-3 flex items-center justify-between text-xs text-gray-300">
-                            <p className="font-medium line-clamp-1 max-w-[80%]">{reel.caption || 'Reel Konecta'}</p>
+                            <p className="font-medium line-clamp-1 max-w-[80%]">{reel.caption || t('home.reel_konecta')}</p>
                             <span className="font-bold text-red-400 flex items-center gap-1">
                               ❤️ {reel.likes_count || 0}
                             </span>
@@ -888,7 +945,7 @@ export const Home: React.FC<HomeProps> = ({
                         initial={{ opacity: 0, y: 15 }}
                         whileInView={{ opacity: 1, y: 0 }}
                         viewport={{ once: true }}
-                        className="bg-white rounded-3xl p-5 sm:p-7 shadow-xs border border-gray-100/80 mb-4 overflow-hidden transition-all hover:border-gray-200"
+                        className="bg-transparent pb-8 border-b border-gray-100 mb-8 overflow-hidden transition-all"
                       >
                         {/* Community Context Banner */}
                         {post.communities && (
@@ -916,8 +973,8 @@ export const Home: React.FC<HomeProps> = ({
                                 )}
                               </div>
                               <div>
-                                <span className="text-[10px] font-bold text-konecta-gold uppercase tracking-[0.2em] block mb-0.5">Publicado em</span>
-                                <h4 className="text-xs sm:text-sm font-black text-white uppercase tracking-tight">{post.communities.name}</h4>
+                                <span className="text-[10px] font-semibold text-konecta-gold block mb-0.5">{t('home.in')}</span>
+                                <h4 className="text-xs sm:text-sm font-bold text-white tracking-tight">{post.communities.name}</h4>
                               </div>
                             </div>
                             <div className="absolute top-4 right-4 opacity-0 group-hover/cover:opacity-100 transition-opacity">
@@ -947,15 +1004,32 @@ export const Home: React.FC<HomeProps> = ({
                             </div>
                           </div>
                           
-                          <button
-                            onClick={() => handleToggleBookmark(post.id)}
-                            className={`p-2 rounded-full transition-colors ${isBookmarked ? 'text-konecta-gold bg-konecta-gold/10' : 'text-gray-300 hover:text-konecta-navy'}`}
-                            title={isBookmarked ? 'Remover dos favoritos' : 'Guardar nos favoritos'}
-                          >
-                            <span className="material-symbols-outlined text-[20px]">
-                              {isBookmarked ? 'bookmark' : 'bookmark_border'}
-                            </span>
-                          </button>
+                          <div className="flex items-center gap-1">
+                            <button
+                              onClick={() => handleToggleBookmark(post.id)}
+                              className={`p-2 rounded-full transition-colors ${isBookmarked ? 'text-konecta-gold' : 'text-gray-300 hover:text-konecta-navy'}`}
+                              title={isBookmarked ? 'Remover dos favoritos' : 'Guardar nos favoritos'}
+                            >
+                              <span className="material-symbols-outlined text-[20px]">
+                                {isBookmarked ? 'bookmark' : 'bookmark_border'}
+                              </span>
+                            </button>
+                            <ContentMenu 
+                              targetId={post.id}
+                              targetType="post"
+                              isOwner={user?.id === post.user_id || user?.id === (post as any).author_id}
+                              onDelete={() => handleDeletePost(post.id)}
+                              onReport={() => handleReportContent(post.id, 'post')}
+                              onBlock={post.user_id ? () => handleBlockUser(post.user_id) : undefined}
+                              onShare={() => openShareSheet({
+                                targetId: post.id,
+                                targetType: 'post',
+                                title: post.content.substring(0, 50) + (post.content.length > 50 ? '...' : ''),
+                                authorName: post.profiles?.full_name || 'Utilizador',
+                                thumbnail: post.image_url || undefined
+                              })}
+                            />
+                          </div>
                         </div>
 
                         <p className="text-gray-700 text-sm leading-relaxed whitespace-pre-wrap mb-4">
@@ -980,12 +1054,12 @@ export const Home: React.FC<HomeProps> = ({
                           <div className="flex items-center gap-3">
                             <button
                               onClick={() => handleToggleLike(post.id)}
-                              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-bold transition-all duration-200 active:scale-95 shadow-xs ${
+                              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-bold transition-all duration-200 active:scale-95 ${
                                 isLiked 
-                                  ? 'bg-red-600 hover:bg-red-700 text-white border border-red-600 shadow-md shadow-red-200 scale-105' 
+                                  ? 'bg-red-600 hover:bg-red-700 text-white shadow-md shadow-red-200 scale-105' 
                                   : 'bg-gray-100 hover:bg-red-50 text-gray-600 hover:text-red-600 border border-gray-200'
                               }`}
-                              title={isLiked ? 'Gostou deste post' : 'Gostar'}
+                              title={isLiked ? t('home.post_liked') : t('home.reel_comment')}
                             >
                               <span 
                                 className="material-symbols-outlined text-[18px] transition-transform"
@@ -1003,15 +1077,29 @@ export const Home: React.FC<HomeProps> = ({
                                   ? 'bg-konecta-navy text-white shadow-sm' 
                                   : 'bg-gray-100 hover:bg-gray-200 text-gray-600 border border-gray-200'
                               }`}
-                              title="Ver e adicionar comentários"
+                              title={t('home.post_comments_view')}
                             >
                               <span className="material-symbols-outlined text-[18px]">chat_bubble_outline</span>
                               <span>{postComments[post.id]?.length ?? (post.comments_count || 0)}</span>
                             </button>
+
+                            <button 
+                              onClick={() => openShareSheet({
+                                targetId: post.id,
+                                targetType: 'post',
+                                title: post.content.substring(0, 50) + (post.content.length > 50 ? '...' : ''),
+                                authorName: post.profiles?.full_name || 'Utilizador',
+                                thumbnail: post.image_url || undefined
+                              })}
+                              className="flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-bold bg-gray-100 hover:bg-gray-200 text-gray-600 border border-gray-200 transition-all active:scale-95"
+                              title={t('menu.share')}
+                            >
+                              <span className="material-symbols-outlined text-[18px]">share</span>
+                            </button>
                           </div>
 
                           <span className="text-[11px] text-gray-400">
-                            {post.communities ? `Publicado em ${post.communities.name}` : 'Publicação da Rede'}
+                            {post.communities ? `${t('home.post_community')} ${post.communities.name}` : t('home.post_network')}
                           </span>
                         </div>
 
@@ -1024,9 +1112,9 @@ export const Home: React.FC<HomeProps> = ({
                               className="mt-4 pt-4 border-t border-gray-100 space-y-3"
                             >
                               {loadingPostComments[post.id] && !postComments[post.id]?.length ? (
-                                <div className="py-3 text-center text-xs text-gray-400">A carregar comentários...</div>
+                                <div className="py-3 text-center text-xs text-gray-400">{t('home.post_comments_loading')}</div>
                               ) : !postComments[post.id] || postComments[post.id]?.length === 0 ? (
-                                <p className="text-xs text-gray-400 italic py-1">Ainda sem comentários. Sê o primeiro a comentar!</p>
+                                <p className="text-xs text-gray-400 italic py-1">{t('home.post_comments_empty')}</p>
                               ) : (
                                 <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
                                   {postComments[post.id]?.map(c => (
@@ -1044,7 +1132,7 @@ export const Home: React.FC<HomeProps> = ({
                               <form onSubmit={(e) => handleAddPostComment(post.id, e)} className="flex gap-2 pt-1">
                                 <input 
                                   type="text"
-                                  placeholder={user ? "Escreve um comentário..." : "Entra na tua conta para comentar..."}
+                                  placeholder={user ? t('home.post_comment_placeholder') : t('home.post_comment_auth')}
                                   value={commentInputs[post.id] || ''}
                                   onChange={(e) => setCommentInputs(prev => ({ ...prev, [post.id]: e.target.value }))}
                                   disabled={!user}
@@ -1055,7 +1143,7 @@ export const Home: React.FC<HomeProps> = ({
                                   disabled={!user || !commentInputs[post.id]?.trim()}
                                   className="btn-primary py-2 px-4 text-xs font-bold shrink-0 disabled:opacity-50"
                                 >
-                                  Comentar
+                                  {t('home.post_comment_btn')}
                                 </button>
                               </form>
                             </motion.div>
@@ -1073,9 +1161,9 @@ export const Home: React.FC<HomeProps> = ({
                   {ideas.length === 0 && posts.length === 0 ? (
                     <div className="py-20 text-center bg-white rounded-3xl border border-dashed border-gray-200">
                       <span className="material-symbols-outlined text-5xl text-gray-300 mb-4">lightbulb</span>
-                      <p className="text-gray-500 italic">Ainda não existem iniciativas ou publicações no feed. Sê o primeiro a partilhar uma ideia!</p>
+                      <p className="text-gray-500 italic">{t('home.feed_empty')}</p>
                       <button onClick={() => setCurrentTab('create')} className="mt-6 btn-primary">
-                        Partilhar Ideia
+                        {t('create.share_idea_btn')}
                       </button>
                     </div>
                   ) : (
@@ -1101,7 +1189,7 @@ export const Home: React.FC<HomeProps> = ({
                           <div className="flex-1 flex flex-col justify-between py-2">
                             <div>
                               <div className="flex items-center gap-3 mb-4">
-                                <span className="text-[10px] font-bold uppercase tracking-widest text-konecta-gold px-2 py-1 bg-konecta-navy/5 rounded">
+                                <span className="text-[10px] font-extrabold uppercase tracking-[0.2em] text-konecta-gold">
                                   {idea.category}
                                 </span>
                                 <span className="metadata-text">
@@ -1140,7 +1228,7 @@ export const Home: React.FC<HomeProps> = ({
                                     onVoteIdea(idea.id);
                                   }}
                                   className="flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold bg-red-600 text-white border border-red-600 hover:bg-red-700 transition-all duration-200 transform active:scale-125 scale-105 shadow-md shadow-red-200"
-                                  title="Apoiar iniciativa"
+                                  title={t('create.share_idea_btn')}
                                 >
                                   <span className="material-symbols-outlined text-[18px] text-white animate-pulse" style={{ fontVariationSettings: "'FILL' 1" }}>favorite</span>
                                   <span className="font-extrabold">{idea.votes_count || 0}</span>
@@ -1165,23 +1253,23 @@ export const Home: React.FC<HomeProps> = ({
             <section className="bg-konecta-navy rounded-[32px] p-8 text-white shadow-xl">
               <h3 className="text-xs font-bold uppercase tracking-[0.2em] text-konecta-gold mb-8 flex items-center gap-2">
                 <span className="w-2 h-2 rounded-full bg-konecta-gold animate-pulse"></span>
-                Estado da Rede Konecta
+                {t('home.stats_title')}
               </h3>
               <div className="space-y-6">
                 <div className="flex items-baseline justify-between border-b border-white/10 pb-4">
-                  <span className="text-xs font-bold uppercase tracking-widest opacity-60">Iniciativas</span>
+                  <span className="text-xs font-bold uppercase tracking-widest opacity-60">{t('home.stats_ideas')}</span>
                   <span className="text-3xl font-black text-konecta-gold">{ideas.length}</span>
                 </div>
                 <div className="flex items-baseline justify-between border-b border-white/10 pb-4">
-                  <span className="text-xs font-bold uppercase tracking-widest opacity-60">Publicações</span>
+                  <span className="text-xs font-bold uppercase tracking-widest opacity-60">{t('home.stats_posts')}</span>
                   <span className="text-3xl font-black text-white">{posts.length}</span>
                 </div>
                 <div className="flex items-baseline justify-between border-b border-white/10 pb-4">
-                  <span className="text-xs font-bold uppercase tracking-widest opacity-60">Desafios Ativos</span>
+                  <span className="text-xs font-bold uppercase tracking-widest opacity-60">{t('home.stats_challenges')}</span>
                   <span className="text-3xl font-black text-white">{challenges.length}</span>
                 </div>
                 <div className="flex items-baseline justify-between">
-                  <span className="text-xs font-bold uppercase tracking-widest opacity-60">Províncias Ativas</span>
+                  <span className="text-xs font-bold uppercase tracking-widest opacity-60">{t('home.stats_provinces')}</span>
                   <span className="text-3xl font-black text-konecta-gold">
                     {new Set([...ideas.map(i => i.province), ...posts.map(p => p.profiles?.province)].filter(Boolean)).size || 1}
                   </span>
@@ -1192,12 +1280,12 @@ export const Home: React.FC<HomeProps> = ({
             {/* Featured Challenges */}
             <section className="space-y-6">
               <div className="flex items-center justify-between border-b border-gray-100 pb-4">
-                <h3 className="text-xs font-bold uppercase tracking-[0.2em] text-gray-500">Desafios em Destaque</h3>
-                <span className="text-[10px] text-konecta-gold font-bold uppercase tracking-wider">Prioridades</span>
+                <h3 className="text-xs font-bold uppercase tracking-[0.2em] text-gray-500">{t('home.challenges_featured')}</h3>
+                <span className="text-[10px] text-konecta-gold font-bold uppercase tracking-wider">{t('home.challenges_priority')}</span>
               </div>
               <div className="space-y-4">
                 {challenges.length === 0 ? (
-                  <p className="text-xs text-gray-400 italic">Sem desafios de momento.</p>
+                  <p className="text-xs text-gray-400 italic">{t('home.challenges_empty')}</p>
                 ) : (
                   challenges.slice(0, 3).map(chal => (
                     <div 
@@ -1216,7 +1304,7 @@ export const Home: React.FC<HomeProps> = ({
                 onClick={() => setCurrentTab('challenges')}
                 className="w-full py-3.5 text-xs font-bold uppercase tracking-widest text-konecta-navy bg-white border border-gray-200 rounded-2xl hover:bg-konecta-navy hover:text-white transition-all shadow-sm"
               >
-                Ver Todos os Desafios →
+                {t('home.challenges_view_all')}
               </button>
             </section>
 
@@ -1224,10 +1312,10 @@ export const Home: React.FC<HomeProps> = ({
             <section className="card-konecta bg-gradient-to-br from-konecta-navy/5 to-konecta-gold/5 border-konecta-gold/20 p-6 space-y-4">
               <h3 className="text-base font-bold text-konecta-navy flex items-center gap-2">
                 <span className="material-symbols-outlined text-konecta-gold text-[20px]">hub</span>
-                Ecossistema KONECTA
+                {t('home.ecosystem_title')}
               </h3>
               <p className="text-xs text-gray-500 leading-relaxed">
-                Descobre comunidades temáticas, workshops locais e equipas de projetos para acelerar o teu impacto.
+                {t('home.ecosystem_desc')}
               </p>
               <div className="grid grid-cols-2 gap-3 pt-2">
                 <button 
@@ -1235,14 +1323,14 @@ export const Home: React.FC<HomeProps> = ({
                   className="p-3 bg-white rounded-xl text-left border border-gray-100 hover:border-konecta-gold transition-colors"
                 >
                   <span className="material-symbols-outlined text-konecta-navy text-[20px] block mb-1">groups</span>
-                  <span className="text-xs font-bold text-konecta-navy block">Comunidades</span>
+                  <span className="text-xs font-bold text-konecta-navy block">{t('nav.communities')}</span>
                 </button>
                 <button 
                   onClick={() => setCurrentTab('events')}
                   className="p-3 bg-white rounded-xl text-left border border-gray-100 hover:border-konecta-gold transition-colors"
                 >
                   <span className="material-symbols-outlined text-konecta-navy text-[20px] block mb-1">event</span>
-                  <span className="text-xs font-bold text-konecta-navy block">Eventos</span>
+                  <span className="text-xs font-bold text-konecta-navy block">{t('nav.events')}</span>
                 </button>
               </div>
             </section>
@@ -1337,7 +1425,7 @@ export const Home: React.FC<HomeProps> = ({
                       className="flex items-center gap-1 text-xs text-white/80 hover:text-white bg-white/10 px-3 py-1.5 rounded-full"
                     >
                       <span className="material-symbols-outlined text-sm">chat_bubble</span>
-                      <span>Comentar</span>
+                      <span>{t('home.reel_comment')}</span>
                     </button>
                   </div>
 
@@ -1345,11 +1433,11 @@ export const Home: React.FC<HomeProps> = ({
                     type="button"
                     onClick={() => {
                       navigator.clipboard?.writeText(window.location.href);
-                      alert('Link do Reel copiado para a área de transferência!');
+                      // alert replaced with a more subtle approach or just copy
                     }}
                     className="text-xs font-bold text-konecta-navy bg-konecta-gold px-3.5 py-1.5 rounded-full shadow hover:bg-yellow-400 transition-colors"
                   >
-                    Partilhar
+                    {t('menu.share')}
                   </button>
                 </div>
               </div>

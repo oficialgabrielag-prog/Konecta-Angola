@@ -5,29 +5,37 @@ import { supabase } from '../lib/supabaseClient';
 import { Conversation, Message, Profile } from '../types';
 import { KonectaRealtimeService } from '../lib/realtime';
 import { uploadMediaToCloudinary } from '../lib/cloudinary';
+import { ModernAudioPlayer } from '../components/ModernAudioPlayer';
+import { useT } from '../context/LanguageContext';
 
 interface MessagesProps {
   user: any;
   onOpenAuth: () => void;
   onConversationOpenChange?: (open: boolean) => void;
   onUnreadCountChange?: (count: number) => void;
+  onNavigateTab?: (tab: string) => void;
 }
 
 export const Messages: React.FC<MessagesProps> = ({ 
   user, 
   onOpenAuth,
   onConversationOpenChange,
-  onUnreadCountChange
+  onUnreadCountChange,
+  onNavigateTab
 }) => {
+  const { t } = useT();
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [selectedConv, setSelectedConv] = useState<Conversation | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const [isBlurred, setIsBlurred] = useState(false);
 
   // Presence map for participants
   const [presenceMap, setPresenceMap] = useState<Record<string, { last_seen_at?: string; updated_at?: string }>>({});
+  const [onlineFriends, setOnlineFriends] = useState<Profile[]>([]);
+  const [isMyOnlineStatusVisible, setIsMyOnlineStatusVisible] = useState(true);
 
   // Media Attachment State
   const [attachedFile, setAttachedFile] = useState<File | null>(null);
@@ -58,8 +66,40 @@ export const Messages: React.FC<MessagesProps> = ({
   useEffect(() => {
     if (user) {
       fetchConversations();
+      fetchOnlineFriends();
+      const interval = setInterval(fetchOnlineFriends, 60000);
+      const handleVis = () => {
+        if (document.visibilityState === 'visible') fetchOnlineFriends();
+      };
+      document.addEventListener('visibilitychange', handleVis);
+
+      const handleBlur = () => setIsBlurred(true);
+      const handleFocus = () => setIsBlurred(false);
+
+      window.addEventListener('blur', handleBlur);
+      window.addEventListener('focus', handleFocus);
+
+      return () => {
+        clearInterval(interval);
+        document.removeEventListener('visibilitychange', handleVis);
+        window.removeEventListener('blur', handleBlur);
+        window.removeEventListener('focus', handleFocus);
+      };
     }
   }, [user]);
+
+  const fetchOnlineFriends = async () => {
+    if (!user) return;
+    try {
+      const res = await d1Client.messages.getEligibleOnlineFriends(user.id);
+      if (res.data) {
+        setOnlineFriends(res.data.onlineFriends || []);
+        setIsMyOnlineStatusVisible(res.data.isMyStatusVisible !== false);
+      }
+    } catch (e) {
+      console.warn('Aviso ao carregar amigos online:', e);
+    }
+  };
 
   // Handle mobile conversation open change callback
   useEffect(() => {
@@ -89,7 +129,24 @@ export const Messages: React.FC<MessagesProps> = ({
 
     const unsubscribe = KonectaRealtimeService.subscribe('messages', (payload: any) => {
       if (payload.new && payload.new.conversation_id === selectedConv.id) {
-        fetchMessages(selectedConv.id, true);
+        const incoming = payload.new;
+        setMessages(prev => {
+          if (prev.some(m => m.id === incoming.id)) return prev;
+          const mapped: Message = {
+            id: incoming.id,
+            conversation_id: incoming.conversation_id,
+            sender_id: incoming.sender_id,
+            content: incoming.body || '',
+            body: incoming.body || '',
+            attachment_url: incoming.attachment_url,
+            media_url: incoming.attachment_url,
+            message_type: incoming.message_type,
+            status: 'sent',
+            created_at: incoming.created_at || new Date().toISOString(),
+            expires_at: incoming.expires_at
+          };
+          return [...prev, mapped];
+        });
         markConversationAsRead(selectedConv.id);
       }
     });
@@ -189,7 +246,28 @@ export const Messages: React.FC<MessagesProps> = ({
 
     const contentText = newMessage.trim();
     const currentFile = attachedFile;
+    const previewUrl = attachedPreview;
 
+    // Reset input fields immediately (optimistic UI)
+    setNewMessage('');
+    setAttachedFile(null);
+    setAttachedPreview(null);
+
+    const tempId = `temp-${Date.now()}`;
+    const optimisticMsg: Message = {
+      id: tempId,
+      conversation_id: selectedConv.id,
+      sender_id: user.id,
+      content: contentText || (currentFile ? 'Mídia enviada' : 'Mensagem'),
+      body: contentText || (currentFile ? 'Mídia enviada' : 'Mensagem'),
+      attachment_url: previewUrl || undefined,
+      media_url: previewUrl || undefined,
+      message_type: currentFile ? (currentFile.type.startsWith('video/') ? 'video' : 'image') : 'text',
+      status: 'sending',
+      created_at: new Date().toISOString()
+    };
+
+    setMessages(prev => [...prev, optimisticMsg]);
     setSending(true);
 
     try {
@@ -201,25 +279,40 @@ export const Messages: React.FC<MessagesProps> = ({
       }
 
       const bodyText = contentText || (currentFile ? 'Mídia enviada' : 'Mensagem');
-
-      const res = await d1Client.messages.sendMessage(selectedConv.id, bodyText, mediaUrl);
-      const msg = res.data?.data;
-
-      if (msg) {
-        setMessages(prev => [...prev, msg]);
+      const res = await d1Client.messages.sendMessage(selectedConv.id, bodyText, mediaUrl, disappearingHours || undefined);
+      
+      if (res.error || !res.data?.data) {
+        throw new Error(res.error?.message || 'Falha ao gravar a mensagem no Supabase.');
       }
 
-      setNewMessage('');
-      setAttachedFile(null);
-      if (attachedPreview) URL.revokeObjectURL(attachedPreview);
-      setAttachedPreview(null);
+      const confirmedMsg: Message = {
+        ...res.data.data,
+        status: 'sent'
+      };
 
+      setMessages(prev => prev.map(m => m.id === tempId ? confirmedMsg : m));
       fetchConversations();
     } catch (err: any) {
       console.error('Erro ao enviar mensagem:', err?.message || err);
-      alert(err?.message || 'Não foi possível enviar a mensagem. Tenta novamente.');
+      // Mark as failed instead of alert
+      setMessages(prev => prev.map(m => m.id === tempId ? { ...m, status: 'failed' } : m));
     } finally {
       setSending(false);
+    }
+  };
+
+  const handleRetryMessage = async (msg: Message) => {
+    if (!selectedConv) return;
+    setMessages(prev => prev.map(m => m.id === msg.id ? { ...m, status: 'sending' } : m));
+    try {
+      const res = await d1Client.messages.sendMessage(selectedConv.id, msg.body || msg.content, msg.attachment_url, disappearingHours || undefined);
+      if (res.error || !res.data?.data) throw new Error(res.error?.message || 'Falha ao reenviar');
+      const confirmed: Message = { ...res.data.data, status: 'sent' };
+      setMessages(prev => prev.map(m => m.id === msg.id ? confirmed : m));
+      fetchConversations();
+    } catch (err) {
+      console.error('Erro ao tentar reenviar:', err);
+      setMessages(prev => prev.map(m => m.id === msg.id ? { ...m, status: 'failed' } : m));
     }
   };
 
@@ -245,7 +338,7 @@ export const Messages: React.FC<MessagesProps> = ({
         setRecordingSeconds(prev => prev + 1);
       }, 1000);
     } catch (err) {
-      alert('Não foi possível aceder ao microfone. Permite o acesso ao áudio no teu navegador.');
+      console.error('Não foi possível aceder ao microfone:', err);
     }
   };
 
@@ -258,22 +351,39 @@ export const Messages: React.FC<MessagesProps> = ({
     recorder.onstop = async () => {
       const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
       const audioFile = new File([audioBlob], `nota_voz_${Date.now()}.webm`, { type: 'audio/webm' });
-
       recorder.stream.getTracks().forEach(track => track.stop());
 
       setIsRecording(false);
+
+      const tempId = `temp-${Date.now()}`;
+      const tempAudioUrl = URL.createObjectURL(audioBlob);
+      const optimisticMsg: Message = {
+        id: tempId,
+        conversation_id: selectedConv.id,
+        sender_id: user.id,
+        content: 'Nota de voz',
+        body: 'Nota de voz',
+        attachment_url: tempAudioUrl,
+        media_url: tempAudioUrl,
+        message_type: 'audio',
+        status: 'sending',
+        created_at: new Date().toISOString()
+      };
+
+      setMessages(prev => [...prev, optimisticMsg]);
       setSending(true);
 
       try {
         const uploadRes = await uploadMediaToCloudinary(audioFile);
-        const res = await d1Client.messages.sendMessage(selectedConv.id, 'Nota de voz', uploadRes.secure_url);
+        const res = await d1Client.messages.sendMessage(selectedConv.id, t('messages.voice_note'), uploadRes.secure_url, disappearingHours || undefined);
         if (res.data?.data) {
-          setMessages(prev => [...prev, res.data.data]);
+          const confirmed = { ...res.data.data, status: 'sent' as const };
+          setMessages(prev => prev.map(m => m.id === tempId ? confirmed : m));
         }
         fetchConversations();
       } catch (err: any) {
         console.error('Erro ao enviar nota de voz:', err);
-        alert('Não foi possível enviar a nota de voz.');
+        setMessages(prev => prev.map(m => m.id === tempId ? { ...m, status: 'failed' } : m));
       } finally {
         setSending(false);
       }
@@ -357,12 +467,12 @@ export const Messages: React.FC<MessagesProps> = ({
         <div className="w-14 h-14 rounded-full bg-konecta-navy/5 flex items-center justify-center mx-auto mb-4 text-konecta-navy">
           <span className="material-symbols-outlined text-3xl">forum</span>
         </div>
-        <h2 className="text-xl font-bold mb-2 text-konecta-navy">Mensagens privadas</h2>
+        <h2 className="text-xl font-bold mb-2 text-konecta-navy">{t('nav.messages')}</h2>
         <p className="text-gray-600 mb-6 text-sm leading-relaxed">
-          Inicia sessão na KONECTA para conversar em tempo real com parceiros e inovadores da rede.
+          {t('messages.select_hint')}
         </p>
         <button onClick={onOpenAuth} className="btn-primary w-full text-xs py-3 rounded-full">
-          Entrar na conta
+          {t('common.enter')}
         </button>
       </div>
     );
@@ -373,10 +483,10 @@ export const Messages: React.FC<MessagesProps> = ({
   const otherLastReadAt = otherMemberObj?.last_read_at;
 
   const presenceObj = otherParticipant?.id ? presenceMap[otherParticipant.id] : undefined;
-  const presenceInfo = formatPresenceStatus(presenceObj);
+  const presenceInfo = formatPresenceStatus(t, presenceObj);
 
   return (
-    <div className="w-full h-[calc(100dvh-5rem)] lg:h-[calc(100vh-6rem)] max-w-7xl mx-auto lg:px-6 lg:py-6">
+    <div className="w-full h-[100dvh] lg:h-[calc(100vh-6rem)] max-w-7xl mx-auto lg:px-6 lg:py-6">
       
       <div className="flex w-full h-full bg-white lg:rounded-2xl lg:border lg:border-gray-200 overflow-hidden">
         
@@ -387,7 +497,7 @@ export const Messages: React.FC<MessagesProps> = ({
           <div className="p-4 border-b border-gray-200 flex items-center justify-between bg-white">
             <h1 className="text-lg font-bold text-konecta-navy flex items-center gap-2">
               <span className="material-symbols-outlined text-konecta-navy text-xl">chat</span>
-              Conversas
+              {t('messages.title')}
             </h1>
             <button
               onClick={() => {
@@ -397,14 +507,59 @@ export const Messages: React.FC<MessagesProps> = ({
                 setTimeout(() => searchInputRef.current?.focus(), 100);
               }}
               className="w-11 h-11 rounded-full bg-konecta-navy text-white flex items-center justify-center hover:bg-slate-800 focus-visible:ring-2 focus-visible:ring-konecta-navy transition-colors"
-              aria-label="Iniciar nova conversa"
-              title="Nova conversa"
+              aria-label={t('messages.new')}
+              title={t('messages.new')}
             >
               <span className="material-symbols-outlined text-xl">add</span>
             </button>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-2 space-y-1">
+          {/* Online Friends Section */}
+          {!isMyOnlineStatusVisible ? (
+            <div className="p-3 bg-amber-50/80 border-b border-amber-100 flex items-center justify-between gap-2">
+              <p className="text-[11px] text-amber-900 leading-tight">
+                {t('messages.online_hint')}
+              </p>
+              {onNavigateTab && (
+                <button
+                  onClick={() => onNavigateTab('settings')}
+                  className="text-[11px] font-bold text-konecta-navy underline shrink-0"
+                >
+                  {t('common.settings')}
+                </button>
+              )}
+            </div>
+          ) : onlineFriends.length > 0 ? (
+            <div className="p-3 bg-white border-b border-gray-100">
+              <span className="text-[10px] font-bold text-gray-500 px-1 mb-2 block">
+                {t('messages.online_friends')} ({onlineFriends.length})
+              </span>
+              <div className="flex gap-3 overflow-x-auto pb-1 scrollbar-hide">
+                {onlineFriends.map(friend => (
+                  <button
+                    key={friend.id || friend.user_id}
+                    onClick={() => handleStartConversationWith(friend)}
+                    className="flex flex-col items-center shrink-0 w-14 group focus:outline-none"
+                    title={`${t('messages.chat_start')} ${friend.full_name || friend.display_name}`}
+                  >
+                    <div className="relative w-14 h-14 rounded-full overflow-hidden border-2 border-konecta-gold bg-gray-100 flex items-center justify-center font-bold text-konecta-navy text-sm group-hover:scale-105 transition-transform">
+                      {friend.avatar_url ? (
+                        <img src={friend.avatar_url} alt="" className="w-full h-full object-cover" />
+                      ) : (
+                        (friend.full_name || friend.display_name || 'U').charAt(0)
+                      )}
+                      <span className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-emerald-500 rounded-full border-2 border-white"></span>
+                    </div>
+                    <span className="text-[11px] font-medium text-gray-700 truncate w-full text-center mt-1">
+                      {(friend.full_name || friend.display_name || '').split(' ')[0]}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          <div className={`flex-1 overflow-y-auto p-2 space-y-1 transition-all duration-500 ${isBlurred ? 'blur-xl grayscale pointer-events-none' : ''}`}>
             {loading ? (
               <div className="space-y-2 p-2">
                 {[1, 2, 3].map(i => (
@@ -414,12 +569,12 @@ export const Messages: React.FC<MessagesProps> = ({
             ) : conversations.length === 0 ? (
               <div className="text-center py-16 px-4 space-y-3">
                 <span className="material-symbols-outlined text-4xl text-gray-300">forum</span>
-                <p className="text-gray-600 text-sm font-normal">Nenhuma conversa encontrada.</p>
+                <p className="text-gray-600 text-sm font-normal">{t('messages.empty')}</p>
                 <button
                   onClick={() => setShowNewConvModal(true)}
                   className="btn-primary py-2 px-4 text-xs rounded-full font-medium"
                 >
-                  Procurar membro para falar
+                  {t('messages.search_member')}
                 </button>
               </div>
             ) : (
@@ -460,13 +615,13 @@ export const Messages: React.FC<MessagesProps> = ({
                           {nameStr}
                         </span>
                         <span className={`text-xs shrink-0 ${isSelected ? 'text-white/70' : 'text-gray-500'}`}>
-                          {formatConvDate(conv.last_message_at)}
+                          {formatConvDate(t, conv.last_message_at)}
                         </span>
                       </div>
                       <p className={`text-xs truncate ${
                         hasUnread && !isSelected ? 'font-bold text-konecta-navy' : isSelected ? 'text-white/80' : 'text-gray-500'
                       }`}>
-                        {cleanMessageSnippet(conv.last_message)}
+                        {cleanMessageSnippet(t, conv.last_message)}
                       </p>
                     </div>
 
@@ -495,8 +650,8 @@ export const Messages: React.FC<MessagesProps> = ({
                   <button
                     onClick={handleBackToList}
                     className="lg:hidden w-11 h-11 rounded-full flex items-center justify-center text-konecta-navy hover:bg-gray-100 focus-visible:ring-2 focus-visible:ring-konecta-navy shrink-0"
-                    aria-label="Voltar às conversas"
-                    title="Voltar às conversas"
+                    aria-label={t('messages.back')}
+                    title={t('messages.back')}
                   >
                     <span className="material-symbols-outlined text-2xl">arrow_back</span>
                   </button>
@@ -532,12 +687,12 @@ export const Messages: React.FC<MessagesProps> = ({
                           ? 'bg-amber-50 text-konecta-gold border border-amber-200 font-bold' 
                           : 'text-gray-500 hover:bg-gray-100'
                       }`}
-                      aria-label="Mensagens temporárias"
-                      title="Mensagens temporárias"
+                      aria-label={t('messages.disappearing')}
+                      title={t('messages.disappearing')}
                     >
                       <span className={`material-symbols-outlined text-xl ${disappearingHours > 0 ? 'text-konecta-gold' : 'text-gray-500'}`}>timer</span>
                       <span className="hidden lg:inline">
-                        {disappearingHours === 0 ? 'Normal' : `${disappearingHours === 24 ? '24 h' : disappearingHours === 168 ? '7 dias' : '30 dias'}`}
+                        {disappearingHours === 0 ? t('messages.disappearing_normal') : `${disappearingHours === 24 ? '24 h' : disappearingHours === 168 ? t('messages.disappearing_7d') : t('messages.disappearing_30d')}`}
                       </span>
                     </button>
 
@@ -549,12 +704,12 @@ export const Messages: React.FC<MessagesProps> = ({
                           exit={{ opacity: 0, scale: 0.95 }}
                           className="absolute right-0 mt-2 w-52 bg-white rounded-2xl shadow-xl border border-gray-200 p-2 z-30 space-y-1 text-xs"
                         >
-                          <p className="text-xs font-bold text-gray-500 px-3 py-1">Mensagens temporárias</p>
+                          <p className="text-xs font-bold text-gray-500 px-3 py-1">{t('messages.disappearing')}</p>
                           {[
-                            { label: 'Desativado', value: 0 },
-                            { label: '24 horas', value: 24 },
-                            { label: '7 dias', value: 168 },
-                            { label: '30 dias', value: 720 },
+                            { label: t('messages.disappearing_off'), value: 0 },
+                            { label: t('messages.disappearing_24h'), value: 24 },
+                            { label: t('messages.disappearing_7d'), value: 168 },
+                            { label: t('messages.disappearing_30d'), value: 720 },
                           ].map(opt => (
                             <button
                               key={opt.value}
@@ -585,10 +740,10 @@ export const Messages: React.FC<MessagesProps> = ({
               >
                 {messages.length === 0 ? (
                   <div className="text-center py-16 text-gray-500 text-xs space-y-2">
-                    <p>Nenhuma mensagem nesta conversa ainda. Envia uma saudação!</p>
+                    <p>{t('messages.empty_conv')}</p>
                   </div>
                 ) : (
-                  renderGroupedMessages(messages, user.id, otherLastReadAt)
+                  renderGroupedMessages(t, messages, user.id, otherLastReadAt, handleRetryMessage)
                 )}
                 <div ref={messagesEndRef} />
               </div>
@@ -614,7 +769,7 @@ export const Messages: React.FC<MessagesProps> = ({
                       setAttachedPreview(null);
                     }}
                     className="w-11 h-11 rounded-full text-gray-500 hover:text-red-600 flex items-center justify-center focus-visible:ring-2 focus-visible:ring-konecta-navy"
-                    aria-label="Remover anexo"
+                    aria-label={t('messages.remove_attachment')}
                   >
                     <span className="material-symbols-outlined text-xl">close</span>
                   </button>
@@ -627,20 +782,20 @@ export const Messages: React.FC<MessagesProps> = ({
                   <div className="flex items-center justify-between bg-red-50 border border-red-200 rounded-2xl px-4 py-2 text-red-700">
                     <div className="flex items-center gap-2">
                       <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-ping motion-reduce:animate-none"></span>
-                      <span className="text-xs font-medium">A gravar voz... {recordingSeconds}s</span>
+                      <span className="text-xs font-medium">{t('messages.recording')} {recordingSeconds}s</span>
                     </div>
                     <div className="flex items-center gap-2">
                       <button
                         onClick={cancelRecording}
                         className="text-xs text-gray-600 hover:text-red-600 font-medium px-2 py-1 rounded-md"
                       >
-                        Cancelar
+                        {t('common.cancel')}
                       </button>
                       <button
                         onClick={stopAndSendRecording}
                         className="w-11 h-11 rounded-full bg-konecta-navy text-white hover:bg-slate-800 flex items-center justify-center focus-visible:ring-2 focus-visible:ring-konecta-navy"
-                        aria-label="Enviar nota de voz"
-                        title="Enviar nota de voz"
+                        aria-label={t('messages.send')}
+                        title={t('messages.send')}
                       >
                         <span className="material-symbols-outlined text-xl">send</span>
                       </button>
@@ -653,8 +808,8 @@ export const Messages: React.FC<MessagesProps> = ({
                       type="button"
                       onClick={() => fileInputRef.current?.click()}
                       className="w-11 h-11 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-600 flex items-center justify-center shrink-0 focus-visible:ring-2 focus-visible:ring-konecta-navy"
-                      title="Anexar foto ou vídeo"
-                      aria-label="Anexar foto ou vídeo"
+                      title={t('messages.attach_media')}
+                      aria-label={t('messages.attach_media')}
                     >
                       <span className="material-symbols-outlined text-xl">attach_file</span>
                     </button>
@@ -677,8 +832,8 @@ export const Messages: React.FC<MessagesProps> = ({
                       type="button"
                       onClick={startRecording}
                       className="w-11 h-11 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-600 flex items-center justify-center shrink-0 focus-visible:ring-2 focus-visible:ring-konecta-navy"
-                      title="Gravar nota de voz"
-                      aria-label="Gravar nota de voz"
+                      title={t('messages.voice_note')}
+                      aria-label={t('messages.voice_note')}
                     >
                       <span className="material-symbols-outlined text-xl">mic</span>
                     </button>
@@ -687,8 +842,8 @@ export const Messages: React.FC<MessagesProps> = ({
                       type="text"
                       value={newMessage}
                       onChange={(e) => setNewMessage(e.target.value)}
-                      placeholder="Escrever mensagem..."
-                      aria-label="Escrever mensagem"
+                      placeholder={t('messages.input_placeholder')}
+                      aria-label={t('messages.input_placeholder')}
                       enterKeyHint="send"
                       className="flex-1 bg-gray-100 border-none focus:ring-2 focus:ring-konecta-navy rounded-full px-4 py-2.5 text-base text-konecta-navy outline-none"
                     />
@@ -698,8 +853,8 @@ export const Messages: React.FC<MessagesProps> = ({
                       type="submit"
                       disabled={(!newMessage.trim() && !attachedFile) || sending}
                       className="w-11 h-11 rounded-full bg-konecta-navy text-white hover:bg-slate-800 disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center shrink-0 focus-visible:ring-2 focus-visible:ring-konecta-navy"
-                      title="Enviar mensagem"
-                      aria-label="Enviar mensagem"
+                      title={t('messages.send')}
+                      aria-label={t('messages.send')}
                     >
                       <span className="material-symbols-outlined text-xl">send</span>
                     </button>
@@ -710,12 +865,12 @@ export const Messages: React.FC<MessagesProps> = ({
           ) : (
             <div className="flex-1 flex flex-col items-center justify-center p-8 text-center bg-gray-50/30">
               <span className="material-symbols-outlined text-5xl text-gray-300 mb-3">chat</span>
-              <p className="text-gray-600 text-sm font-medium">Seleciona uma conversa ou inicia um novo diálogo em tempo real.</p>
+              <p className="text-gray-600 text-sm font-medium">{t('messages.select_hint')}</p>
               <button 
                 onClick={() => setShowNewConvModal(true)}
                 className="mt-4 btn-primary py-2.5 px-6 text-xs rounded-full font-medium"
               >
-                Procurar membro
+                {t('messages.search_member')}
               </button>
             </div>
           )}
@@ -735,7 +890,7 @@ export const Messages: React.FC<MessagesProps> = ({
               className="bg-white rounded-t-2xl md:rounded-2xl p-6 max-w-md w-full shadow-xl space-y-4 max-h-[85vh] flex flex-col"
             >
               <div className="flex items-center justify-between border-b border-gray-100 pb-3">
-                <h3 className="text-base font-bold text-konecta-navy">Procurar membro</h3>
+                <h3 className="text-base font-bold text-konecta-navy">{t('messages.search_member')}</h3>
                 <button
                   onClick={() => setShowNewConvModal(false)}
                   className="w-11 h-11 rounded-full text-gray-400 hover:text-konecta-navy flex items-center justify-center focus-visible:ring-2 focus-visible:ring-konecta-navy"
@@ -747,7 +902,7 @@ export const Messages: React.FC<MessagesProps> = ({
 
               <div>
                 <label className="block text-xs font-semibold text-konecta-navy mb-1.5">
-                  Procurar por nome ou utilizador
+                  {t('messages.search_placeholder')}
                 </label>
                 <div className="relative">
                   <span className="material-symbols-outlined absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 text-xl">search</span>
@@ -757,7 +912,7 @@ export const Messages: React.FC<MessagesProps> = ({
                     autoFocus
                     value={searchMember}
                     onChange={(e) => handleSearchMembers(e.target.value)}
-                    placeholder="Escribe pelo menos 2 letras..."
+                    placeholder={t('messages.search_hint')}
                     className="w-full bg-gray-100 border border-gray-200 rounded-xl pl-10 pr-4 py-2.5 text-base text-konecta-navy outline-none focus:ring-2 focus:ring-konecta-navy"
                   />
                 </div>
@@ -770,9 +925,9 @@ export const Messages: React.FC<MessagesProps> = ({
                   </div>
                 ) : membersList.length === 0 ? (
                   searchMember.trim().length >= 2 ? (
-                    <p className="text-xs text-gray-500 text-center py-8">Nenhum membro encontrado.</p>
+                    <p className="text-xs text-gray-500 text-center py-8">{t('messages.search_empty')}</p>
                   ) : (
-                    <p className="text-xs text-gray-500 text-center py-8">Digita para pesquisar pessoas na rede.</p>
+                    <p className="text-xs text-gray-500 text-center py-8">{t('messages.search_start')}</p>
                   )
                 ) : (
                   membersList.map((m) => (
@@ -795,7 +950,7 @@ export const Messages: React.FC<MessagesProps> = ({
                           <p className="text-xs text-gray-500">@{m.username || 'membro'}</p>
                         </div>
                       </div>
-                      <span className="text-xs text-konecta-navy font-bold">Conversar</span>
+                      <span className="text-xs text-konecta-navy font-bold">{t('messages.chat_start')}</span>
                     </button>
                   ))
                 )}
@@ -810,17 +965,17 @@ export const Messages: React.FC<MessagesProps> = ({
 };
 
 // Helper: Presence status formatting
-function formatPresenceStatus(presenceRecord?: { last_seen_at?: string; updated_at?: string }): { isOnline: boolean; text: string } {
-  if (!presenceRecord) return { isOnline: false, text: 'Offline' };
+function formatPresenceStatus(t: any, presenceRecord?: { last_seen_at?: string; updated_at?: string }): { isOnline: boolean; text: string } {
+  if (!presenceRecord) return { isOnline: false, text: t('messages.offline') };
   const rawDate = presenceRecord.last_seen_at || presenceRecord.updated_at;
-  if (!rawDate) return { isOnline: false, text: 'Offline' };
+  if (!rawDate) return { isOnline: false, text: t('messages.offline') };
 
   const lastSeen = new Date(rawDate);
   const now = new Date();
   const diffMs = now.getTime() - lastSeen.getTime();
 
   if (diffMs < 300000) { // 5 minutes
-    return { isOnline: true, text: 'Online agora' };
+    return { isOnline: true, text: t('messages.online_now') };
   }
 
   const isToday = lastSeen.toDateString() === now.toDateString();
@@ -831,19 +986,19 @@ function formatPresenceStatus(presenceRecord?: { last_seen_at?: string; updated_
   const timeStr = lastSeen.toLocaleTimeString('pt-AO', { hour: '2-digit', minute: '2-digit' });
 
   if (isToday) {
-    return { isOnline: false, text: `Visto por último hoje às ${timeStr}` };
+    return { isOnline: false, text: `${t('messages.last_seen_today')} ${timeStr}` };
   }
   if (isYesterday) {
-    return { isOnline: false, text: `Visto por último ontem` };
+    return { isOnline: false, text: t('messages.last_seen_yesterday') };
   }
 
   const day = String(lastSeen.getDate()).padStart(2, '0');
   const month = String(lastSeen.getMonth() + 1).padStart(2, '0');
-  return { isOnline: false, text: `Visto por último a ${day}/${month}` };
+  return { isOnline: false, text: `${t('messages.last_seen_at')} ${day}/${month}` };
 }
 
 // Helper: Conversation List date formatting
-function formatConvDate(dateStr?: string): string {
+function formatConvDate(t: any, dateStr?: string): string {
   if (!dateStr) return '';
   const date = new Date(dateStr);
   const now = new Date();
@@ -855,7 +1010,7 @@ function formatConvDate(dateStr?: string): string {
   const yesterday = new Date(now);
   yesterday.setDate(yesterday.getDate() - 1);
   if (date.toDateString() === yesterday.toDateString()) {
-    return 'Ontem';
+    return t('messages.last_seen_yesterday').split(' ').pop() || 'Ontem';
   }
 
   const day = String(date.getDate()).padStart(2, '0');
@@ -864,10 +1019,10 @@ function formatConvDate(dateStr?: string): string {
 }
 
 // Helper: Clean message snippet text
-function cleanMessageSnippet(text?: string): string {
-  if (!text) return 'Conversa iniciada';
-  if (text.toLowerCase().includes('nota de voz')) return '🎤 Nota de voz';
-  if (text === 'Midia enviada') return '📷 Mídia enviada';
+function cleanMessageSnippet(t: any, text?: string): string {
+  if (!text) return '...';
+  if (text.toLowerCase().includes('nota de voz')) return '🎤 ' + t('messages.voice_note');
+  if (text === 'Midia enviada' || text === 'Mídia enviada') return '📷 ' + t('messages.media_sent');
   return text;
 }
 
@@ -882,7 +1037,13 @@ function getAvatarBgColor(id: string): string {
 }
 
 // Helper: Render grouped messages by day and sender
-function renderGroupedMessages(messages: Message[], currentUserId: string, otherLastReadAt?: string) {
+function renderGroupedMessages(
+  t: any,
+  messages: Message[], 
+  currentUserId: string, 
+  otherLastReadAt?: string,
+  onRetry?: (m: Message) => void
+) {
   const groups: { dayLabel: string; msgs: Message[] }[] = [];
 
   messages.forEach(m => {
@@ -891,12 +1052,12 @@ function renderGroupedMessages(messages: Message[], currentUserId: string, other
     let dayLabel = mDate.toLocaleDateString('pt-AO', { day: 'numeric', month: 'long' });
 
     if (mDate.toDateString() === now.toDateString()) {
-      dayLabel = 'Hoje';
+      dayLabel = t('messages.today');
     } else {
       const yesterday = new Date(now);
       yesterday.setDate(yesterday.getDate() - 1);
       if (mDate.toDateString() === yesterday.toDateString()) {
-        dayLabel = 'Ontem';
+        dayLabel = t('messages.yesterday');
       }
     }
 
@@ -926,28 +1087,31 @@ function renderGroupedMessages(messages: Message[], currentUserId: string, other
         const isReadByOther = isMe && otherLastReadAt && new Date(otherLastReadAt) >= new Date(m.created_at);
 
         // Voice note detection
-        const isVoiceNote = m.content.toLowerCase().includes('nota de voz');
-        const mediaUrl = (m as any).media_url;
+        const isVoiceNote = (m.content || m.body || '').toLowerCase().includes('nota de voz');
+        const mediaUrl = (m as any).media_url || m.attachment_url;
+        const isSending = m.status === 'sending';
+        const isFailed = m.status === 'failed';
 
         return (
           <div 
             key={m.id}
             className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}
           >
-            <div className={`max-w-[85%] sm:max-w-md px-4 py-2.5 rounded-2xl text-sm leading-relaxed ${
-              isMe 
-                ? 'bg-konecta-navy text-white rounded-br-xs' 
-                : 'bg-white border border-gray-200 text-gray-900 rounded-bl-xs'
+            <div className={`max-w-[85%] sm:max-w-md px-4 py-2.5 rounded-2xl text-sm leading-relaxed transition-all ${
+              isFailed
+                ? 'bg-red-50 border border-red-300 text-red-900 rounded-br-xs'
+                : isMe 
+                  ? `${isSending ? 'bg-konecta-navy/70' : 'bg-konecta-navy'} text-white rounded-br-xs` 
+                  : 'bg-white border border-gray-200 text-gray-900 rounded-bl-xs'
             }`}>
               {/* Media Render */}
               {mediaUrl && (
                 <div className="mb-2 rounded-xl overflow-hidden bg-black/10">
-                  {isVoiceNote || mediaUrl.match(/\.(mp3|wav|ogg|m4a)$/i) ? (
-                    <div className="p-2 flex items-center gap-2">
-                      <span className="material-symbols-outlined text-lg">mic</span>
-                      <audio src={mediaUrl} controls className="w-full h-8" />
+                  {isVoiceNote || mediaUrl.match(/\.(mp3|wav|ogg|m4a|webm)$/i) ? (
+                    <div className="p-1">
+                      <ModernAudioPlayer src={mediaUrl} variant={isMe ? 'dark' : 'light'} />
                     </div>
-                  ) : mediaUrl.match(/\.(mp4|mov)$/i) || (mediaUrl.includes('.webm') && !isVoiceNote) ? (
+                  ) : mediaUrl.match(/\.(mp4|mov)$/i) ? (
                     <video src={mediaUrl} controls className="w-full max-h-60 object-cover rounded-xl" />
                   ) : (
                     <img src={mediaUrl} alt="" className="w-full max-h-60 object-cover rounded-xl" />
@@ -959,23 +1123,43 @@ function renderGroupedMessages(messages: Message[], currentUserId: string, other
               {isVoiceNote ? (
                 <div className="flex items-center gap-2 font-medium">
                   <span className="material-symbols-outlined text-lg">mic</span>
-                  <span>Nota de voz</span>
+                  <span>{t('messages.voice_note')}</span>
                 </div>
               ) : (
-                <p className="whitespace-pre-wrap break-words">{m.content === 'Midia enviada' ? 'Mídia enviada' : m.content}</p>
+                <p className="whitespace-pre-wrap break-words">{m.content === 'Midia enviada' || m.content === 'Mídia enviada' ? t('messages.media_sent') : (m.body || m.content)}</p>
               )}
             </div>
 
-            {/* Time & Read Receipts Metadata (Shown on last message of group) */}
-            {isLastInGroup && (
+            {/* Error Retry Notice */}
+            {isFailed && (
+              <button
+                onClick={() => onRetry?.(m)}
+                className="flex items-center gap-1 text-[11px] font-semibold text-red-600 hover:text-red-700 mt-1 px-1 transition-colors"
+              >
+                <span className="material-symbols-outlined text-sm">error</span>
+                <span>{t('messages.error_send')}</span>
+              </button>
+            )}
+
+            {/* Time & Read Receipts Metadata (Shown on last message of group or when sending) */}
+            {(isLastInGroup || isSending) && !isFailed && (
               <div className="flex items-center gap-1 text-xs text-gray-500 mt-1 px-1">
-                <span>{new Date(m.created_at).toLocaleTimeString('pt-AO', { hour: '2-digit', minute: '2-digit' })}</span>
-                {isMe && (
-                  isReadByOther ? (
-                    <span className="material-symbols-outlined text-xs text-blue-500 font-bold" aria-label="Lida">done_all</span>
-                  ) : (
-                    <span className="material-symbols-outlined text-xs text-gray-400 font-bold" aria-label="Enviada">done</span>
-                  )
+                {isSending ? (
+                  <span className="text-[11px] text-gray-400 flex items-center gap-1">
+                    <span className="inline-block w-2 h-2 rounded-full bg-gray-400 animate-pulse"></span>
+                    {t('messages.sending')}
+                  </span>
+                ) : (
+                  <>
+                    <span>{new Date(m.created_at).toLocaleTimeString('pt-AO', { hour: '2-digit', minute: '2-digit' })}</span>
+                    {isMe && (
+                      isReadByOther ? (
+                        <span className="material-symbols-outlined text-xs text-blue-500 font-bold" aria-label={t('messages.read')}>done_all</span>
+                      ) : (
+                        <span className="material-symbols-outlined text-xs text-gray-400 font-bold" aria-label={t('messages.delivered')}>done</span>
+                      )
+                    )}
+                  </>
                 )}
               </div>
             )}

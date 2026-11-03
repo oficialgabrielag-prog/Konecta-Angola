@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Community, CommunityMember, Profile } from '../types';
 import { supabase } from '../lib/supabaseClient';
+import { useT } from '../context/LanguageContext';
 
 interface CommunitiesProps {
   user: any;
@@ -12,6 +13,7 @@ interface CommunitiesProps {
 }
 
 export const Communities: React.FC<CommunitiesProps> = ({ user, onOpenAuth, onNavigateTab, setActiveCommunitySlug, setActiveCommunityId }) => {
+  const { t } = useT();
   const [communities, setCommunities] = useState<Community[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -61,7 +63,7 @@ export const Communities: React.FC<CommunitiesProps> = ({ user, onOpenAuth, onNa
       setError(null);
     } catch (err: any) {
       console.warn('Aviso ao carregar comunidades:', err?.message || err);
-      setError('Não foi possível carregar as comunidades de momento.');
+      setError(t('error.general'));
     } finally {
       setLoading(false);
     }
@@ -136,7 +138,7 @@ export const Communities: React.FC<CommunitiesProps> = ({ user, onOpenAuth, onNa
       fetchCommunities();
     } catch (err: any) {
       console.warn('Aviso ao criar comunidade:', err?.message || err);
-      alert(err?.message || 'Erro ao criar comunidade.');
+      alert(err?.message || t('error.general'));
     } finally {
       setCreating(false);
     }
@@ -147,10 +149,10 @@ export const Communities: React.FC<CommunitiesProps> = ({ user, onOpenAuth, onNa
       
       <header className="mb-16 flex flex-col md:flex-row md:items-end justify-between gap-6">
         <div>
-          <span className="feature-kicker">Hub de Conexão</span>
-          <h1 className="hero-title">Comunidades Temáticas</h1>
+          <span className="feature-kicker">{t('communities.connection_hub')}</span>
+          <h1 className="hero-title">{t('communities.title')}</h1>
           <p className="text-gray-500 mt-3 max-w-2xl leading-relaxed">
-            Junta-te a grupos focados em interesses e setores específicos em Angola para trocar conhecimento, debater e criar alianças.
+            {t('communities.desc')}
           </p>
         </div>
         <button 
@@ -160,7 +162,7 @@ export const Communities: React.FC<CommunitiesProps> = ({ user, onOpenAuth, onNa
           }}
           className="btn-gold whitespace-nowrap text-xs py-3.5 px-6 shadow-md self-start md:self-auto"
         >
-          + Criar Nova Comunidade
+          {t('communities.create_btn')}
         </button>
       </header>
 
@@ -170,22 +172,22 @@ export const Communities: React.FC<CommunitiesProps> = ({ user, onOpenAuth, onNa
         </div>
       ) : error ? (
         <div className="bg-red-50 text-red-600 p-8 rounded-3xl text-center max-w-lg mx-auto border border-red-100">
-          <p className="font-bold">Erro ao carregar comunidades</p>
+          <p className="font-bold">{t('common.error')}</p>
           <p className="text-sm mt-2">{error}</p>
           <button onClick={fetchCommunities} className="mt-4 btn-primary py-2 text-xs">
-            Tentar Novamente
+            {t('create.retry')}
           </button>
         </div>
       ) : communities.length === 0 ? (
         <div className="text-center py-32 bg-white rounded-[32px] border border-dashed border-gray-200">
           <span className="material-symbols-outlined text-5xl text-gray-300 mb-4">groups</span>
-          <p className="text-gray-500 font-medium">Ainda não existem comunidades criadas.</p>
-          <p className="text-xs text-gray-400 mt-1">Sê o primeiro a fundar um grupo temático para a sua área.</p>
+          <p className="text-gray-500 font-medium">{t('communities.empty')}</p>
+          <p className="text-xs text-gray-400 mt-1">{t('communities.empty_hint')}</p>
           <button 
             onClick={() => user ? setShowCreateModal(true) : onOpenAuth()}
             className="mt-6 btn-gold text-xs py-3 px-8"
           >
-            Fundar Primeira Comunidade
+            {t('communities.publish_first')}
           </button>
         </div>
       ) : (
@@ -216,8 +218,8 @@ export const Communities: React.FC<CommunitiesProps> = ({ user, onOpenAuth, onNa
                         <span className="material-symbols-outlined text-3xl text-konecta-gold">groups</span>
                       </div>
                     )}
-                    <div className="absolute top-3 right-3 bg-white/90 backdrop-blur-sm px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider text-konecta-navy shadow-sm">
-                      {membersTotal} {membersTotal === 1 ? 'Membro' : 'Membros'}
+                    <div className="absolute top-3 right-3 bg-white/90 backdrop-blur-sm px-3 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-wider text-konecta-navy shadow-sm">
+                      {membersTotal} {membersTotal === 1 ? t('communities.member') : t('communities.members')}
                     </div>
                   </div>
 
@@ -240,7 +242,7 @@ export const Communities: React.FC<CommunitiesProps> = ({ user, onOpenAuth, onNa
                       }}
                       className="text-xs font-bold text-konecta-navy hover:text-konecta-gold"
                     >
-                      Configurar
+                      {t('communities.setup')}
                     </button>
                   ) : <span />}
                   <button 
@@ -252,7 +254,7 @@ export const Communities: React.FC<CommunitiesProps> = ({ user, onOpenAuth, onNa
                         : ''
                     }`}
                   >
-                    {isLoading ? '...' : isMember ? 'Aderido ✓' : 'Aderir'}
+                    {isLoading ? '...' : isMember ? t('communities.joined') : t('communities.join')}
                   </button>
                 </div>
               </motion.div>
@@ -285,7 +287,7 @@ export const Communities: React.FC<CommunitiesProps> = ({ user, onOpenAuth, onNa
               </div>
 
               <div>
-                <h4 className="text-xs font-bold uppercase tracking-wider text-konecta-navy mb-2">Sobre esta Comunidade</h4>
+                <h4 className="text-xs font-bold uppercase tracking-wider text-konecta-navy mb-2">{t('communities.about')}</h4>
                 <p className="text-sm text-gray-600 leading-relaxed whitespace-pre-wrap">
                   {selectedCommunity.description}
                 </p>
@@ -294,13 +296,13 @@ export const Communities: React.FC<CommunitiesProps> = ({ user, onOpenAuth, onNa
               <div className="pt-4 border-t border-gray-100">
                 <div className="flex items-center justify-between mb-4">
                   <h4 className="text-xs font-bold uppercase tracking-wider text-konecta-navy">
-                    Membros Ativos ({communityMembers.length})
+                    {t('communities.active_members')} ({communityMembers.length})
                   </h4>
                   <button
                     onClick={(e) => handleToggleMembership(e, selectedCommunity.id)}
                     className="btn-primary py-1.5 px-5 text-xs"
                   >
-                    {joinedMap[selectedCommunity.id] ? 'Sair da Comunidade' : 'Aderir a esta Comunidade'}
+                    {joinedMap[selectedCommunity.id] ? t('communities.leave') : t('communities.join')}
                   </button>
                 </div>
 
@@ -309,7 +311,7 @@ export const Communities: React.FC<CommunitiesProps> = ({ user, onOpenAuth, onNa
                     <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-konecta-navy"></div>
                   </div>
                 ) : communityMembers.length === 0 ? (
-                  <p className="text-xs text-gray-400 italic py-4">Ainda sem membros listados.</p>
+                  <p className="text-xs text-gray-400 italic py-4">{t('communities.no_members')}</p>
                 ) : (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-60 overflow-y-auto pr-1">
                     {communityMembers.map((m) => (
@@ -352,7 +354,7 @@ export const Communities: React.FC<CommunitiesProps> = ({ user, onOpenAuth, onNa
               className="bg-white rounded-3xl p-6 sm:p-8 max-w-lg w-full shadow-2xl space-y-6"
             >
               <div className="flex items-center justify-between border-b border-gray-100 pb-4">
-                <h3 className="text-xl font-bold text-konecta-navy">Fundar Nova Comunidade</h3>
+                <h3 className="text-xl font-bold text-konecta-navy">{t('communities.new_community_title')}</h3>
                 <button
                   onClick={() => setShowCreateModal(false)}
                   className="text-gray-400 hover:text-konecta-navy"
@@ -364,28 +366,28 @@ export const Communities: React.FC<CommunitiesProps> = ({ user, onOpenAuth, onNa
               <form onSubmit={handleCreateCommunity} className="space-y-4">
                 <div>
                   <label className="block text-xs font-bold text-konecta-navy uppercase tracking-wider mb-1.5">
-                    Nome da Comunidade
+                    {t('communities.community_name')}
                   </label>
                   <input
                     type="text"
                     required
                     value={name}
                     onChange={(e) => setName(e.target.value)}
-                    placeholder="Ex: Agrotech Angola, Mulheres na Ciência..."
+                    placeholder={t('communities.community_name_placeholder')}
                     className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm"
                   />
                 </div>
 
                 <div>
                   <label className="block text-xs font-bold text-konecta-navy uppercase tracking-wider mb-1.5">
-                    Missão e Propósito
+                    {t('communities.mission')}
                   </label>
                   <textarea
                     required
                     rows={4}
                     value={description}
                     onChange={(e) => setDescription(e.target.value)}
-                    placeholder="Explica aos membros qual é o foco do grupo e que tipo de colaborações pretendem construir..."
+                    placeholder={t('communities.mission_placeholder')}
                     className="w-full bg-gray-50 border border-gray-200 rounded-xl p-4 text-sm resize-none"
                   />
                 </div>
@@ -403,7 +405,7 @@ export const Communities: React.FC<CommunitiesProps> = ({ user, onOpenAuth, onNa
                     disabled={creating || !name.trim() || !description.trim()}
                     className="btn-primary py-2.5 px-6 text-xs"
                   >
-                    {creating ? 'A criar...' : 'Criar Comunidade'}
+                    {creating ? t('communities.creating') : t('communities.join')}
                   </button>
                 </div>
               </form>

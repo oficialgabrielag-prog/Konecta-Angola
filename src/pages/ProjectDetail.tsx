@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Project, ProjectTask, Milestone, ProjectMember, ProjectUpdate, CommentItem } from '../types';
 import { d1Client } from '../lib/d1Client';
 import { uploadToCloudinary } from '../lib/cloudinary';
+import { useUI } from '../context/UIContext';
 import { KonectaRealtimeService } from '../lib/realtime';
 
 interface ProjectDetailProps {
@@ -23,6 +24,7 @@ export const ProjectDetail: React.FC<ProjectDetailProps> = ({
   const [project, setProject] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<string>('visao-geral');
+  const { openShareSheet } = useUI();
 
   // Sub-data states
   const [tasks, setTasks] = useState<ProjectTask[]>([]);
@@ -480,6 +482,18 @@ export const ProjectDetail: React.FC<ProjectDetailProps> = ({
                   {actionLoading ? 'Aguarde...' : isMember ? 'Sair' : 'Aderir'}
                 </button>
               )}
+              <button 
+                onClick={() => openShareSheet({
+                  targetId: project.id,
+                  targetType: 'project',
+                  title: project.title,
+                  authorName: project.profiles?.full_name || 'Líder',
+                  thumbnail: project.cover_url || undefined
+                })}
+                className="p-2.5 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-xl transition-all active:scale-95"
+              >
+                <span className="material-symbols-outlined text-[18px]">share</span>
+              </button>
             </div>
           </div>
         </div>

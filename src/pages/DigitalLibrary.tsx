@@ -2,6 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { d1Client } from '../lib/d1Client';
 import { uploadMediaToCloudinary } from '../lib/cloudinary';
+import { useUI } from '../context/UIContext';
+
+import { useT } from '../context/LanguageContext';
 
 interface DigitalLibraryProps {
   user: any;
@@ -10,10 +13,23 @@ interface DigitalLibraryProps {
 }
 
 export const DigitalLibrary: React.FC<DigitalLibraryProps> = ({ user, onOpenAuth, onNavigateTab }) => {
+  const { t } = useT();
   const [books, setBooks] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedGenre, setSelectedGenre] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const { openShareSheet, createIntent, setCreateIntent, showToast } = useUI();
+
+  useEffect(() => {
+    if (createIntent === 'book') {
+      if (user) {
+        setShowCreateBookModal(true);
+      } else {
+        onOpenAuth();
+      }
+      setCreateIntent(null);
+    }
+  }, [createIntent, user, setCreateIntent, onOpenAuth]);
 
   // Selected Book for Reading / Detail
   const [selectedBook, setSelectedBook] = useState<any | null>(null);
@@ -114,8 +130,10 @@ export const DigitalLibrary: React.FC<DigitalLibraryProps> = ({ user, onOpenAuth
       setSynopsis('');
       setCoverUrl('');
       fetchBooks();
+      showToast('Livro registado com sucesso!', 'success');
     } catch (err: any) {
-      alert(err.message || 'Erro ao criar livro.');
+      console.error('Erro ao criar livro:', err);
+      showToast(err.message || 'Erro ao criar livro.', 'error');
     } finally {
       setCreating(false);
     }
@@ -147,8 +165,10 @@ export const DigitalLibrary: React.FC<DigitalLibraryProps> = ({ user, onOpenAuth
           setCurrentChapter(fresh.data.book_chapters[0]);
         }
       }
+      showToast('Capítulo adicionado com sucesso!', 'success');
     } catch (err: any) {
-      alert(err.message || 'Erro ao adicionar capítulo.');
+      console.error('Erro ao adicionar capítulo:', err);
+      showToast(err.message || 'Erro ao adicionar capítulo.', 'error');
     } finally {
       setSavingChapter(false);
     }
@@ -172,8 +192,10 @@ export const DigitalLibrary: React.FC<DigitalLibraryProps> = ({ user, onOpenAuth
         setSelectedBook(fresh.data);
         setReviews(fresh.data.book_reviews || []);
       }
+      showToast('Avaliação registada com sucesso!', 'success');
     } catch (err: any) {
-      alert(err.message || 'Erro ao enviar avaliação.');
+      console.error('Erro ao enviar avaliação:', err);
+      showToast(err.message || 'Erro ao enviar avaliação.', 'error');
     } finally {
       setSubmittingReview(false);
     }
@@ -185,10 +207,10 @@ export const DigitalLibrary: React.FC<DigitalLibraryProps> = ({ user, onOpenAuth
       {/* Header */}
       <header className="mb-10 flex flex-col md:flex-row md:items-end justify-between gap-6">
         <div>
-          <span className="text-xs font-bold tracking-widest text-konecta-gold uppercase">Literatura & Conhecimento</span>
-          <h1 className="text-3xl sm:text-4xl font-extrabold text-konecta-navy tracking-tight mt-1">Biblioteca Digital & Autores</h1>
+          <span className="text-xs font-bold tracking-widest text-konecta-gold uppercase">{t('library.knowledge')}</span>
+          <h1 className="text-3xl sm:text-4xl font-extrabold text-konecta-navy tracking-tight mt-1">{t('library.title')}</h1>
           <p className="text-gray-500 mt-2 max-w-2xl text-sm leading-relaxed">
-            Descobre obras de escritores e poetas angolanos, lê capítulos online, avalia livros e publica as tuas próprias criações literárias.
+            {t('library.desc')}
           </p>
         </div>
         <button
@@ -199,7 +221,7 @@ export const DigitalLibrary: React.FC<DigitalLibraryProps> = ({ user, onOpenAuth
           className="btn-gold whitespace-nowrap text-xs py-3 px-6 shadow-md flex items-center gap-2 self-start md:self-auto"
         >
           <span className="material-symbols-outlined text-lg">library_add</span>
-          Publicar Livro ou Obra
+          {t('library.publish_btn')}
         </button>
       </header>
 
@@ -211,7 +233,7 @@ export const DigitalLibrary: React.FC<DigitalLibraryProps> = ({ user, onOpenAuth
             selectedGenre === 'all' ? 'bg-konecta-navy text-white shadow-sm' : 'bg-white text-gray-600 hover:bg-gray-100 border border-gray-200'
           }`}
         >
-          Todos os Géneros
+          {t('library.all_genres')}
         </button>
         {genres.map(g => (
           <button
@@ -235,7 +257,7 @@ export const DigitalLibrary: React.FC<DigitalLibraryProps> = ({ user, onOpenAuth
           type="text"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder="Pesquisar por título ou sinopse..."
+          placeholder={t('library.search_placeholder')}
           className="w-full bg-white border border-gray-200 rounded-2xl pl-12 pr-4 py-3.5 text-xs shadow-sm focus:outline-none focus:border-konecta-gold"
         />
       </form>
@@ -248,12 +270,12 @@ export const DigitalLibrary: React.FC<DigitalLibraryProps> = ({ user, onOpenAuth
       ) : books.length === 0 ? (
         <div className="text-center py-28 bg-white rounded-3xl border border-dashed border-gray-200">
           <span className="material-symbols-outlined text-5xl text-gray-300 mb-3">menu_book</span>
-          <p className="text-gray-600 font-semibold text-sm">Nenhum livro encontrado na biblioteca.</p>
+          <p className="text-gray-600 font-semibold text-sm">{t('library.empty')}</p>
           <button 
             onClick={() => user ? setShowCreateBookModal(true) : onOpenAuth()}
             className="mt-6 btn-gold text-xs py-2.5 px-6"
           >
-            Publicar Primeira Obra
+            {t('library.publish_first')}
           </button>
         </div>
       ) : (
@@ -264,7 +286,7 @@ export const DigitalLibrary: React.FC<DigitalLibraryProps> = ({ user, onOpenAuth
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               onClick={() => openBookDetail(book)}
-              className="bg-white rounded-3xl overflow-hidden border border-gray-100 shadow-sm hover:shadow-md transition-all cursor-pointer flex flex-col justify-between group"
+              className="card-konecta flex flex-col justify-between group cursor-pointer"
             >
               <div>
                 <div className="aspect-[3/4] bg-gradient-to-br from-konecta-navy/20 to-konecta-gold/20 relative overflow-hidden flex items-center justify-center">
@@ -288,13 +310,13 @@ export const DigitalLibrary: React.FC<DigitalLibraryProps> = ({ user, onOpenAuth
                   <h3 className="text-base font-bold text-konecta-navy line-clamp-1 group-hover:text-konecta-gold transition-colors">
                     {book.title}
                   </h3>
-                  <p className="text-xs text-gray-400 mt-0.5">Por {book.profiles?.full_name || 'Autor'}</p>
+                  <p className="text-xs text-gray-400 mt-0.5">{t('library.by')} {book.profiles?.full_name || 'Autor'}</p>
                 </div>
               </div>
 
               <div className="px-5 pb-5 pt-0 flex items-center justify-between text-xs text-gray-500">
-                <span>{book.chapters_count || 0} capítulos</span>
-                <span className="font-bold text-konecta-navy group-hover:underline">Ler obra</span>
+                <span>{book.chapters_count || 0} {t('library.chapters')}</span>
+                <span className="font-bold text-konecta-navy group-hover:underline">{t('library.read_btn')}</span>
               </div>
             </motion.div>
           ))}
@@ -315,11 +337,25 @@ export const DigitalLibrary: React.FC<DigitalLibraryProps> = ({ user, onOpenAuth
                 <div>
                   <span className="text-xs font-bold text-konecta-gold uppercase">{selectedBook.genre}</span>
                   <h2 className="text-2xl font-black text-konecta-navy">{selectedBook.title}</h2>
-                  <p className="text-xs text-gray-400">Por {selectedBook.profiles?.full_name}</p>
+                  <p className="text-xs text-gray-400">{t('library.by')} {selectedBook.profiles?.full_name}</p>
                 </div>
-                <button onClick={() => setSelectedBook(null)} className="text-gray-400 hover:text-konecta-navy">
-                  <span className="material-symbols-outlined text-2xl">close</span>
-                </button>
+                <div className="flex items-center gap-2">
+                  <button 
+                    onClick={() => openShareSheet({
+                      targetId: selectedBook.id,
+                      targetType: 'book',
+                      title: selectedBook.title,
+                      authorName: selectedBook.profiles?.full_name || 'Autor',
+                      thumbnail: selectedBook.cover_url || undefined
+                    })}
+                    className="p-2 text-gray-400 hover:text-konecta-gold transition-colors"
+                  >
+                    <span className="material-symbols-outlined text-2xl">share</span>
+                  </button>
+                  <button onClick={() => setSelectedBook(null)} className="text-gray-400 hover:text-konecta-navy">
+                    <span className="material-symbols-outlined text-2xl">close</span>
+                  </button>
+                </div>
               </div>
 
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -330,13 +366,13 @@ export const DigitalLibrary: React.FC<DigitalLibraryProps> = ({ user, onOpenAuth
                     <h3 className="text-xs font-bold text-konecta-navy uppercase tracking-wider">Capítulos</h3>
                     {user && selectedBook.author_id === user.id && (
                       <button onClick={() => setShowChapterModal(true)} className="btn-primary py-1 px-3 text-[10px]">
-                        + Adicionar
+                        + {t('library.add_chapter')}
                       </button>
                     )}
                   </div>
 
                   {chapters.length === 0 ? (
-                    <p className="text-xs text-gray-400">Ainda não existem capítulos publicados.</p>
+                    <p className="text-xs text-gray-400">{t('library.no_chapters')}</p>
                   ) : (
                     <div className="space-y-2 max-h-64 overflow-y-auto">
                       {chapters.map((ch: any) => (
@@ -354,7 +390,7 @@ export const DigitalLibrary: React.FC<DigitalLibraryProps> = ({ user, onOpenAuth
                   )}
 
                   <div className="pt-4 border-t border-gray-200 text-xs text-gray-500">
-                    <p><strong>Direitos:</strong> {selectedBook.copyright_notice}</p>
+                    <p><strong>{t('library.rights')}:</strong> {selectedBook.copyright_notice}</p>
                   </div>
                 </div>
 
@@ -369,17 +405,17 @@ export const DigitalLibrary: React.FC<DigitalLibraryProps> = ({ user, onOpenAuth
                     </div>
                   ) : (
                     <div className="bg-white p-12 rounded-3xl border border-gray-100 text-center text-gray-400">
-                      Seleciona um capítulo para iniciar a leitura.
+                      {t('library.select_chapter')}
                     </div>
                   )}
 
                   {/* Reviews Section */}
                   <div className="bg-gray-50 p-6 rounded-3xl border border-gray-100 space-y-4">
-                    <h3 className="text-xs font-bold text-konecta-navy uppercase tracking-wider">Avaliações & Comentários ({reviews.length})</h3>
+                    <h3 className="text-xs font-bold text-konecta-navy uppercase tracking-wider">{t('library.reviews')} ({reviews.length})</h3>
                     
                     <form onSubmit={handleAddReview} className="space-y-3 bg-white p-4 rounded-2xl border border-gray-200">
                       <div className="flex items-center gap-2">
-                        <span className="text-xs font-bold">Classificação:</span>
+                        <span className="text-xs font-bold">{t('library.rating')}:</span>
                         <select value={rating} onChange={(e) => setRating(parseInt(e.target.value))} className="bg-gray-50 border rounded-lg px-2 py-1 text-xs font-bold">
                           <option value={5}>★★★★★ (5)</option>
                           <option value={4}>★★★★☆ (4)</option>
@@ -393,11 +429,11 @@ export const DigitalLibrary: React.FC<DigitalLibraryProps> = ({ user, onOpenAuth
                         rows={2}
                         value={comment}
                         onChange={(e) => setComment(e.target.value)}
-                        placeholder="Deixa o teu comentário sobre a obra..."
+                        placeholder={t('library.review_placeholder')}
                         className="w-full bg-gray-50 border rounded-xl p-3 text-xs resize-none"
                       />
                       <button type="submit" disabled={submittingReview || !comment.trim()} className="btn-primary py-2 px-4 text-xs">
-                        Publicar Avaliação
+                        {t('library.publish_review')}
                       </button>
                     </form>
 
@@ -405,10 +441,10 @@ export const DigitalLibrary: React.FC<DigitalLibraryProps> = ({ user, onOpenAuth
                       {reviews.map((rev: any) => (
                         <div key={rev.id} className="p-3 bg-white rounded-xl border border-gray-100 text-xs space-y-1">
                           <div className="flex items-center justify-between">
-                            <span className="font-bold text-konecta-navy">Leitor</span>
+                            <span className="font-bold text-konecta-navy">{t('library.reader')}</span>
                             <span className="text-konecta-gold">{'★'.repeat(rev.rating)}</span>
                           </div>
-                          <p className="text-gray-600">{rev.comment}</p>
+                          <p className="text-gray-600">{rev.review || rev.comment}</p>
                         </div>
                       ))}
                     </div>
@@ -426,28 +462,28 @@ export const DigitalLibrary: React.FC<DigitalLibraryProps> = ({ user, onOpenAuth
         {showCreateBookModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-konecta-navy/60 backdrop-blur-sm">
             <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="bg-white rounded-3xl p-6 sm:p-8 max-w-lg w-full space-y-4">
-              <h3 className="text-lg font-bold text-konecta-navy">Publicar Nova Obra Literária</h3>
+              <h3 className="text-lg font-bold text-konecta-navy">{t('library.new_book_title')}</h3>
               <form onSubmit={handleCreateBook} className="space-y-4">
                 <input
                   type="text"
                   required
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
-                  placeholder="Título do Livro"
+                  placeholder={t('library.book_title')}
                   className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-xs"
                 />
                 <input
                   type="text"
                   value={subtitle}
                   onChange={(e) => setSubtitle(e.target.value)}
-                  placeholder="Subtítulo (opcional)"
+                  placeholder={t('library.book_subtitle')}
                   className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-xs"
                 />
                 <textarea
                   rows={3}
                   value={synopsis}
                   onChange={(e) => setSynopsis(e.target.value)}
-                  placeholder="Sinopse..."
+                  placeholder={t('library.synopsis')}
                   className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 text-xs resize-none"
                 />
                 <select
@@ -469,8 +505,8 @@ export const DigitalLibrary: React.FC<DigitalLibraryProps> = ({ user, onOpenAuth
                   className="text-xs text-gray-500"
                 />
                 <div className="flex justify-end gap-3 pt-2">
-                  <button type="button" onClick={() => setShowCreateBookModal(false)} className="text-xs text-gray-500">Cancelar</button>
-                  <button type="submit" disabled={creating || !title.trim()} className="btn-primary py-2 px-5 text-xs">Publicar</button>
+                  <button type="button" onClick={() => setShowCreateBookModal(false)} className="text-xs text-gray-500">{t('common.cancel')}</button>
+                  <button type="submit" disabled={creating || !title.trim()} className="btn-primary py-2 px-5 text-xs">{t('common.publish')}</button>
                 </div>
               </form>
             </motion.div>
@@ -483,14 +519,14 @@ export const DigitalLibrary: React.FC<DigitalLibraryProps> = ({ user, onOpenAuth
         {showChapterModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-konecta-navy/60 backdrop-blur-sm">
             <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="bg-white rounded-3xl p-6 sm:p-8 max-w-xl w-full space-y-4">
-              <h3 className="text-lg font-bold text-konecta-navy">Adicionar Capítulo</h3>
+              <h3 className="text-lg font-bold text-konecta-navy">{t('library.add_chapter')}</h3>
               <form onSubmit={handleAddChapter} className="space-y-4">
                 <div className="grid grid-cols-3 gap-3">
                   <input
                     type="number"
                     value={chapterNumber}
                     onChange={(e) => setChapterNumber(parseInt(e.target.value) || 1)}
-                    placeholder="Nº"
+                    placeholder={t('library.chapter_num_placeholder')}
                     className="bg-gray-50 border rounded-xl px-3 py-2 text-xs"
                   />
                   <input
@@ -498,7 +534,7 @@ export const DigitalLibrary: React.FC<DigitalLibraryProps> = ({ user, onOpenAuth
                     required
                     value={chapterTitle}
                     onChange={(e) => setChapterTitle(e.target.value)}
-                    placeholder="Título do Capítulo"
+                    placeholder={t('library.chapter_title_placeholder')}
                     className="col-span-2 bg-gray-50 border rounded-xl px-3 py-2 text-xs"
                   />
                 </div>
@@ -507,12 +543,12 @@ export const DigitalLibrary: React.FC<DigitalLibraryProps> = ({ user, onOpenAuth
                   rows={8}
                   value={chapterContent}
                   onChange={(e) => setChapterContent(e.target.value)}
-                  placeholder="Escreve ou cola o conteúdo do capítulo..."
+                  placeholder={t('library.chapter_content_placeholder')}
                   className="w-full bg-gray-50 border rounded-xl p-3 text-xs resize-none font-serif"
                 />
                 <div className="flex justify-end gap-3 pt-2">
-                  <button type="button" onClick={() => setShowChapterModal(false)} className="text-xs text-gray-500">Cancelar</button>
-                  <button type="submit" disabled={savingChapter || !chapterTitle.trim() || !chapterContent.trim()} className="btn-primary py-2 px-5 text-xs">Guardar Capítulo</button>
+                  <button type="button" onClick={() => setShowChapterModal(false)} className="text-xs text-gray-500">{t('common.cancel')}</button>
+                  <button type="submit" disabled={savingChapter || !chapterTitle.trim() || !chapterContent.trim()} className="btn-primary py-2 px-5 text-xs">{t('library.save_chapter')}</button>
                 </div>
               </form>
             </motion.div>

@@ -9,8 +9,63 @@ export interface Profile {
   province?: string;
   municipality?: string;
   interests?: string[];
+  is_verified?: boolean;
+  verified_at?: string;
+  verified_until?: string;
+  badge_type?: string;
+  active_plan_name?: string;
   created_at?: string;
   updated_at?: string;
+}
+
+export interface Organization {
+  id: string;
+  name: string;
+  slug?: string;
+  trade_name?: string;
+  nif?: string;
+  category?: string;
+  owner_id?: string;
+  creator_id?: string;
+  description?: string;
+  mission?: string;
+  logo_url?: string;
+  cover_url?: string;
+  province?: string;
+  municipality?: string;
+  address?: string;
+  website?: string;
+  website_url?: string;
+  email?: string;
+  contact_email?: string;
+  phone?: string;
+  contact_phone?: string;
+  verified?: boolean;
+  verification_status?: 'unverified' | 'pending' | 'verified' | 'rejected' | string;
+  verified_at?: string;
+  verified_until?: string;
+  followers_count?: number;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface KonectaPaymentMethod {
+  id: string;
+  provider: 'bank_transfer' | 'express' | 'unitel_money' | string;
+  display_name: string;
+  account_name?: string;
+  account_number?: string;
+  instructions?: string;
+  is_active: boolean;
+  sort_order?: number;
+  created_at?: string;
+  updated_at?: string;
+  // Backward compatibility aliases
+  method_key?: string;
+  title?: string;
+  account_holder?: string;
+  iban?: string;
+  phone_number?: string;
 }
 
 export interface ProfileUpdate {
@@ -76,6 +131,7 @@ export interface ProjectTask {
 export interface Post {
   id: string;
   content: string;
+  body?: string;
   image_url?: string;
   user_id: string;
   community_id?: string;
@@ -130,6 +186,12 @@ export interface Message {
   conversation_id: string;
   sender_id: string;
   content: string;
+  body?: string;
+  media_url?: string | null;
+  attachment_url?: string | null;
+  message_type?: 'text' | 'image' | 'video' | 'audio' | string;
+  status?: 'sending' | 'sent' | 'failed';
+  expires_at?: string | null;
   created_at: string;
 }
 
@@ -138,15 +200,21 @@ export interface Conversation {
   last_message?: string;
   last_message_at?: string;
   participants?: Profile[];
+  conversation_members?: any[];
+  unread_count?: number;
   created_at: string;
 }
 
 export interface NotificationItem {
   id: string;
   user_id: string;
+  actor_id?: string;
+  actor?: Profile;
   title: string;
   message: string;
   body?: string;
+  target_type?: string;
+  target_id?: string;
   read_at?: string | null;
   read?: boolean;
   type?: 'vote' | 'comment' | 'message' | 'system' | string;
@@ -363,3 +431,76 @@ export interface MusicLibraryAdmin {
   created_at: string;
 }
 
+
+export interface VerificationPricing {
+  id: string;
+  target_type: 'profile' | 'organization';
+  price_amount: number;
+  currency: string;
+  duration_days: number;
+  created_at: string;
+}
+
+export interface VerificationRequest {
+  id: string;
+  user_id: string;
+  target_type: 'profile' | 'organization';
+  target_id: string;
+  proof_path: string;
+  status: 'pending' | 'approved' | 'rejected';
+  reason?: string;
+  price_amount: number;
+  currency: string;
+  duration_days: number;
+  created_at: string;
+  profiles?: Profile;
+}
+
+export interface SubscriptionPlan {
+  id: string;
+  name: string;
+  description: string;
+  price_amount: number;
+  currency: string;
+  duration_days: number;
+  benefits: any;
+  limits: any;
+  is_recommended: boolean;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface SubscriptionRequest {
+  id: string;
+  user_id: string;
+  plan_id: string;
+  status: 'awaiting_proof' | 'pending_review' | 'approved' | 'rejected';
+  proof_path?: string;
+  payment_method?: string;
+  payment_reference?: string;
+  created_at: string;
+  profiles?: Profile;
+  plan?: SubscriptionPlan;
+}
+
+export interface UserSubscription {
+  id: string;
+  user_id: string;
+  plan_id: string;
+  start_date: string;
+  end_date: string;
+  status: 'active' | 'expired' | 'cancelled';
+  created_at: string;
+  plan?: SubscriptionPlan;
+}
+
+export interface PaymentTransaction {
+  id: string;
+  user_id: string;
+  amount: number;
+  currency: string;
+  type: 'verification' | 'subscription';
+  reference_id: string;
+  status: 'pending' | 'completed' | 'failed';
+  created_at: string;
+}

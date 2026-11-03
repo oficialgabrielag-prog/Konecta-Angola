@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { d1Client } from '../lib/d1Client';
 import { uploadMediaToCloudinary } from '../lib/cloudinary';
+import { useT } from '../i18n/LanguageContext';
+import { useToast } from '../context/UIContext';
 
 interface EventsProps {
   user: any;
@@ -9,6 +11,8 @@ interface EventsProps {
 }
 
 export const Events: React.FC<EventsProps> = ({ user, onOpenAuth }) => {
+  const t = useT();
+  const { showToast } = useToast();
   const [activeTab, setActiveTab] = useState<'descobrir' | 'eventos' | 'workshops' | 'online' | 'minhas-inscricoes' | 'meus-eventos'>('descobrir');
   const [events, setEvents] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -72,7 +76,7 @@ export const Events: React.FC<EventsProps> = ({ user, onOpenAuth }) => {
       setError(null);
     } catch (err: any) {
       console.warn('Erro ao carregar eventos:', err);
-      setError('Não foi possível carregar os eventos e workshops.');
+      setError(t('events.load_err'));
     } finally {
       setLoading(false);
     }
@@ -99,7 +103,8 @@ export const Events: React.FC<EventsProps> = ({ user, onOpenAuth }) => {
       const uploadRes = await uploadMediaToCloudinary(file);
       setCoverPhotoUrl(uploadRes.secure_url);
     } catch (err: any) {
-      alert(err.message || 'Erro ao carregar imagem para o Cloudinary.');
+      console.error('Erro ao carregar foto do evento:', err);
+      showToast(err.message || t('profile.update_photo_err'), 'error');
     } finally {
       setUploadingImage(false);
     }
@@ -140,14 +145,16 @@ export const Events: React.FC<EventsProps> = ({ user, onOpenAuth }) => {
       }
 
       if (res.error) {
-        throw new Error(res.error.message || 'Erro ao guardar evento.');
+        throw new Error(res.error.message || t('events.saving_err'));
       }
 
       setShowCreateModal(false);
       resetForm();
       loadEvents();
+      showToast('Evento guardado com sucesso!', 'success');
     } catch (err: any) {
-      alert(err.message || 'Erro ao guardar evento.');
+      console.error('Erro ao guardar evento:', err);
+      showToast(err.message || t('events.saving_err'), 'error');
     } finally {
       setSaving(false);
     }
@@ -200,29 +207,33 @@ export const Events: React.FC<EventsProps> = ({ user, onOpenAuth }) => {
     try {
       const res = await d1Client.events.join(eventId, response);
       if (res.error) {
-        alert(res.error);
+        showToast(res.error, 'error');
       } else {
         loadEvents();
         if (selectedEvent && selectedEvent.id === eventId) {
           const fresh = await d1Client.events.getById(eventId);
           if (fresh.data) setSelectedEvent(fresh.data);
         }
+        showToast('Presença registada com sucesso!', 'success');
       }
     } catch (err: any) {
-      alert(err.message || 'Erro ao atualizar participação.');
+      console.error('Erro ao atualizar participação:', err);
+      showToast(err.message || t('events.update_err'), 'error');
     } finally {
       setActionLoading(prev => ({ ...prev, [eventId]: false }));
     }
   };
 
   const handleCancelEvent = async (eventId: string) => {
-    if (!confirm('Tens a certeza que pretendes cancelar este evento?')) return;
+    if (!confirm(t('events.cancel_confirm'))) return;
     try {
       await d1Client.events.cancel(eventId);
       loadEvents();
       if (selectedEvent?.id === eventId) setSelectedEvent(null);
+      showToast('Evento cancelado com sucesso.', 'info');
     } catch (err: any) {
-      alert('Erro ao cancelar evento.');
+      console.error('Erro ao cancelar evento:', err);
+      showToast(t('events.cancel_err'), 'error');
     }
   };
 
@@ -254,10 +265,10 @@ export const Events: React.FC<EventsProps> = ({ user, onOpenAuth }) => {
       {/* Header */}
       <header className="mb-10 flex flex-col md:flex-row md:items-end justify-between gap-6">
         <div>
-          <span className="text-xs font-bold tracking-widest text-konecta-gold uppercase">Agenda & Formação</span>
-          <h1 className="text-3xl sm:text-4xl font-extrabold text-konecta-navy tracking-tight mt-1">Eventos & Workshops</h1>
+          <span className="text-[10px] font-extrabold tracking-[0.2em] text-konecta-gold uppercase">{t('events.kicker')}</span>
+          <h1 className="text-3xl sm:text-4xl font-extrabold text-konecta-navy tracking-tight mt-1">{t('nav.events')}</h1>
           <p className="text-gray-500 mt-2 max-w-2xl text-sm leading-relaxed">
-            Participa em masterclasses, conferências e workshops práticos para impulsionar a tua carreira e projetos em Angola.
+            {t('events.subtitle')}
           </p>
         </div>
         <button 
@@ -271,19 +282,18 @@ export const Events: React.FC<EventsProps> = ({ user, onOpenAuth }) => {
           className="btn-gold whitespace-nowrap text-xs py-3 px-6 shadow-md self-start md:self-auto flex items-center gap-2"
         >
           <span className="material-symbols-outlined text-lg">add_circle</span>
-          Criar evento ou workshop
+          {t('events.create_btn')}
         </button>
       </header>
 
-      {/* Navigation Tabs */}
       <div className="flex items-center gap-2 overflow-x-auto pb-4 mb-8 border-b border-gray-200 no-scrollbar">
         {[
-          { key: 'descobrir', label: 'Descobrir', icon: 'explore' },
-          { key: 'eventos', label: 'Eventos', icon: 'event' },
-          { key: 'workshops', label: 'Workshops', icon: 'school' },
-          { key: 'online', label: 'Online', icon: 'wifi' },
-          { key: 'minhas-inscricoes', label: 'Minhas inscrições', icon: 'task_alt' },
-          { key: 'meus-eventos', label: 'Meus eventos', icon: 'dashboard_customize' }
+          { key: 'descobrir', label: t('events.tab_discover'), icon: 'explore' },
+          { key: 'eventos', label: t('events.tab_events'), icon: 'event' },
+          { key: 'workshops', label: t('events.tab_workshops'), icon: 'school' },
+          { key: 'online', label: t('events.tab_online'), icon: 'wifi' },
+          { key: 'minhas-inscricoes', label: t('events.tab_my_attendances'), icon: 'task_alt' },
+          { key: 'meus-eventos', label: t('events.tab_my_events'), icon: 'dashboard_customize' }
         ].map((tab) => (
           <button
             key={tab.key}
@@ -310,7 +320,7 @@ export const Events: React.FC<EventsProps> = ({ user, onOpenAuth }) => {
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Pesquisar por título, local ou tema..."
+            placeholder={t('events.search_placeholder')}
             className="w-full bg-white border border-gray-200 rounded-2xl pl-11 pr-4 py-3 text-xs shadow-sm focus:outline-none focus:border-konecta-gold"
           />
         </form>
@@ -320,7 +330,7 @@ export const Events: React.FC<EventsProps> = ({ user, onOpenAuth }) => {
           onChange={(e) => setSelectedCategory(e.target.value)}
           className="bg-white border border-gray-200 rounded-2xl px-4 py-3 text-xs font-semibold text-gray-700 shadow-sm focus:outline-none focus:border-konecta-gold w-full sm:w-auto"
         >
-          <option value="all">Todas as categorias</option>
+          <option value="all">{t('events.all_categories')}</option>
           {categories.map((c) => (
             <option key={c} value={c}>{c}</option>
           ))}
@@ -334,15 +344,15 @@ export const Events: React.FC<EventsProps> = ({ user, onOpenAuth }) => {
         </div>
       ) : error ? (
         <div className="bg-red-50 text-red-600 p-8 rounded-3xl text-center max-w-lg mx-auto border border-red-100">
-          <p className="font-bold">Erro</p>
+          <p className="font-bold">{t('common.error')}</p>
           <p className="text-xs mt-2">{error}</p>
-          <button onClick={loadEvents} className="mt-4 btn-primary py-2 text-xs">Tentar Novamente</button>
+          <button onClick={loadEvents} className="mt-4 btn-primary py-2 text-xs">{t('create.retry')}</button>
         </div>
       ) : events.length === 0 ? (
         <div className="text-center py-28 bg-white rounded-3xl border border-dashed border-gray-200">
           <span className="material-symbols-outlined text-5xl text-gray-300 mb-3">event_busy</span>
-          <p className="text-gray-600 font-semibold text-sm">Nenhum evento ou workshop encontrado.</p>
-          <p className="text-xs text-gray-400 mt-1">Sê o primeiro a organizar um evento para a comunidade.</p>
+          <p className="text-gray-600 font-semibold text-sm">{t('events.empty_title')}</p>
+          <p className="text-xs text-gray-400 mt-1">{t('events.empty_desc')}</p>
           <button 
             onClick={() => {
               if (!user) onOpenAuth();
@@ -353,7 +363,7 @@ export const Events: React.FC<EventsProps> = ({ user, onOpenAuth }) => {
             }}
             className="mt-6 btn-gold text-xs py-2.5 px-6"
           >
-            Criar Evento ou Workshop
+            {t('events.create_first')}
           </button>
         </div>
       ) : (
@@ -380,27 +390,27 @@ export const Events: React.FC<EventsProps> = ({ user, onOpenAuth }) => {
                         <span className="material-symbols-outlined text-4xl text-konecta-gold mb-1">
                           {isWorkshop ? 'school' : 'event'}
                         </span>
-                        <span className="text-[10px] font-black uppercase tracking-widest text-konecta-navy">
-                          {isWorkshop ? 'Workshop' : 'Evento'}
+                        <span className="text-[9px] font-black uppercase tracking-widest text-konecta-navy">
+                          {isWorkshop ? t('events.type_workshop') : t('events.type_event')}
                         </span>
                       </div>
                     )}
                     
                     <div className="absolute top-3 left-3 flex items-center gap-2">
-                      <span className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                      <span className={`px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.15em] ${
                         isWorkshop ? 'bg-konecta-gold text-konecta-navy' : 'bg-konecta-navy text-white'
                       }`}>
-                        {isWorkshop ? 'Workshop' : 'Evento'}
+                        {isWorkshop ? t('events.type_workshop') : t('events.type_event')}
                       </span>
-                      <span className="bg-white/90 backdrop-blur-sm px-2.5 py-1 rounded-full text-[10px] font-bold text-gray-700 capitalize">
-                        {ev.format || 'presencial'}
+                      <span className="bg-white/90 backdrop-blur-sm px-2.5 py-1 text-[9px] font-extrabold text-gray-700 uppercase tracking-widest">
+                        {ev.format || t('events.format_presencial')}
                       </span>
                     </div>
 
                     {isCancelled && (
                       <div className="absolute inset-0 bg-black/60 backdrop-blur-xs flex items-center justify-center">
-                        <span className="bg-red-600 text-white text-xs font-bold px-4 py-1.5 rounded-full uppercase tracking-wider">
-                          Cancelado
+                        <span className="bg-red-600 text-white text-[10px] font-black px-4 py-1.5 uppercase tracking-[0.2em]">
+                          {t('events.cancelled')}
                         </span>
                       </div>
                     )}
@@ -432,33 +442,33 @@ export const Events: React.FC<EventsProps> = ({ user, onOpenAuth }) => {
 
                 <div className="px-6 pb-6 pt-2 border-t border-gray-100 flex items-center justify-between">
                   <div>
-                    <span className="text-xs font-bold text-konecta-navy block">
-                      {ev.participant_count || 0} / {ev.capacity || 100} vagas
+                    <span className="text-[11px] font-black text-konecta-navy block uppercase tracking-tighter">
+                      {ev.participant_count || 0} / {ev.capacity || 100} {t('events.vagas')}
                     </span>
-                    <span className="text-[10px] text-gray-400 block">
-                      Por {ev.profiles?.full_name || 'Organizador'}
+                    <span className="text-[10px] text-gray-400 font-extrabold uppercase tracking-widest block">
+                      {t('library.by')} {ev.profiles?.full_name || t('profile.personal_post')}
                     </span>
                   </div>
 
                   <div className="flex items-center gap-2">
                     <button
                       onClick={() => openEventDetail(ev)}
-                      className="px-3 py-2 text-xs font-bold text-konecta-navy bg-gray-50 hover:bg-gray-100 rounded-xl transition-colors"
+                      className="px-3 py-2 text-[10px] font-black uppercase tracking-widest text-konecta-navy bg-gray-50 hover:bg-gray-100 rounded-xl transition-colors"
                     >
-                      Detalhes
+                      {t('events.details')}
                     </button>
 
                     {!isCancelled && (
                       <button
                         onClick={() => handleResponse(ev.id, isGoing ? 'not_going' : 'going')}
                         disabled={actionLoading[ev.id]}
-                        className={`py-2 px-4 rounded-xl text-xs font-bold transition-all ${
+                        className={`py-2 px-4 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
                           isGoing 
                             ? 'bg-green-600 text-white' 
                             : 'btn-primary'
                         }`}
                       >
-                        {actionLoading[ev.id] ? '...' : isGoing ? 'Inscrito ✓' : 'Participar'}
+                        {actionLoading[ev.id] ? '...' : isGoing ? t('events.joined_status') : t('events.join_btn')}
                       </button>
                     )}
                   </div>
@@ -481,10 +491,10 @@ export const Events: React.FC<EventsProps> = ({ user, onOpenAuth }) => {
             >
               <div className="flex items-center justify-between border-b border-gray-100 pb-4">
                 <div className="flex items-center gap-2">
-                  <span className="px-3 py-1 bg-konecta-navy text-white text-[10px] font-black uppercase rounded-full">
-                    {selectedEvent.event_type === 'workshop' ? 'Workshop' : 'Evento'}
+                  <span className={`px-3 py-1 text-[10px] font-black uppercase ${selectedEvent.event_type === 'workshop' ? 'bg-konecta-gold text-konecta-navy' : 'bg-konecta-navy text-white'}`}>
+                    {selectedEvent.event_type === 'workshop' ? t('events.type_workshop') : t('events.type_event')}
                   </span>
-                  <span className="text-xs font-bold text-gray-500 capitalize">{selectedEvent.format}</span>
+                  <span className="text-[10px] font-extrabold text-gray-500 uppercase tracking-widest">{selectedEvent.format}</span>
                 </div>
                 <button onClick={() => setSelectedEvent(null)} className="text-gray-400 hover:text-konecta-navy">
                   <span className="material-symbols-outlined">close</span>
@@ -514,32 +524,32 @@ export const Events: React.FC<EventsProps> = ({ user, onOpenAuth }) => {
 
               {selectedEvent.agenda && (
                 <div className="bg-gray-50 p-4 rounded-2xl border border-gray-100 space-y-2">
-                  <h4 className="text-xs font-bold text-konecta-navy uppercase tracking-wider">Programação / Agenda</h4>
+                  <h4 className="text-[10px] font-extrabold text-konecta-navy uppercase tracking-[0.2em]">{t('events.form_agenda')}</h4>
                   <p className="text-xs text-gray-600 whitespace-pre-wrap">{selectedEvent.agenda}</p>
                 </div>
               )}
 
               {selectedEvent.requirements && (
                 <div className="bg-amber-50/60 p-4 rounded-2xl border border-amber-100 space-y-2">
-                  <h4 className="text-xs font-bold text-amber-900 uppercase tracking-wider">Requisitos de Participação</h4>
+                  <h4 className="text-[10px] font-extrabold text-amber-900 uppercase tracking-[0.2em]">{t('events.form_requirements')}</h4>
                   <p className="text-xs text-amber-800 whitespace-pre-wrap">{selectedEvent.requirements}</p>
                 </div>
               )}
 
               {selectedEvent.certificate_available && (
-                <div className="flex items-center gap-2 text-xs text-emerald-700 bg-emerald-50 px-4 py-3 rounded-2xl">
-                  <span className="material-symbols-outlined text-emerald-600">workspace_premium</span>
-                  <span className="font-bold">Certificado de participação disponível após a conclusão.</span>
+                <div className="flex items-center gap-2 text-[10px] text-emerald-700 bg-emerald-50 px-4 py-3 rounded-2xl uppercase font-black tracking-wider">
+                  <span className="material-symbols-outlined text-emerald-600 text-lg">workspace_premium</span>
+                  <span>{t('events.form_certificate')}</span>
                 </div>
               )}
 
               {/* Organizer / Attendee Controls */}
               <div className="pt-4 border-t border-gray-100 flex items-center justify-between">
                 <div>
-                  <span className="text-xs font-bold text-konecta-navy block">
-                    {selectedEvent.participant_count || 0} de {selectedEvent.capacity || 100} inscritos
+                  <span className="text-[11px] font-black text-konecta-navy block uppercase tracking-tighter">
+                    {selectedEvent.participant_count || 0} / {selectedEvent.capacity || 100} {t('events.vagas')}
                   </span>
-                  <span className="text-[10px] text-gray-400 block">Organizado por {selectedEvent.profiles?.full_name}</span>
+                  <span className="text-[10px] text-gray-400 font-extrabold uppercase tracking-widest block">{t('library.by')} {selectedEvent.profiles?.full_name}</span>
                 </div>
 
                 <div className="flex items-center gap-3">
@@ -576,11 +586,11 @@ export const Events: React.FC<EventsProps> = ({ user, onOpenAuth }) => {
 
               {/* Attendees List preview */}
               <div className="mt-4 pt-4 border-t border-gray-100">
-                <h4 className="text-xs font-bold text-konecta-navy uppercase tracking-wider mb-3">Participantes Inscritos</h4>
+                <h4 className="text-[10px] font-extrabold text-konecta-navy uppercase tracking-[0.2em] mb-3">{t('events.attendees_title')}</h4>
                 {loadingAttendees ? (
-                  <p className="text-xs text-gray-400">A carregar participantes...</p>
+                  <p className="text-xs text-gray-400 italic">{t('events.loading_attendees')}</p>
                 ) : attendeesList.length === 0 ? (
-                  <p className="text-xs text-gray-400">Ainda sem participantes inscritos.</p>
+                  <p className="text-xs text-gray-400 italic">{t('events.no_attendees')}</p>
                 ) : (
                   <div className="flex flex-wrap gap-2">
                     {attendeesList.map((att: any) => (
@@ -615,7 +625,7 @@ export const Events: React.FC<EventsProps> = ({ user, onOpenAuth }) => {
             >
               <div className="flex items-center justify-between border-b border-gray-100 pb-4">
                 <h3 className="text-xl font-bold text-konecta-navy">
-                  {editingEventId ? 'Editar Evento / Workshop' : 'Publicar Evento ou Workshop'}
+                  {editingEventId ? t('events.edit_modal_title') : t('events.create_modal_title')}
                 </h3>
                 <button onClick={() => setShowCreateModal(false)} className="text-gray-400 hover:text-konecta-navy">
                   <span className="material-symbols-outlined">close</span>
@@ -625,32 +635,32 @@ export const Events: React.FC<EventsProps> = ({ user, onOpenAuth }) => {
               <form onSubmit={handleSaveEvent} className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-xs font-bold text-konecta-navy uppercase tracking-wider mb-1">Tipo</label>
+                    <label className="block text-xs font-bold text-konecta-navy uppercase tracking-wider mb-1">{t('events.form_type')}</label>
                     <select
                       value={eventType}
                       onChange={(e) => setEventType(e.target.value as any)}
                       className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-xs font-medium"
                     >
-                      <option value="event">Evento</option>
-                      <option value="workshop">Workshop / Formação</option>
+                      <option value="event">{t('events.type_event')}</option>
+                      <option value="workshop">{t('events.type_workshop')}</option>
                     </select>
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-konecta-navy uppercase tracking-wider mb-1">Formato</label>
+                    <label className="block text-xs font-bold text-konecta-navy uppercase tracking-wider mb-1">{t('events.form_format')}</label>
                     <select
                       value={format}
                       onChange={(e) => setFormat(e.target.value as any)}
                       className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-xs font-medium"
                     >
-                      <option value="presencial">Presencial</option>
-                      <option value="online">Online</option>
-                      <option value="híbrido">Híbrido</option>
+                      <option value="presencial">{t('events.format_presencial')}</option>
+                      <option value="online">{t('events.format_online')}</option>
+                      <option value="híbrido">{t('events.format_hybrid')}</option>
                     </select>
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-konecta-navy uppercase tracking-wider mb-1">Título</label>
+                  <label className="block text-xs font-bold text-konecta-navy uppercase tracking-wider mb-1">{t('events.form_title')}</label>
                   <input
                     type="text"
                     required
@@ -662,20 +672,20 @@ export const Events: React.FC<EventsProps> = ({ user, onOpenAuth }) => {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-konecta-navy uppercase tracking-wider mb-1">Descrição</label>
+                  <label className="block text-xs font-bold text-konecta-navy uppercase tracking-wider mb-1">{t('create.detailed_desc')}</label>
                   <textarea
                     required
                     rows={4}
                     value={description}
                     onChange={(e) => setDescription(e.target.value)}
-                    placeholder="Descreve os objetivos, o que será abordado e o público-alvo..."
+                    placeholder={t('create.detailed_desc_placeholder')}
                     className="w-full bg-gray-50 border border-gray-200 rounded-xl p-4 text-xs resize-none"
                   />
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-xs font-bold text-konecta-navy uppercase tracking-wider mb-1">Início</label>
+                    <label className="block text-xs font-bold text-konecta-navy uppercase tracking-wider mb-1">{t('events.form_starts')}</label>
                     <input
                       type="datetime-local"
                       required
@@ -685,7 +695,7 @@ export const Events: React.FC<EventsProps> = ({ user, onOpenAuth }) => {
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-konecta-navy uppercase tracking-wider mb-1">Término</label>
+                    <label className="block text-xs font-bold text-konecta-navy uppercase tracking-wider mb-1">{t('events.form_ends')}</label>
                     <input
                       type="datetime-local"
                       value={endsAt}
@@ -697,7 +707,7 @@ export const Events: React.FC<EventsProps> = ({ user, onOpenAuth }) => {
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-xs font-bold text-konecta-navy uppercase tracking-wider mb-1">Local / Morada</label>
+                    <label className="block text-xs font-bold text-konecta-navy uppercase tracking-wider mb-1">{t('events.form_venue')}</label>
                     <input
                       type="text"
                       value={venue}
@@ -707,7 +717,7 @@ export const Events: React.FC<EventsProps> = ({ user, onOpenAuth }) => {
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-konecta-navy uppercase tracking-wider mb-1">Capacidade (Vagas)</label>
+                    <label className="block text-xs font-bold text-konecta-navy uppercase tracking-wider mb-1">{t('events.form_capacity')}</label>
                     <input
                       type="number"
                       value={capacity}
@@ -719,7 +729,7 @@ export const Events: React.FC<EventsProps> = ({ user, onOpenAuth }) => {
 
                 {format !== 'presencial' && (
                   <div>
-                    <label className="block text-xs font-bold text-konecta-navy uppercase tracking-wider mb-1">Link de Acesso Online</label>
+                    <label className="block text-xs font-bold text-konecta-navy uppercase tracking-wider mb-1">{t('events.form_online_url')}</label>
                     <input
                       type="url"
                       value={onlineUrl}
@@ -731,7 +741,7 @@ export const Events: React.FC<EventsProps> = ({ user, onOpenAuth }) => {
                 )}
 
                 <div>
-                  <label className="block text-xs font-bold text-konecta-navy uppercase tracking-wider mb-1">Categoria</label>
+                  <label className="block text-xs font-bold text-konecta-navy uppercase tracking-wider mb-1">{t('create.category')}</label>
                   <select
                     value={category}
                     onChange={(e) => setCategory(e.target.value)}
@@ -742,7 +752,7 @@ export const Events: React.FC<EventsProps> = ({ user, onOpenAuth }) => {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-konecta-navy uppercase tracking-wider mb-1">Programação / Agenda</label>
+                  <label className="block text-xs font-bold text-konecta-navy uppercase tracking-wider mb-1">{t('events.form_agenda')}</label>
                   <textarea
                     rows={2}
                     value={agenda}
@@ -753,7 +763,7 @@ export const Events: React.FC<EventsProps> = ({ user, onOpenAuth }) => {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-konecta-navy uppercase tracking-wider mb-1">Requisitos</label>
+                  <label className="block text-xs font-bold text-konecta-navy uppercase tracking-wider mb-1">{t('events.form_requirements')}</label>
                   <input
                     type="text"
                     value={requirements}
@@ -772,12 +782,12 @@ export const Events: React.FC<EventsProps> = ({ user, onOpenAuth }) => {
                     className="w-4 h-4 text-konecta-gold rounded"
                   />
                   <label htmlFor="cert" className="text-xs font-bold text-konecta-navy cursor-pointer">
-                    Emitir certificado digital de participação
+                    {t('events.form_certificate')}
                   </label>
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-konecta-navy uppercase tracking-wider mb-1">Imagem de Capa</label>
+                  <label className="block text-xs font-bold text-konecta-navy uppercase tracking-wider mb-1">{t('create.cover_image')}</label>
                   <div className="flex items-center gap-4">
                     <input
                       type="file"
@@ -785,7 +795,7 @@ export const Events: React.FC<EventsProps> = ({ user, onOpenAuth }) => {
                       onChange={handleImageUpload}
                       className="text-xs text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-konecta-navy file:text-white hover:file:bg-konecta-navy/90"
                     />
-                    {uploadingImage && <span className="text-xs text-konecta-gold font-bold">A carregar...</span>}
+                    {uploadingImage && <span className="text-xs text-konecta-gold font-bold">{t('common.loading')}</span>}
                   </div>
                   {coverPhotoUrl && (
                     <div className="mt-2 w-32 h-20 rounded-xl overflow-hidden border">
@@ -800,14 +810,14 @@ export const Events: React.FC<EventsProps> = ({ user, onOpenAuth }) => {
                     onClick={() => setShowCreateModal(false)}
                     className="px-5 py-2.5 text-xs font-bold text-gray-500 hover:text-konecta-navy"
                   >
-                    Cancelar
+                    {t('common.cancel')}
                   </button>
                   <button
                     type="submit"
                     disabled={saving || !title.trim() || !description.trim() || !startsAt}
                     className="btn-primary py-2.5 px-6 text-xs"
                   >
-                    {saving ? 'A guardar...' : editingEventId ? 'Atualizar Evento' : 'Publicar Evento'}
+                    {saving ? t('events.saving') : editingEventId ? t('events.update_btn') : t('events.publish_btn')}
                   </button>
                 </div>
               </form>
