@@ -553,6 +553,61 @@ export const d1Client: any = {
       return { data: wrapObject(formattedPost), error: null };
     },
 
+    async getById(id: string): Promise<any> {
+      const { data: p, error } = await supabase
+        .from('posts')
+        .select('*, post_media(*), post_comments(*), post_reactions(*), communities(*)')
+        .eq('id', id)
+        .maybeSingle();
+
+      if (error || !p) return { data: null, error };
+
+      let profile = null;
+      if (p.author_id) {
+        const { data: prof } = await supabase.from('profiles').select('*').eq('user_id', p.author_id).maybeSingle();
+        if (prof) profile = { ...prof, id: prof.user_id, full_name: prof.display_name };
+      }
+
+      const formatted = {
+        id: p.id,
+        author_id: p.author_id,
+        user_id: p.author_id,
+        content: p.body,
+        body: p.body,
+        community_id: p.community_id,
+        communities: p.communities,
+        visibility: p.visibility,
+        status: p.status,
+        image_url: p.post_media?.[0]?.media_url || null,
+        likes_count: p.post_reactions?.length || 0,
+        comments_count: p.post_comments?.length || 0,
+        created_at: p.created_at,
+        profiles: profile || { id: p.author_id, full_name: 'Membro Konecta' }
+      };
+
+      return { data: wrapObject(formatted), error: null };
+    },
+
+    async update(postId: string, data: { content?: string; body?: string }): Promise<any> {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return { success: false, error: 'Não autenticado' };
+
+      const newBody = (data.content !== undefined ? data.content : data.body || '').trim();
+      if (!newBody) return { success: false, error: 'O conteúdo não pode estar vazio' };
+
+      const { data: updated, error } = await supabase
+        .from('posts')
+        .update({
+          body: newBody,
+          updated_at: new Date().toISOString()
+        })
+        .match({ id: postId, author_id: user.id })
+        .select()
+        .single();
+
+      return { success: !error, data: updated ? wrapObject(updated) : null, error };
+    },
+
     async delete(postId: string): Promise<any> {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return { success: false, error: 'Não autenticado' };
@@ -570,16 +625,23 @@ export const d1Client: any = {
       return { success: !error, error };
     },
 
-    async toggleLike(postId: string, isLiked: boolean): Promise<any> {
+    async toggleLike(postId: string, isLiked?: boolean): Promise<any> {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return { success: false, error: 'Não autenticado' };
 
-      if (isLiked) {
+      const { data: existing } = await supabase
+        .from('post_reactions')
+        .select('id')
+        .eq('post_id', postId)
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+      if (existing || isLiked === true) {
         const { error } = await supabase.from('post_reactions').delete().match({
           post_id: postId,
           user_id: user.id
         });
-        return { success: !error, error };
+        return { success: !error, liked: false, error };
       } else {
         const { error } = await supabase.from('post_reactions').insert({
           post_id: postId,
@@ -587,7 +649,7 @@ export const d1Client: any = {
           reaction: 'like',
           created_at: new Date().toISOString()
         });
-        return { success: !error, error };
+        return { success: !error, liked: true, error };
       }
     },
 
@@ -1257,6 +1319,31 @@ export const d1Client: any = {
         user_id: targetUserId
       });
       return { success: !error, error };
+    },
+
+    async update(ideaId: string, data: { title?: string; description?: string; category?: string }): Promise<any> {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return { success: false, error: 'Não autenticado' };
+
+      const payload: any = { updated_at: new Date().toISOString() };
+      if (data.title !== undefined) {
+        payload.title = data.title.trim();
+        payload.summary = (data.description || '').trim().substring(0, 300);
+      }
+      if (data.description !== undefined) {
+        payload.description = data.description.trim();
+        if (!payload.summary) payload.summary = data.description.trim().substring(0, 300);
+      }
+      if (data.category !== undefined) payload.category = data.category;
+
+      const { data: updated, error } = await supabase
+        .from('ideas')
+        .update(payload)
+        .match({ id: ideaId, author_id: user.id })
+        .select()
+        .single();
+
+      return { success: !error, data: updated ? wrapObject(updated) : null, error };
     },
 
     async delete(ideaId: string): Promise<any> {
@@ -1978,16 +2065,24 @@ export const d1Client: any = {
       return { data: wrapObject(formatted), error: null };
     },
 
-    async toggleReaction(reelId: string, isLiked: boolean): Promise<any> {
+    async toggleReaction(reelId: string, isLiked?: boolean): Promise<any> {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return { success: false, error: 'Não autenticado' };
 
-      if (isLiked) {
+      // Query if reaction currently exists to ensure toggle is always correct
+      const { data: existing } = await supabase
+        .from('reel_reactions')
+        .select('id')
+        .eq('reel_id', reelId)
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+      if (existing || isLiked === true) {
         const { error } = await supabase.from('reel_reactions').delete().match({
           reel_id: reelId,
           user_id: user.id
         });
-        return { success: !error, error };
+        return { success: !error, liked: false, error };
       } else {
         const { error } = await supabase.from('reel_reactions').insert({
           reel_id: reelId,
@@ -1995,7 +2090,7 @@ export const d1Client: any = {
           reaction: 'like',
           created_at: new Date().toISOString()
         });
-        return { success: !error, error };
+        return { success: !error, liked: true, error };
       }
     },
 

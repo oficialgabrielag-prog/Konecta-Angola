@@ -18,6 +18,8 @@ interface ExploreProps {
   user: any;
   onOpenAuth: () => void;
   onSelectPost: (idea: Idea) => void;
+  onOpenFullscreenPost?: (post: any) => void;
+  onEditPost?: (post: any) => void;
   onSelectUser?: (userId: string) => void;
   onSelectCommunity?: (id: string, slug?: string) => void;
   onSelectReel?: (reelId: string) => void;
@@ -30,6 +32,8 @@ export const Explore: React.FC<ExploreProps> = ({
   projects: initialProjects,
   onVoteIdea,
   onSelectPost,
+  onOpenFullscreenPost,
+  onEditPost,
   onSelectUser,
   onSelectCommunity,
   onSelectReel,
@@ -413,9 +417,10 @@ export const Explore: React.FC<ExploreProps> = ({
                 {filteredPosts.slice(0, activeTab === 'for_you' ? 3 : Math.floor(visibleCount / 2)).map((post) => (
                   <div
                     key={`post-${post.id}`}
-                    className="p-5 bg-white rounded-2xl border border-gray-100 shadow-xs hover:border-gray-200 transition-all space-y-2.5"
+                    className="p-5 bg-white rounded-2xl border border-gray-100 shadow-xs hover:border-gray-200 transition-all space-y-2.5 flex flex-col justify-between"
                   >
-                    {post.communities && (
+                    <div className="space-y-2.5">
+                      {post.communities && (
                         <button
                           onClick={() => onSelectCommunity?.(post.communities!.id, post.communities!.slug)}
                           className="inline-flex items-center gap-1.5 text-[11px] font-bold text-konecta-gold hover:text-konecta-navy transition-colors"
@@ -423,46 +428,70 @@ export const Explore: React.FC<ExploreProps> = ({
                           <span className="material-symbols-outlined text-xs">groups</span>
                           <span>{t('home.in')} {post.communities.name}</span>
                         </button>
-                    )}
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2.5">
-                        <div className="w-8 h-8 rounded-full bg-gray-100 overflow-hidden border border-gray-200 flex items-center justify-center text-xs font-bold text-konecta-navy shrink-0">
-                          {post.profiles?.avatar_url ? (
-                            <img 
-                              src={cldAvatar(post.profiles.avatar_url)} 
-                              alt="" 
-                              className="w-full h-full object-cover" 
-                              loading="lazy"
-                              decoding="async"
-                            />
-                          ) : (
-                            (post.profiles?.full_name || 'U').charAt(0)
-                          )}
+                      )}
+                      <div className="flex items-center justify-between">
+                        <div 
+                          onClick={() => (post.user_id || (post as any).author_id) && onSelectUser?.(post.user_id || (post as any).author_id)}
+                          className="flex items-center gap-2.5 cursor-pointer group/author"
+                        >
+                          <div className="w-8 h-8 rounded-full bg-gray-100 overflow-hidden border border-gray-200 flex items-center justify-center text-xs font-bold text-konecta-navy shrink-0 group-hover/author:border-konecta-gold transition-colors">
+                            {post.profiles?.avatar_url ? (
+                              <img 
+                                src={cldAvatar(post.profiles.avatar_url)} 
+                                alt="" 
+                                className="w-full h-full object-cover" 
+                                loading="lazy"
+                                decoding="async"
+                              />
+                            ) : (
+                              (post.profiles?.full_name || 'U').charAt(0)
+                            )}
+                          </div>
+                          <div className="truncate">
+                            <p className="font-bold text-xs text-konecta-navy truncate group-hover/author:text-konecta-gold transition-colors">{post.profiles?.full_name || 'Membro'}</p>
+                            <p className="text-[10px] text-gray-400">{new Date(post.created_at).toLocaleDateString('pt-AO')}</p>
+                          </div>
                         </div>
-                        <div className="truncate">
-                          <p className="font-bold text-xs text-konecta-navy truncate">{post.profiles?.full_name || 'Membro'}</p>
-                          <p className="text-[10px] text-gray-400">{new Date(post.created_at).toLocaleDateString('pt-AO')}</p>
-                        </div>
+                        <ContentMenu
+                          targetType="post"
+                          targetId={post.id}
+                          isOwner={user?.id === (post.user_id || (post as any).author_id)}
+                          onDelete={() => setPostsData((prev: Post[]) => prev.filter(p => p.id !== post.id))}
+                          onReport={() => {}}
+                          onShare={() => openShareSheet({ targetId: post.id, targetType: 'post', title: post.body || post.content || 'Publicação', authorName: post.profiles?.full_name || 'Membro Konecta', thumbnail: post.image_url })}
+                        />
                       </div>
-                      <ContentMenu
-                        targetType="post"
-                        targetId={post.id}
-                        isOwner={user?.id === post.user_id}
-                        onDelete={() => setPostsData((prev: Post[]) => prev.filter(p => p.id !== post.id))}
-                        onReport={() => {}}
-                        onShare={() => openShareSheet({ targetId: post.id, targetType: 'post', title: post.body || post.content || 'Publicação', authorName: post.profiles?.full_name || 'Membro Konecta', thumbnail: post.image_url })}
-                      />
+                      <p 
+                        onClick={() => onOpenFullscreenPost ? onOpenFullscreenPost(post) : onSelectPost(post as any)}
+                        className="text-xs text-gray-700 leading-relaxed whitespace-pre-wrap line-clamp-3 cursor-pointer hover:text-konecta-navy transition-colors"
+                      >
+                        {post.body || post.content}
+                      </p>
+                      {post.image_url && (
+                        <div
+                          onClick={() => onOpenFullscreenPost ? onOpenFullscreenPost(post) : onSelectPost(post as any)}
+                          className="cursor-pointer overflow-hidden rounded-xl mt-2 relative group/img"
+                        >
+                          <img 
+                            src={cldImage(post.image_url, { w: 800 })} 
+                            alt="" 
+                            className="w-full max-h-64 object-cover rounded-xl group-hover/img:scale-102 transition-transform duration-300" 
+                            loading="lazy"
+                            decoding="async"
+                          />
+                        </div>
+                      )}
                     </div>
-                    <p className="text-xs text-gray-700 leading-relaxed whitespace-pre-wrap line-clamp-3">{post.body || post.content}</p>
-                    {post.image_url && (
-                      <img 
-                        src={cldImage(post.image_url, { w: 800 })} 
-                        alt="" 
-                        className="w-full max-h-64 object-cover rounded-xl mt-2" 
-                        loading="lazy"
-                        decoding="async"
-                      />
-                    )}
+
+                    <div className="flex items-center justify-between pt-2 border-t border-gray-100 text-xs text-gray-500">
+                      <button
+                        onClick={() => onOpenFullscreenPost ? onOpenFullscreenPost(post) : onSelectPost(post as any)}
+                        className="flex items-center gap-1.5 font-bold hover:text-konecta-navy transition-colors text-xs"
+                      >
+                        <span className="material-symbols-outlined text-sm">fullscreen</span>
+                        <span>Ver em tela cheia</span>
+                      </button>
+                    </div>
                   </div>
                 ))}
 

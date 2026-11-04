@@ -5,9 +5,11 @@ import { d1Client } from '../lib/d1Client';
 import { shareContent } from '../lib/share';
 import { CommentCard } from '../components/CommentCard';
 import { useUI } from '../context/UIContext';
+import { EditPostModal } from '../components/EditPostModal';
+import { Edit2, Trash2 } from 'lucide-react';
 
 interface PostDetailProps {
-  idea: Idea;
+  idea: Idea | any;
   user: any;
   onBack: () => void;
   onVote: (id: string) => void;
@@ -24,6 +26,31 @@ export const PostDetail: React.FC<PostDetailProps> = ({
   onImageClick
 }) => {
   const { openShareSheet, showToast } = useUI();
+  const [currentPost, setCurrentPost] = useState<any>(idea);
+  const [showEditModal, setShowEditModal] = useState(false);
+
+  useEffect(() => {
+    setCurrentPost(idea);
+  }, [idea]);
+
+  const isOwner = user?.id === currentPost.user_id || user?.id === currentPost.author_id;
+
+  const handleDelete = async () => {
+    if (!window.confirm('Tens a certeza que desejas eliminar este item?')) return;
+    try {
+      if (currentPost.title !== undefined) {
+        await d1Client.ideas.delete(currentPost.id);
+      } else {
+        await d1Client.posts.delete(currentPost.id);
+      }
+      showToast('Item eliminado com sucesso!', 'success');
+      onBack();
+    } catch (err: any) {
+      console.error('Erro ao eliminar item:', err);
+      showToast(err?.message || 'Erro ao eliminar.', 'error');
+    }
+  };
+
   const [comments, setComments] = useState<CommentItem[]>(() => {
     try {
       const cached = localStorage.getItem(`konecta_comments_${idea.id}`);
@@ -288,7 +315,7 @@ export const PostDetail: React.FC<PostDetailProps> = ({
             </div>
 
             <h1 className="text-3xl lg:text-5xl font-extrabold text-konecta-navy mb-8 leading-tight">
-              {idea.title}
+              {currentPost.title || currentPost.content?.substring(0, 60) || 'Publicação'}
             </h1>
 
             {/* Author Bar */}
@@ -309,7 +336,26 @@ export const PostDetail: React.FC<PostDetailProps> = ({
                 </div>
               </div>
 
-              {user?.id !== idea.user_id && (
+              {isOwner ? (
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setShowEditModal(true)}
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold bg-gray-100 hover:bg-konecta-navy hover:text-white text-gray-700 transition-colors"
+                    title="Editar publicação"
+                  >
+                    <Edit2 size={15} />
+                    <span>Editar</span>
+                  </button>
+                  <button
+                    onClick={handleDelete}
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold bg-red-50 hover:bg-red-500 hover:text-white text-red-600 transition-colors"
+                    title="Eliminar publicação"
+                  >
+                    <Trash2 size={15} />
+                    <span>Eliminar</span>
+                  </button>
+                </div>
+              ) : (
                 <button 
                   onClick={handleToggleFollow}
                   disabled={followLoading}
@@ -320,9 +366,9 @@ export const PostDetail: React.FC<PostDetailProps> = ({
               )}
             </div>
 
-            {/* Idea Content */}
+            {/* Idea / Post Content */}
             <div className="text-gray-700 leading-relaxed text-base sm:text-lg whitespace-pre-wrap mb-10">
-              {idea.description}
+              {currentPost.description || currentPost.content || currentPost.body || ''}
             </div>
 
             {/* Reaction Bar */}
@@ -549,6 +595,16 @@ export const PostDetail: React.FC<PostDetailProps> = ({
           </div>
         )}
       </AnimatePresence>
+
+      {/* Edit Modal */}
+      {showEditModal && (
+        <EditPostModal
+          post={currentPost}
+          isOpen={showEditModal}
+          onClose={() => setShowEditModal(false)}
+          onSaved={(updated) => setCurrentPost(updated)}
+        />
+      )}
 
     </div>
   );

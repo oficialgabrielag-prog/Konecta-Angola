@@ -12,7 +12,8 @@ interface LikeButtonProps {
 export const LikeButton: React.FC<LikeButtonProps> = ({ isLiked, likesCount, onToggle, disabled }) => {
   const [showHearts, setShowHearts] = useState(false);
 
-  const handleClick = () => {
+  const handleClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
     if (disabled) return;
     onToggle();
     if (!isLiked) {

@@ -13,6 +13,7 @@ interface CommunityDetailProps {
   onBack: () => void;
   onSelectUser: (userId: string) => void;
   onImageClick: (url: string) => void;
+  onOpenFullscreenPost?: (post: any) => void;
 }
 
 export const CommunityDetail: React.FC<CommunityDetailProps> = ({
@@ -22,6 +23,7 @@ export const CommunityDetail: React.FC<CommunityDetailProps> = ({
   onBack,
   onSelectUser,
   onImageClick,
+  onOpenFullscreenPost,
 }) => {
   const { showToast } = useToast();
   const [community, setCommunity] = useState<Community | null>(null);
@@ -42,6 +44,9 @@ export const CommunityDetail: React.FC<CommunityDetailProps> = ({
   const [postImagePreview, setPostImagePreview] = useState<string | null>(null);
   const [publishingPost, setPublishingPost] = useState(false);
   const postFileRef = useRef<HTMLInputElement>(null);
+
+  // User likes tracking
+  const [userLikes, setUserLikes] = useState<Record<string, boolean>>({});
 
   // Comments for Posts
   const [expandedComments, setExpandedComments] = useState<Record<string, boolean>>({});
@@ -119,6 +124,18 @@ export const CommunityDetail: React.FC<CommunityDetailProps> = ({
       const res = await d1Client.posts.list(50, undefined, communityId);
       const items = res.data?.data || res.data || [];
       setPosts(items);
+
+      if (user) {
+        const likesMap: Record<string, boolean> = {};
+        items.forEach((p: any) => {
+          if (p.post_reactions && Array.isArray(p.post_reactions)) {
+            if (p.post_reactions.some((r: any) => r.user_id === user.id)) {
+              likesMap[p.id] = true;
+            }
+          }
+        });
+        setUserLikes(prev => ({ ...prev, ...likesMap }));
+      }
     } catch (e) {}
   };
 
@@ -224,14 +241,23 @@ export const CommunityDetail: React.FC<CommunityDetailProps> = ({
       onOpenAuth();
       return;
     }
+    const currentlyLiked = !!userLikes[postId];
+    const newLiked = !currentlyLiked;
+
+    // Optimistic UI update
+    setUserLikes(prev => ({ ...prev, [postId]: newLiked }));
     setPosts(prev => prev.map(p => {
       if (p.id === postId) {
         const count = p.likes_count || 0;
-        return { ...p, likes_count: count + 1 };
+        return { ...p, likes_count: newLiked ? count + 1 : Math.max(0, count - 1) };
       }
       return p;
     }));
-    await d1Client.posts.toggleLike(postId, false);
+
+    const result = await d1Client.posts.toggleLike(postId, currentlyLiked);
+    if (result && typeof result.liked === 'boolean') {
+      setUserLikes(prev => ({ ...prev, [postId]: result.liked }));
+    }
   };
 
   const toggleComments = async (postId: string) => {
@@ -574,46 +600,24 @@ export const CommunityDetail: React.FC<CommunityDetailProps> = ({
                 ) : (
                   posts.slice(0, 5).map(post => (
                       <div key={post.id} className="card-konecta p-6 shadow-sm border border-gray-100 space-y-3 overflow-hidden">
-                        {/* Community Context Banner */}
-                        {post.communities && (
-                          <div 
-                            className="mb-4 -mx-6 -mt-6 h-20 relative overflow-hidden"
-                          >
-                            {post.communities.cover_url ? (
-                              <img src={post.communities.cover_url} className="w-full h-full object-cover" alt="" />
+                        <div 
+                          onClick={() => (post.user_id || (post as any).author_id) && onSelectUser?.(post.user_id || (post as any).author_id)}
+                          className="flex items-center gap-3 cursor-pointer group/author"
+                        >
+                          <div className="w-9 h-9 rounded-full bg-gray-100 overflow-hidden shrink-0 border border-gray-100">
+                            {post.profiles?.avatar_url ? (
+                              <img src={post.profiles.avatar_url} alt="" className="w-full h-full object-cover" />
                             ) : (
-                              <div className="w-full h-full bg-gradient-to-r from-konecta-navy to-slate-800" />
-                            )}
-                            <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
-                            <div className="absolute bottom-2 left-4 flex items-center gap-2">
-                              <div className="w-8 h-8 rounded-lg bg-white p-0.5 border border-konecta-gold/50 shadow-sm shrink-0">
-                                {post.communities.avatar_url ? (
-                                  <img src={post.communities.avatar_url} className="w-full h-full object-cover rounded-md" alt="" />
-                                ) : (
-                                  <div className="w-full h-full bg-konecta-navy rounded-md flex items-center justify-center text-[10px] text-konecta-gold font-black">
-                                    {post.communities.name.charAt(0)}
-                                  </div>
-                                )}
+                              <div className="w-full h-full flex items-center justify-center text-xs font-bold text-gray-400">
+                                {post.profiles?.full_name?.charAt(0) || 'U'}
                               </div>
-                              <span className="text-[10px] font-black text-white uppercase tracking-tight">{post.communities.name}</span>
-                            </div>
+                            )}
                           </div>
-                        )}
-                        <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-full bg-gray-100 overflow-hidden">
-                          {post.profiles?.avatar_url ? (
-                            <img src={post.profiles.avatar_url} alt="" className="w-full h-full object-cover" />
-                          ) : (
-                            <div className="w-full h-full flex items-center justify-center text-xs font-bold text-gray-400">
-                              {post.profiles?.full_name?.charAt(0) || 'U'}
-                            </div>
-                          )}
+                          <div>
+                            <h4 className="text-xs font-bold text-konecta-navy group-hover/author:text-konecta-gold transition-colors">{post.profiles?.full_name || 'Membro Konecta'}</h4>
+                            <span className="text-[10px] text-gray-400">{new Date(post.created_at).toLocaleDateString('pt-AO')}</span>
+                          </div>
                         </div>
-                        <div>
-                          <h4 className="text-xs font-bold text-konecta-navy">{post.profiles?.full_name || 'Membro Konecta'}</h4>
-                          <span className="text-[10px] text-gray-400">{new Date(post.created_at).toLocaleDateString('pt-AO')}</span>
-                        </div>
-                      </div>
                       <p className="text-xs text-gray-700 leading-relaxed whitespace-pre-wrap">{post.content}</p>
                       {post.image_url && (
                         <img
@@ -626,9 +630,11 @@ export const CommunityDetail: React.FC<CommunityDetailProps> = ({
                       <div className="flex items-center gap-4 pt-2 border-t border-gray-100 text-xs">
                         <button
                           onClick={() => handleLikePost(post.id)}
-                          className="flex items-center gap-1.5 text-gray-500 hover:text-red-500 font-bold"
+                          className={`flex items-center gap-1.5 font-bold transition-colors ${
+                            userLikes[post.id] ? 'text-red-500' : 'text-gray-500 hover:text-red-500'
+                          }`}
                         >
-                          <span className="material-symbols-outlined text-[16px]">favorite</span>
+                          <span className={`material-symbols-outlined text-[16px] ${userLikes[post.id] ? 'fill-1 text-red-500' : ''}`}>favorite</span>
                           {post.likes_count || 0}
                         </button>
                         <button
@@ -637,6 +643,14 @@ export const CommunityDetail: React.FC<CommunityDetailProps> = ({
                         >
                           <span className="material-symbols-outlined text-[16px]">chat_bubble_outline</span>
                           {post.comments_count || 0}
+                        </button>
+                        <button
+                          onClick={() => onOpenFullscreenPost ? onOpenFullscreenPost(post) : (post.image_url && onImageClick(post.image_url))}
+                          className="flex items-center gap-1.5 text-gray-500 hover:text-konecta-navy font-bold ml-auto"
+                          title="Visualizar em tela cheia"
+                        >
+                          <span className="material-symbols-outlined text-[16px]">fullscreen</span>
+                          <span>Tela cheia</span>
                         </button>
                       </div>
 
@@ -759,31 +773,11 @@ export const CommunityDetail: React.FC<CommunityDetailProps> = ({
             <div className="space-y-4">
               {posts.map(post => (
                 <div key={post.id} className="card-konecta p-6 shadow-sm border border-gray-100 space-y-3 overflow-hidden">
-                  {/* Community Context Banner */}
-                  {post.communities && (
-                    <div className="mb-4 -mx-6 -mt-6 h-20 relative overflow-hidden">
-                      {post.communities.cover_url ? (
-                        <img src={post.communities.cover_url} className="w-full h-full object-cover" alt="" />
-                      ) : (
-                        <div className="w-full h-full bg-gradient-to-r from-konecta-navy to-slate-800" />
-                      )}
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
-                      <div className="absolute bottom-2 left-4 flex items-center gap-2">
-                        <div className="w-8 h-8 rounded-lg bg-white p-0.5 border border-konecta-gold/50 shadow-sm shrink-0">
-                          {post.communities.avatar_url ? (
-                            <img src={post.communities.avatar_url} className="w-full h-full object-cover rounded-md" alt="" />
-                          ) : (
-                            <div className="w-full h-full bg-konecta-navy rounded-md flex items-center justify-center text-[10px] text-konecta-gold font-black">
-                              {post.communities.name.charAt(0)}
-                            </div>
-                          )}
-                        </div>
-                        <span className="text-[10px] font-black text-white uppercase tracking-tight">{post.communities.name}</span>
-                      </div>
-                    </div>
-                  )}
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-gray-100 overflow-hidden">
+                  <div 
+                    onClick={() => (post.user_id || (post as any).author_id) && onSelectUser?.(post.user_id || (post as any).author_id)}
+                    className="flex items-center gap-3 cursor-pointer group/author"
+                  >
+                    <div className="w-10 h-10 rounded-full bg-gray-100 overflow-hidden shrink-0 border border-gray-100">
                       {post.profiles?.avatar_url ? (
                         <img src={post.profiles.avatar_url} alt="" className="w-full h-full object-cover" />
                       ) : (
@@ -793,7 +787,7 @@ export const CommunityDetail: React.FC<CommunityDetailProps> = ({
                       )}
                     </div>
                     <div>
-                      <h4 className="text-xs font-bold text-konecta-navy">{post.profiles?.full_name || 'Membro'}</h4>
+                      <h4 className="text-xs font-bold text-konecta-navy group-hover/author:text-konecta-gold transition-colors">{post.profiles?.full_name || 'Membro'}</h4>
                       <span className="text-[10px] text-gray-400">{new Date(post.created_at).toLocaleDateString('pt-AO')}</span>
                     </div>
                   </div>
@@ -807,8 +801,13 @@ export const CommunityDetail: React.FC<CommunityDetailProps> = ({
                     />
                   )}
                   <div className="flex items-center gap-4 pt-2 border-t border-gray-100 text-xs">
-                    <button onClick={() => handleLikePost(post.id)} className="flex items-center gap-1.5 text-gray-500 hover:text-red-500 font-bold">
-                      <span className="material-symbols-outlined text-[16px]">favorite</span>
+                    <button 
+                      onClick={() => handleLikePost(post.id)} 
+                      className={`flex items-center gap-1.5 font-bold transition-colors ${
+                        userLikes[post.id] ? 'text-red-500' : 'text-gray-500 hover:text-red-500'
+                      }`}
+                    >
+                      <span className={`material-symbols-outlined text-[16px] ${userLikes[post.id] ? 'fill-1 text-red-500' : ''}`}>favorite</span>
                       {post.likes_count || 0}
                     </button>
                     <button onClick={() => toggleComments(post.id)} className="flex items-center gap-1.5 text-gray-500 hover:text-konecta-navy font-bold">

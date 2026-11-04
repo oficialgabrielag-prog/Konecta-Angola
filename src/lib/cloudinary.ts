@@ -308,8 +308,9 @@ export interface ImageOptions {
 }
 
 /** Imagem otimizada: formato e qualidade automáticos, sem ampliar. */
-export function cldImage(url: string | null | undefined, opts: ImageOptions): string {
-  if (!isCloudinaryUrl(url) || hasTransformation(url)) return url || '';
+export function cldImage(url: string | null | undefined, opts: ImageOptions): string | undefined {
+  if (!url) return undefined;
+  if (!isCloudinaryUrl(url) || hasTransformation(url)) return url;
   const width = Math.min(Math.round(opts.w * 2), 2560);
   let t: string;
   if (opts.crop === 'fill' && opts.h) {
@@ -326,15 +327,16 @@ export function cldSrcSet(
   url: string | null | undefined,
   widths: number[] = [320, 480, 640, 828, 1080, 1440]
 ): string {
-  if (!isCloudinaryUrl(url) || hasTransformation(url)) return '';
+  if (!url || !isCloudinaryUrl(url) || hasTransformation(url)) return '';
   return widths
     .map((w) => `${inject(url, `c_limit,w_${w}/f_auto/q_auto`)} ${w}w`)
     .join(', ');
 }
 
 /** Foto de perfil redonda (o recorte acompanha o rosto). */
-export function cldAvatar(url: string | null | undefined, size = 48): string {
-  if (!isCloudinaryUrl(url) || hasTransformation(url)) return url || '';
+export function cldAvatar(url: string | null | undefined, size = 48): string | undefined {
+  if (!url) return undefined;
+  if (!isCloudinaryUrl(url) || hasTransformation(url)) return url;
   const px = Math.min(size * 2, 512);
   return inject(url, `c_fill,g_face,h_${px},w_${px}/f_auto/q_auto`);
 }
@@ -344,8 +346,9 @@ export function cldCover(
   url: string | null | undefined,
   w: number,
   ratio: '16:9' | '4:3' | '1:1' | '3:4' = '16:9'
-): string {
-  if (!isCloudinaryUrl(url) || hasTransformation(url)) return url || '';
+): string | undefined {
+  if (!url) return undefined;
+  if (!isCloudinaryUrl(url) || hasTransformation(url)) return url;
   return inject(url, `ar_${ratio},c_fill,g_auto,w_${Math.min(w * 2, 2560)}/f_auto/q_auto`);
 }
 
@@ -408,10 +411,10 @@ export function cldReelDownload(
 }
 
 /* Compatibilidade com o código antigo */
-export function getOptimizedImageUrl(url?: string | null, width = 800): string {
+export function getOptimizedImageUrl(url?: string | null, width = 800): string | undefined {
   return cldImage(url, { w: Math.max(1, Math.round(width / 2)) });
 }
 
-export function getThumbnailUrl(url?: string | null): string {
+export function getThumbnailUrl(url?: string | null): string | undefined {
   return cldImage(url, { w: 100 });
 }

@@ -44,6 +44,8 @@ import { supabase } from './lib/supabaseClient';
 import { Idea, Challenge, Project, NotificationItem, ProfileUpdate, Profile as UserProfile, Community } from './types';
 import { OfflineIndicator } from './components/PWAComponents';
 import { ImageViewerModal } from './components/ImageViewerModal';
+import { FullscreenPostModal } from './components/FullscreenPostModal';
+import { EditPostModal } from './components/EditPostModal';
 import { motion, AnimatePresence } from 'motion/react';
 import { CANONICAL_IDEAS, CANONICAL_CHALLENGES, CANONICAL_PROJECTS } from './lib/canonicalData';
 import { useUI } from './context/UIContext';
@@ -58,6 +60,8 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [fullscreenImage, setFullscreenImage] = useState<string | null>(null);
+  const [fullscreenPost, setFullscreenPost] = useState<any | null>(null);
+  const [editingPost, setEditingPost] = useState<any | null>(null);
   const [activeCommunitySlug, setActiveCommunitySlug] = useState<string | null>(null);
   const [activeCommunityId, setActiveCommunityId] = useState<string | null>(null);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
@@ -192,8 +196,11 @@ export default function App() {
         const id = path.replace('/p/', '').split('/')[0];
         if (id) {
           try {
-            const res = await d1Client.ideas.getById(id);
-            if (res.data) {
+            let res = await d1Client.posts.getById(id);
+            if (!res?.data) {
+              res = await d1Client.ideas.getById(id);
+            }
+            if (res?.data) {
               setSelectedPost(res.data);
               setCurrentTab('post-detail');
             }
@@ -546,6 +553,8 @@ export default function App() {
                 onVoteIdea={handleVoteIdea}
                 onRequireAuth={() => navigateTab('login')}
                 onImageClick={setFullscreenImage}
+                onOpenFullscreenPost={setFullscreenPost}
+                onEditPost={setEditingPost}
               />
             )}
 
@@ -559,6 +568,8 @@ export default function App() {
                 user={user}
                 onOpenAuth={() => navigateTab('login')}
                 onSelectPost={openPostDetail}
+                onOpenFullscreenPost={setFullscreenPost}
+                onEditPost={setEditingPost}
                 onSelectUser={openPublicProfile}
                 onSelectCommunity={openCommunityDetail}
                 onSelectReel={openReel}
@@ -652,6 +663,7 @@ export default function App() {
                 onBack={() => navigateTab('communities')}
                 onSelectUser={openPublicProfile}
                 onImageClick={setFullscreenImage}
+                onOpenFullscreenPost={setFullscreenPost}
               />
             )}
 
@@ -758,6 +770,8 @@ export default function App() {
                   await d1Client.ideas.delete(id);
                   fetchInitialData();
                 }}
+                onImageClick={setFullscreenImage}
+                onOpenFullscreenPost={setFullscreenPost}
               />
             )}
 
@@ -947,6 +961,34 @@ export default function App() {
         imageUrl={fullscreenImage}
         onClose={() => setFullscreenImage(null)}
       />
+
+      <FullscreenPostModal
+        post={fullscreenPost}
+        currentUser={user}
+        isOpen={!!fullscreenPost}
+        onClose={() => setFullscreenPost(null)}
+        onEdit={(p) => {
+          setFullscreenPost(null);
+          setEditingPost(p);
+        }}
+        onDelete={async (id) => {
+          setFullscreenPost(null);
+          fetchInitialData();
+        }}
+        onRequireAuth={() => navigateTab('login')}
+        onSelectUser={openPublicProfile}
+      />
+
+      {editingPost && (
+        <EditPostModal
+          post={editingPost}
+          isOpen={!!editingPost}
+          onClose={() => setEditingPost(null)}
+          onSaved={() => {
+            fetchInitialData();
+          }}
+        />
+      )}
 
     </div>
   );

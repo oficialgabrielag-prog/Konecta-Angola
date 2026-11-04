@@ -222,21 +222,25 @@ export const Reels: React.FC<ReelsProps> = ({ user, onOpenAuth, onSelectUser, in
     }
   };
 
-  const handleToggleLike = async (reel: Reel, e: React.MouseEvent) => {
-    e.stopPropagation();
+  const handleToggleLike = async (reel: Reel, e?: React.MouseEvent) => {
+    e?.stopPropagation?.();
     if (!user) {
       onOpenAuth();
       return;
     }
 
-    const currentLiked = reel.is_liked;
+    const currentLiked = !!reel.is_liked;
     const newLikesCount = currentLiked ? Math.max(0, (reel.likes_count || 1) - 1) : (reel.likes_count || 0) + 1;
 
     // Optimistic update
     setReels(prev => prev.map(r => r.id === reel.id ? { ...r, is_liked: !currentLiked, likes_count: newLikesCount } : r));
 
     try {
-      await d1Client.reels.toggleReaction(reel.id, currentLiked);
+      const res = await d1Client.reels.toggleReaction(reel.id, currentLiked);
+      if (res && res.liked !== undefined && res.liked === currentLiked) {
+        // In case server returned different status, sync state
+        setReels(prev => prev.map(r => r.id === reel.id ? { ...r, is_liked: res.liked } : r));
+      }
     } catch (err) {
       console.warn('Erro ao curtir reel:', err);
     }
@@ -606,7 +610,7 @@ export const Reels: React.FC<ReelsProps> = ({ user, onOpenAuth, onSelectUser, in
                   <LikeButton
                     isLiked={!!reel.is_liked}
                     likesCount={reel.likes_count || 0}
-                    onToggle={() => handleToggleLike(reel, {} as any)}
+                    onToggle={() => handleToggleLike(reel)}
                   />
 
                   <button 

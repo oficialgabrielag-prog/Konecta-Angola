@@ -6,6 +6,7 @@ import { d1Client } from '../lib/d1Client';
 import { useT } from '../i18n/LanguageContext';
 import { UserBadge } from '../components/UserBadges';
 import { useUI } from '../context/UIContext';
+import { EditPostModal } from '../components/EditPostModal';
 
 interface ProfileProps {
   user: any;
@@ -15,6 +16,8 @@ interface ProfileProps {
   onUpdateProfile: (updated: any) => void;
   onIdeaCreated: () => void;
   onDeleteIdea: (id: string) => void;
+  onImageClick?: (url: string) => void;
+  onOpenFullscreenPost?: (post: any) => void;
 }
 
 export const Profile: React.FC<ProfileProps> = ({
@@ -25,6 +28,8 @@ export const Profile: React.FC<ProfileProps> = ({
   onUpdateProfile,
   onIdeaCreated,
   onDeleteIdea,
+  onImageClick,
+  onOpenFullscreenPost,
 }) => {
   const t = useT();
   const { showToast } = useUI();
@@ -54,6 +59,15 @@ export const Profile: React.FC<ProfileProps> = ({
   const [editProvince, setEditProvince] = useState('Luanda');
   const [editMunicipality, setEditMunicipality] = useState('');
   const [savingProfile, setSavingProfile] = useState(false);
+  const [editingItem, setEditingItem] = useState<any | null>(null);
+
+  const handleItemSaved = (updatedItem: any) => {
+    if (updatedItem.title !== undefined) {
+      onIdeaCreated();
+    } else {
+      setUserPosts(prev => prev.map(p => p.id === updatedItem.id ? { ...p, ...updatedItem } : p));
+    }
+  };
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -435,23 +449,54 @@ export const Profile: React.FC<ProfileProps> = ({
                         )}
                         <span className="metadata-text">{new Date(post.created_at || '').toLocaleDateString('pt-AO')}</span>
                       </div>
-                      <button 
-                        onClick={() => handleDeletePost(post.id)} 
-                        className="text-red-400 hover:text-red-600 hover:bg-red-50 p-2 rounded-full transition-all"
-                        title={t('profile.delete_post')}
-                      >
-                        <span className="material-symbols-outlined text-[20px]">delete</span>
-                      </button>
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => onOpenFullscreenPost ? onOpenFullscreenPost(post) : (post.image_url && onImageClick?.(post.image_url))}
+                          className="text-gray-400 hover:text-konecta-navy hover:bg-gray-100 p-2 rounded-full transition-all"
+                          title="Visualizar em tela cheia"
+                        >
+                          <span className="material-symbols-outlined text-[20px]">fullscreen</span>
+                        </button>
+                        <button
+                          onClick={() => setEditingItem(post)}
+                          className="text-gray-400 hover:text-konecta-navy hover:bg-gray-100 p-2 rounded-full transition-all"
+                          title="Editar publicação"
+                        >
+                          <span className="material-symbols-outlined text-[20px]">edit</span>
+                        </button>
+                        <button 
+                          onClick={() => handleDeletePost(post.id)} 
+                          className="text-red-400 hover:text-red-600 hover:bg-red-50 p-2 rounded-full transition-all"
+                          title={t('profile.delete_post')}
+                        >
+                          <span className="material-symbols-outlined text-[20px]">delete</span>
+                        </button>
+                      </div>
                     </div>
-                    <div className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">{post.content}</div>
+                    <div 
+                      onClick={() => onOpenFullscreenPost ? onOpenFullscreenPost(post) : undefined}
+                      className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap cursor-pointer hover:text-gray-900 transition-colors"
+                    >
+                      {post.content}
+                    </div>
                     {post.image_url && (
-                      <img 
-                        src={cldImage(post.image_url, { w: 800 })} 
-                        className="mt-5 rounded-2xl w-full h-auto max-h-96 object-cover border border-gray-100 bg-gray-50" 
-                        alt="" 
-                        loading="lazy"
-                        decoding="async"
-                      />
+                      <div 
+                        onClick={() => onOpenFullscreenPost ? onOpenFullscreenPost(post) : onImageClick?.(post.image_url!)}
+                        className="mt-5 rounded-2xl overflow-hidden max-h-96 border border-gray-100 bg-gray-50 cursor-pointer group/img relative"
+                      >
+                        <img 
+                          src={cldImage(post.image_url, { w: 800 })} 
+                          className="w-full h-auto max-h-96 object-cover group-hover/img:scale-[1.01] transition-transform duration-300" 
+                          alt="" 
+                          loading="lazy"
+                          decoding="async"
+                        />
+                        <div className="absolute inset-0 bg-black/0 group-hover/img:bg-black/10 transition-colors flex items-center justify-center">
+                          <span className="material-symbols-outlined text-white opacity-0 group-hover/img:opacity-100 transition-opacity bg-black/50 p-2 rounded-full backdrop-blur-xs">
+                            fullscreen
+                          </span>
+                        </div>
+                      </div>
                     )}
                     <div className="flex gap-6 mt-6 pt-4 border-t border-gray-50 text-xs text-gray-400 font-bold">
                       <span className="flex items-center gap-1.5">
@@ -479,25 +524,44 @@ export const Profile: React.FC<ProfileProps> = ({
             ) : (
               userIdeas.map((idea) => (
                 <div key={idea.id} className="card-konecta p-6 flex flex-col sm:flex-row justify-between items-start gap-4">
-                  <div className="space-y-2 flex-1">
+                  <div 
+                    className="space-y-2 flex-1 cursor-pointer"
+                    onClick={() => onOpenFullscreenPost ? onOpenFullscreenPost(idea) : undefined}
+                  >
                     <span className="text-[10px] font-extrabold text-konecta-gold uppercase tracking-[0.2em]">{idea.category}</span>
-                    <h3 className="text-xl font-bold text-konecta-navy">{idea.title}</h3>
+                    <h3 className="text-xl font-bold text-konecta-navy hover:text-konecta-gold transition-colors">{idea.title}</h3>
                     <p className="text-xs text-gray-500 line-clamp-2 leading-relaxed">{idea.description}</p>
                     <span className="text-[10px] text-gray-400 block pt-2">
                       {idea.votes_count || 0} {idea.votes_count === 1 ? 'apoio' : 'apoios'} · {new Date(idea.created_at || '').toLocaleDateString('pt-AO')}
                     </span>
                   </div>
-                  <button
-                    onClick={() => {
-                      if (window.confirm(t('profile.delete_idea_confirm'))) {
-                        onDeleteIdea(idea.id);
-                      }
-                    }}
-                    className="text-red-500 hover:bg-red-50 p-2 rounded-xl transition-colors shrink-0"
-                    title={t('profile.delete_idea')}
-                  >
-                    <span className="material-symbols-outlined text-[20px]">delete</span>
-                  </button>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button
+                      onClick={() => onOpenFullscreenPost ? onOpenFullscreenPost(idea) : undefined}
+                      className="text-gray-400 hover:text-konecta-navy hover:bg-gray-100 p-2 rounded-xl transition-colors"
+                      title="Visualizar em tela cheia"
+                    >
+                      <span className="material-symbols-outlined text-[20px]">fullscreen</span>
+                    </button>
+                    <button
+                      onClick={() => setEditingItem(idea)}
+                      className="text-gray-400 hover:text-konecta-navy hover:bg-gray-100 p-2 rounded-xl transition-colors"
+                      title="Editar ideia"
+                    >
+                      <span className="material-symbols-outlined text-[20px]">edit</span>
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (window.confirm(t('profile.delete_idea_confirm'))) {
+                          onDeleteIdea(idea.id);
+                        }
+                      }}
+                      className="text-red-500 hover:bg-red-50 p-2 rounded-xl transition-colors"
+                      title={t('profile.delete_idea')}
+                    >
+                      <span className="material-symbols-outlined text-[20px]">delete</span>
+                    </button>
+                  </div>
                 </div>
               ))
             )}
@@ -738,6 +802,16 @@ export const Profile: React.FC<ProfileProps> = ({
           </div>
         )}
       </AnimatePresence>
+
+      {/* Edit Post / Idea Modal */}
+      {editingItem && (
+        <EditPostModal
+          post={editingItem}
+          isOpen={!!editingItem}
+          onClose={() => setEditingItem(null)}
+          onSaved={handleItemSaved}
+        />
+      )}
 
     </div>
   );

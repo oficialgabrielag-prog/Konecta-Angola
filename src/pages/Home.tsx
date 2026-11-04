@@ -23,6 +23,8 @@ interface HomeProps {
   onVoteIdea: (id: string) => void;
   onRequireAuth: () => void;
   onImageClick: (url: string) => void;
+  onOpenFullscreenPost?: (post: any) => void;
+  onEditPost?: (post: any) => void;
 }
 
 export const Home: React.FC<HomeProps> = ({
@@ -37,6 +39,8 @@ export const Home: React.FC<HomeProps> = ({
   onVoteIdea,
   onRequireAuth,
   onImageClick,
+  onOpenFullscreenPost,
+  onEditPost,
 }) => {
   const { t } = useT();
   const heroImage = "/src/assets/images/hero_konecta_innovation_1793239577568.jpg";
@@ -60,11 +64,15 @@ export const Home: React.FC<HomeProps> = ({
   const { openShareSheet, showToast } = useUI();
 
   const handleDeletePost = async (postId: string) => {
-    if (!confirm('Tens a certeza que pretendes eliminar esta publicação?')) return;
+    if (!window.confirm('Tens a certeza que pretendes eliminar esta publicação?')) return;
     try {
       const res = await d1Client.posts.delete(postId);
       if (res.error) throw res.error;
-      setPosts(prev => prev.filter(p => p.id !== postId));
+      setPosts(prev => {
+        const next = prev.filter(p => p.id !== postId);
+        savePostsToCache(next);
+        return next;
+      });
       showToast('Publicação eliminada com sucesso.', 'info');
     } catch (err: any) {
       console.error('Erro ao eliminar publicação:', err);
@@ -107,13 +115,15 @@ export const Home: React.FC<HomeProps> = ({
       onRequireAuth();
       return;
     }
+    const targetReel = reels.find(r => r.id === reelId);
+    const currentLiked = targetReel ? !!targetReel.is_liked : false;
+
     setReels(prev => prev.map(r => {
       if (r.id === reelId) {
-        const isLiked = r.is_liked;
         return {
           ...r,
-          is_liked: !isLiked,
-          likes_count: isLiked ? Math.max(0, (r.likes_count || 1) - 1) : (r.likes_count || 0) + 1
+          is_liked: !currentLiked,
+          likes_count: currentLiked ? Math.max(0, (r.likes_count || 1) - 1) : (r.likes_count || 0) + 1
         };
       }
       return r;
@@ -121,12 +131,12 @@ export const Home: React.FC<HomeProps> = ({
     if (selectedReelModal && selectedReelModal.id === reelId) {
       setSelectedReelModal(prev => prev ? {
         ...prev,
-        is_liked: !prev.is_liked,
-        likes_count: prev.is_liked ? Math.max(0, (prev.likes_count || 1) - 1) : (prev.likes_count || 0) + 1
+        is_liked: !currentLiked,
+        likes_count: currentLiked ? Math.max(0, (prev.likes_count || 1) - 1) : (prev.likes_count || 0) + 1
       } : null);
     }
     try {
-      await d1Client.reels.toggleReaction(reelId, false);
+      await d1Client.reels.toggleReaction(reelId, currentLiked);
     } catch (err) {
       console.warn('Erro ao curtir reel:', err);
     }
@@ -376,6 +386,12 @@ export const Home: React.FC<HomeProps> = ({
       await d1Client.posts.toggleBookmark(postId, isBookmarked);
     } catch (err: any) {
       console.warn('Aviso ao guardar favorito:', err?.message || err);
+    }
+  };
+
+  const handleEditPost = (post: Post) => {
+    if (onEditPost) {
+      onEditPost(post);
     }
   };
 
@@ -983,6 +999,7 @@ export const Home: React.FC<HomeProps> = ({
                               targetId={post.id}
                               targetType="post"
                               isOwner={user?.id === post.user_id || user?.id === (post as any).author_id}
+                              onEdit={() => handleEditPost(post)}
                               onDelete={() => handleDeletePost(post.id)}
                               onReport={() => handleReportContent(post.id, 'post')}
                               onBlock={post.user_id ? () => handleBlockUser(post.user_id) : undefined}
@@ -997,13 +1014,16 @@ export const Home: React.FC<HomeProps> = ({
                           </div>
                         </div>
 
-                        <p className="text-gray-700 text-sm leading-relaxed whitespace-pre-wrap mb-4">
+                        <p 
+                          onClick={() => onOpenFullscreenPost ? onOpenFullscreenPost(post) : onSelectPost(post as any)}
+                          className="text-gray-700 text-sm leading-relaxed whitespace-pre-wrap mb-4 cursor-pointer hover:text-gray-900 transition-colors"
+                        >
                           {post.content}
                         </p>
 
                         {post.image_url && (
                           <div 
-                            onClick={() => onImageClick(post.image_url!)}
+                            onClick={() => onOpenFullscreenPost ? onOpenFullscreenPost(post) : onImageClick(post.image_url!)}
                             className="rounded-2xl overflow-hidden mb-6 max-h-[450px] bg-gray-50 border border-gray-100 cursor-pointer group relative"
                           >
                             <div 
@@ -1028,7 +1048,7 @@ export const Home: React.FC<HomeProps> = ({
                         )}
 
                         <div className="flex items-center justify-between pt-4 border-t border-gray-50 text-xs text-gray-500 font-medium">
-                          <div className="flex items-center gap-3">
+                          <div className="flex items-center gap-2.5 flex-wrap">
                             <button
                               onClick={() => handleToggleLike(post.id)}
                               className={`flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-bold transition-all duration-200 active:scale-95 ${
@@ -1061,6 +1081,15 @@ export const Home: React.FC<HomeProps> = ({
                             </button>
 
                             <button 
+                              onClick={() => onOpenFullscreenPost ? onOpenFullscreenPost(post) : onSelectPost(post as any)}
+                              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-gray-100 hover:bg-konecta-navy hover:text-white text-gray-600 border border-gray-200 transition-all active:scale-95"
+                              title="Visualizar em tela cheia"
+                            >
+                              <span className="material-symbols-outlined text-[18px]">fullscreen</span>
+                              <span className="hidden sm:inline">Tela cheia</span>
+                            </button>
+
+                            <button 
                               onClick={() => openShareSheet({
                                 targetId: post.id,
                                 targetType: 'post',
@@ -1068,7 +1097,7 @@ export const Home: React.FC<HomeProps> = ({
                                 authorName: post.profiles?.full_name || 'Utilizador',
                                 thumbnail: post.image_url || undefined
                               })}
-                              className="flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-bold bg-gray-100 hover:bg-gray-200 text-gray-600 border border-gray-200 transition-all active:scale-95"
+                              className="flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold bg-gray-100 hover:bg-gray-200 text-gray-600 border border-gray-200 transition-all active:scale-95"
                               title={t('menu.share')}
                             >
                               <span className="material-symbols-outlined text-[18px]">share</span>
