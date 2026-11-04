@@ -187,7 +187,7 @@ export const Plans: React.FC<PlansProps> = ({ user, onOpenAuth, onNavigateTab })
         .single();
 
       if (reqError || !requestRecord) {
-        throw new Error(reqError?.message || 'Falha ao registar o pedido no Supabase.');
+        throw new Error(reqError?.message || 'Falha ao registar o pedido no servidor.');
       }
 
       const requestId = requestRecord.id;
@@ -266,7 +266,7 @@ export const Plans: React.FC<PlansProps> = ({ user, onOpenAuth, onNavigateTab })
         throw new Error(typeof res.error === 'string' ? res.error : res.error.message || 'Erro ao criar plano.');
       }
 
-      showToast('Plano gravado no Supabase com sucesso!', 'success');
+      showToast('Plano gravado com sucesso!', 'success');
       setShowCreateModal(false);
       setNewPlanName('');
       setNewPlanDesc('');
@@ -338,7 +338,7 @@ export const Plans: React.FC<PlansProps> = ({ user, onOpenAuth, onNavigateTab })
       {loading ? (
         <div className="py-20 text-center">
           <Loader2 className="animate-spin mx-auto text-konecta-navy" size={32} />
-          <p className="text-xs text-gray-400 mt-2">A carregar planos reais da base de dados...</p>
+          <p className="text-xs text-gray-400 mt-2">A carregar planos reais do servidor...</p>
         </div>
       ) : activeTab === 'plans' ? (
         /* Planos Disponíveis Grid */
@@ -350,7 +350,7 @@ export const Plans: React.FC<PlansProps> = ({ user, onOpenAuth, onNavigateTab })
               </div>
               <h3 className="font-bold text-lg text-konecta-navy">Nenhum plano ativo no momento</h3>
               <p className="text-xs text-gray-400 leading-relaxed">
-                Os planos estão a ser definidos no Supabase. O administrador pode registar planos imediatamente.
+                Os planos estão a ser definidos no sistema. O administrador pode registar planos imediatamente.
               </p>
               {isAdminUser && (
                 <button
@@ -457,7 +457,7 @@ export const Plans: React.FC<PlansProps> = ({ user, onOpenAuth, onNavigateTab })
           {loadingMySubs ? (
             <div className="py-16 text-center">
               <Loader2 className="animate-spin mx-auto text-konecta-navy" size={24} />
-              <p className="text-xs text-gray-400 mt-2">A carregar o seu histórico do Supabase...</p>
+              <p className="text-xs text-gray-400 mt-2">A carregar o seu histórico do sistema...</p>
             </div>
           ) : (mySubscriptions.requests.length === 0 && mySubscriptions.subscriptions.length === 0) ? (
             <div className="bg-white rounded-3xl p-12 text-center border border-dashed border-gray-200 space-y-3">
@@ -696,7 +696,7 @@ export const Plans: React.FC<PlansProps> = ({ user, onOpenAuth, onNavigateTab })
                   className="btn-primary py-2.5 px-6 text-xs font-bold flex items-center gap-2"
                 >
                   {submitting ? <Loader2 size={16} className="animate-spin" /> : <ShieldCheck size={16} />}
-                  {submitting ? 'A gravar no Supabase...' : 'Confirmar Subscrição'}
+                  {submitting ? 'A gravar no sistema...' : 'Confirmar Subscrição'}
                 </button>
               </div>
             </form>
@@ -834,7 +834,7 @@ export const Plans: React.FC<PlansProps> = ({ user, onOpenAuth, onNavigateTab })
                   className="btn-gold py-2.5 px-6 text-xs font-bold flex items-center gap-2"
                 >
                   {creatingPlan ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />}
-                  {creatingPlan ? 'A gravar no Supabase...' : 'Publicar Plano'}
+                  {creatingPlan ? 'A gravar no sistema...' : 'Publicar Plano'}
                 </button>
               </div>
             </form>

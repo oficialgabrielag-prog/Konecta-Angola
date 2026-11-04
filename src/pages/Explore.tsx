@@ -5,6 +5,9 @@ import { d1Client } from '../lib/d1Client';
 import { useT } from '../context/LanguageContext';
 import { useUI } from '../context/UIContext';
 import { ContentMenu } from '../components/ContentMenu';
+import { ReelPreviewCard } from '../components/ReelPreviewCard';
+import { cldAvatar, cldCover, cldImage, cldSrcSet, cldBlurPlaceholder } from '../lib/cloudinary';
+import { Play } from 'lucide-react';
 
 interface ExploreProps {
   ideas: Idea[];
@@ -296,26 +299,12 @@ export const Explore: React.FC<ExploreProps> = ({
               </div>
               <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide snap-x snap-mandatory">
                 {filteredReels.map(reel => (
-                  <div
-                    key={reel.id}
-                    onClick={() => onSelectReel?.(reel.id)}
-                    className="shrink-0 w-32 sm:w-40 aspect-[9/16] rounded-2xl overflow-hidden relative cursor-pointer group bg-black shadow-sm snap-start"
-                  >
-                    <video 
-                      src={reel.video_url} 
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300 pointer-events-none" 
-                      muted 
-                      playsInline 
+                  <div key={reel.id} className="shrink-0 w-32 sm:w-40 snap-start">
+                    <ReelPreviewCard 
+                      reel={reel} 
+                      onClick={() => onSelectReel?.(reel.id)} 
+                      shouldPreview={false}
                     />
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-transparent to-black/20 p-2.5 flex flex-col justify-between">
-                      <span className="self-end bg-black/40 backdrop-blur-xs text-white rounded-full p-1">
-                        <span className="material-symbols-outlined text-sm">play_arrow</span>
-                      </span>
-                      <div>
-                        <p className="text-white text-xs font-bold line-clamp-1">{reel.profiles?.full_name || 'Criador'}</p>
-                        <p className="text-gray-300 text-[10px] line-clamp-1">{reel.caption || 'Reel'}</p>
-                      </div>
-                    </div>
                   </div>
                 ))}
               </div>
@@ -338,30 +327,12 @@ export const Explore: React.FC<ExploreProps> = ({
               ) : (
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 sm:gap-4">
                   {filteredReels.slice(0, visibleCount).map((reel) => (
-                    <div
+                    <ReelPreviewCard 
                       key={reel.id}
-                      onClick={() => onSelectReel?.(reel.id)}
-                      className="aspect-[9/16] rounded-2xl overflow-hidden relative cursor-pointer group bg-black shadow-sm"
-                    >
-                      <video 
-                        src={reel.video_url} 
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300 pointer-events-none" 
-                        muted 
-                        playsInline 
-                      />
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-transparent to-black/20 p-3 flex flex-col justify-between">
-                        <span className="self-end bg-black/40 backdrop-blur-xs text-white rounded-full p-1">
-                          <span className="material-symbols-outlined text-sm">play_arrow</span>
-                        </span>
-                        <div>
-                          <p className="text-white text-xs font-bold line-clamp-1">{reel.profiles?.full_name || 'Criador'}</p>
-                          <p className="text-gray-300 text-[11px] line-clamp-2 mt-0.5">{reel.caption || 'Reel'}</p>
-                          <div className="flex items-center gap-1 text-[11px] text-red-400 mt-1 font-semibold">
-                            <span>❤️ {reel.likes_count || 0}</span>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
+                      reel={reel} 
+                      onClick={() => onSelectReel?.(reel.id)} 
+                      shouldPreview={false}
+                    />
                   ))}
                 </div>
               )}
@@ -396,7 +367,13 @@ export const Explore: React.FC<ExploreProps> = ({
                   >
                     <div className="w-11 h-11 rounded-full bg-gray-100 overflow-hidden shrink-0 border border-gray-200 flex items-center justify-center font-bold text-gray-500 text-xs">
                       {p.avatar_url ? (
-                        <img src={p.avatar_url} alt="" className="w-full h-full object-cover" />
+                        <img 
+                          src={cldAvatar(p.avatar_url)} 
+                          alt="" 
+                          className="w-full h-full object-cover" 
+                          loading="lazy"
+                          decoding="async"
+                        />
                       ) : (
                         (p.full_name || p.display_name || 'U').charAt(0)
                       )}
@@ -451,7 +428,13 @@ export const Explore: React.FC<ExploreProps> = ({
                       <div className="flex items-center gap-2.5">
                         <div className="w-8 h-8 rounded-full bg-gray-100 overflow-hidden border border-gray-200 flex items-center justify-center text-xs font-bold text-konecta-navy shrink-0">
                           {post.profiles?.avatar_url ? (
-                            <img src={post.profiles.avatar_url} alt="" className="w-full h-full object-cover" />
+                            <img 
+                              src={cldAvatar(post.profiles.avatar_url)} 
+                              alt="" 
+                              className="w-full h-full object-cover" 
+                              loading="lazy"
+                              decoding="async"
+                            />
                           ) : (
                             (post.profiles?.full_name || 'U').charAt(0)
                           )}
@@ -472,7 +455,13 @@ export const Explore: React.FC<ExploreProps> = ({
                     </div>
                     <p className="text-xs text-gray-700 leading-relaxed whitespace-pre-wrap line-clamp-3">{post.body || post.content}</p>
                     {post.image_url && (
-                      <img src={post.image_url} alt="" className="w-full max-h-48 object-cover rounded-xl mt-2" />
+                      <img 
+                        src={cldImage(post.image_url, { w: 800 })} 
+                        alt="" 
+                        className="w-full max-h-64 object-cover rounded-xl mt-2" 
+                        loading="lazy"
+                        decoding="async"
+                      />
                     )}
                   </div>
                 ))}
@@ -482,7 +471,7 @@ export const Explore: React.FC<ExploreProps> = ({
                   <div
                     key={`idea-${idea.id}`}
                     onClick={() => onSelectPost(idea)}
-                    className="p-5 bg-white rounded-2xl border border-gray-100 shadow-xs hover:shadow-md transition-all cursor-pointer space-y-2 relative"
+                    className="p-5 bg-white rounded-2xl border border-gray-100 shadow-xs hover:shadow-md transition-all cursor-pointer space-y-2.5 relative group"
                   >
                     <div className="flex items-start justify-between">
                       <span className="text-[10px] font-extrabold text-konecta-gold uppercase tracking-wider">
@@ -499,8 +488,19 @@ export const Explore: React.FC<ExploreProps> = ({
                         />
                       </div>
                     </div>
-                    <h4 className="text-sm font-bold text-konecta-navy leading-snug">{idea.title}</h4>
-                    <p className="text-xs text-gray-500 line-clamp-2">{idea.description}</p>
+                    <h4 className="text-sm font-bold text-konecta-navy leading-snug group-hover:text-konecta-gold transition-colors">{idea.title}</h4>
+                    <p className="text-xs text-gray-500 line-clamp-2 leading-relaxed">{idea.description}</p>
+                    {idea.image_url && (
+                      <div className="mt-2.5 rounded-xl overflow-hidden aspect-video bg-gray-50 border border-gray-100">
+                        <img 
+                          src={cldImage(idea.image_url, { w: 800 })} 
+                          alt="" 
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" 
+                          loading="lazy"
+                          decoding="async"
+                        />
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>

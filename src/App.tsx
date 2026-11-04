@@ -34,6 +34,7 @@ import { OrganizationDetail } from './pages/OrganizationDetail';
 import { DigitalLibrary } from './pages/DigitalLibrary';
 import { Settings } from './pages/Settings';
 import { PolicyCenter } from './pages/PolicyCenter';
+import { HelpSupport } from './pages/HelpSupport';
 import { PrivacyPolicyPage } from './pages/PrivacyPolicyPage';
 import { Verification } from './pages/Verification';
 import { Plans } from './pages/Plans';
@@ -797,6 +798,13 @@ export default function App() {
               />
             )}
 
+            {currentTab === 'help' && (
+              <HelpSupport
+                onBack={() => navigateTab('home')}
+                onNavigateTab={navigateTab}
+              />
+            )}
+
             {currentTab === 'privacy-policy' && (
               <PrivacyPolicyPage
                 onBack={() => navigateTab('home')}
@@ -833,7 +841,7 @@ export default function App() {
               'project-detail', 'community-detail', 'community-settings', 'community-feed',
               'communities', 'idea-detail', 'events', 'organizations', 'org-detail',
               'library', 'messages', 'challenges', 'profile', 'notifications',
-              'pricing', 'settings', 'policy-center', 'privacy-policy', 'admin', 'verification', 'plans'
+              'pricing', 'settings', 'policy-center', 'help', 'privacy-policy', 'admin', 'verification', 'plans'
             ].includes(currentTab) && (
               <div className="max-w-md mx-auto px-6 py-28 text-center space-y-4">
                 <div className="w-16 h-16 rounded-2xl bg-konecta-navy/5 text-konecta-navy flex items-center justify-center mx-auto text-xl font-bold font-mono">

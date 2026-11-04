@@ -3,12 +3,14 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Heart, MessageCircle, Bookmark, Share2, Plus, Volume2, VolumeX, X, MoreVertical } from "lucide-react";
 import { Reel, CommentItem, MusicTrack } from '../types';
 import { d1Client } from '../lib/d1Client';
-import { uploadMediaToCloudinary } from '../lib/cloudinary';
+import { uploadMediaToCloudinary, cldVideo, cldVideoPoster, cldAvatar } from '../lib/cloudinary';
 import { KonectaRealtimeService } from '../lib/realtime';
 import { MusicStudio } from '../components/MusicStudio';
 import { Music } from 'lucide-react';
 import { useUI } from '../context/UIContext';
 import { useT } from '../i18n/LanguageContext';
+import { LikeButton } from '../components/LikeButton';
+
 
 interface ReelsProps {
   user: any;
@@ -312,9 +314,22 @@ export const Reels: React.FC<ReelsProps> = ({ user, onOpenAuth, onSelectUser, in
       targetId: reel.id,
       targetType: 'reel',
       title: reel.caption || 'Reel Konecta',
-      authorName: reel.profiles?.full_name || 'Criador',
-      thumbnail: reel.thumbnail_url || undefined
+      authorName: `@${reel.profiles?.full_name?.replace(/\s+/g, '').toLowerCase() || 'criador_konecta'}`,
+      thumbnail: reel.thumbnail_url || undefined,
+      videoUrl: reel.video_url,
+      allowShares: reel.allow_shares !== false
     });
+  };
+
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  const handleCancelUpload = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      setUploading(false);
+      setUploadProgress(0);
+      showToast('Upload cancelado.', 'info');
+    }
   };
 
   const handleCreateReel = async (e: React.FormEvent) => {
@@ -330,15 +345,16 @@ export const Reels: React.FC<ReelsProps> = ({ user, onOpenAuth, onSelectUser, in
     if (uploading) return;
 
     setUploading(true);
-    setUploadProgress(10);
+    setUploadProgress(1);
+    abortControllerRef.current = new AbortController();
 
     try {
-      const cloudRes = await uploadMediaToCloudinary(videoFile, (p) => setUploadProgress(p));
+      const cloudRes = await uploadMediaToCloudinary(videoFile, (p) => setUploadProgress(p), {
+        kind: 'reel',
+        userId: user.id,
+        signal: abortControllerRef.current?.signal
+      });
       
-      if (!cloudRes || !cloudRes.public_id || !cloudRes.secure_url) {
-        throw new Error(t('reels.upload_err'));
-      }
-
       const res = await d1Client.reels.create({
         cloudinary_public_id: cloudRes.public_id,
         video_url: cloudRes.secure_url,
@@ -371,7 +387,6 @@ export const Reels: React.FC<ReelsProps> = ({ user, onOpenAuth, onSelectUser, in
           showToast(t('reels.music_err'), 'error');
         }
         
-        // Add music info to the local object for UI
         newReel.music_info = {
           track: selectedMusic,
           settings: musicSettings
@@ -389,10 +404,14 @@ export const Reels: React.FC<ReelsProps> = ({ user, onOpenAuth, onSelectUser, in
       setUploadProgress(0);
       showToast('Reel publicado com sucesso!', 'success');
     } catch (err: any) {
-      console.error('Erro ao publicar Reel:', err);
-      showToast(err.message || t('reels.upload_err'), 'error');
+      if (err.name !== 'AbortError') {
+        console.error('Erro ao publicar Reel:', err);
+        showToast(err.message || t('reels.upload_err'), 'error');
+      }
     } finally {
       setUploading(false);
+      setUploadProgress(0);
+      abortControllerRef.current = null;
     }
   };
 
@@ -456,7 +475,8 @@ export const Reels: React.FC<ReelsProps> = ({ user, onOpenAuth, onSelectUser, in
                       delete videoRefs.current[reel.id];
                     }
                   }}
-                  src={reel.video_url}
+                  src={cldVideo(reel.video_url)}
+                  poster={cldVideoPoster(reel.video_url)}
                   className={`absolute inset-0 w-full h-full bg-black ${
                     fitMode === 'contain' ? 'object-contain' : 'object-cover'
                   }`}
@@ -510,7 +530,27 @@ export const Reels: React.FC<ReelsProps> = ({ user, onOpenAuth, onSelectUser, in
                       v.pause();
                     }
                   }}
+                  onDoubleClick={(e) => {
+                    if (!reel.is_liked) {
+                      handleToggleLike(reel, e as any);
+                    }
+                    
+                    // Show heart animation
+                    const container = e.currentTarget.parentElement;
+                    if (container) {
+                      const heart = document.createElement('div');
+                      heart.className = 'absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 pointer-events-none text-white animate-reel-heart-pop';
+                      heart.innerHTML = '<span class="material-symbols-outlined text-8xl fill-white">favorite</span>';
+                      container.appendChild(heart);
+                      setTimeout(() => heart.remove(), 1000);
+                    }
+                  }}
                 />
+
+                {/* MARCA DE ÁGUA DISCRETA */}
+                <div className="absolute top-[calc(5rem+env(safe-area-inset-top)+0.5rem)] right-4 z-10 text-white font-black text-xs opacity-55 pointer-events-none tracking-widest uppercase">
+                  KONECTA
+                </div>
 
                 {/* TAP TO UNMUTE HINT */}
                 {(isMuted || autoplayBlocked) && index === activeIndex && (
@@ -543,11 +583,17 @@ export const Reels: React.FC<ReelsProps> = ({ user, onOpenAuth, onSelectUser, in
                     onClick={() => reel.author_id && onSelectUser(reel.author_id)}
                     className="relative mb-2 cursor-pointer group"
                   >
-                    <div className="w-11 h-11 rounded-full border-2 border-konecta-gold overflow-hidden shadow-xl group-hover:scale-110 transition-transform">
+                    <div className="w-11 h-11 rounded-full border-2 border-konecta-gold overflow-hidden shadow-xl group-hover:scale-110 transition-transform bg-gray-900">
                       {reel.profiles?.avatar_url ? (
-                        <img src={reel.profiles.avatar_url} alt="" className="w-full h-full object-cover" />
+                        <img 
+                          src={cldAvatar(reel.profiles.avatar_url)} 
+                          alt="" 
+                          className="w-full h-full object-cover" 
+                          loading="lazy"
+                          decoding="async"
+                        />
                       ) : (
-                        <div className="w-full h-full bg-gray-900 flex items-center justify-center text-xs font-bold text-white">
+                        <div className="w-full h-full flex items-center justify-center text-xs font-bold text-white">
                           {reel.profiles?.full_name?.charAt(0) || 'K'}
                         </div>
                       )}
@@ -557,39 +603,51 @@ export const Reels: React.FC<ReelsProps> = ({ user, onOpenAuth, onSelectUser, in
                     </div>
                   </div>
 
-                  <button onClick={(e) => handleToggleLike(reel, e)} className="flex flex-col items-center group">
-                    <Heart 
-                      size={30} 
-                      strokeWidth={2}
-                      className={`${reel.is_liked ? "fill-[#FF3040] text-[#FF3040] scale-125" : "text-white fill-white/10 group-hover:scale-110"} transition-all`} 
-                    />
-                    <span className="text-white text-[11px] font-bold mt-1 drop-shadow-lg">{reel.likes_count || 0}</span>
+                  <LikeButton
+                    isLiked={!!reel.is_liked}
+                    likesCount={reel.likes_count || 0}
+                    onToggle={() => handleToggleLike(reel, {} as any)}
+                  />
+
+                  <button 
+                    onClick={(e) => openComments(reel, e)} 
+                    className="flex flex-col items-center group gap-1"
+                  >
+                    <div className="w-12 h-12 rounded-full bg-black/25 backdrop-blur-md border border-white/10 flex items-center justify-center group-hover:bg-black/40 transition-all">
+                      <MessageCircle size={26} strokeWidth={2} className="text-white" />
+                    </div>
+                    <span className="text-white text-[11px] font-bold drop-shadow-lg">{reel.comments_count || 0}</span>
                   </button>
 
-                  <button onClick={(e) => openComments(reel, e)} className="flex flex-col items-center group">
-                    <MessageCircle size={28} strokeWidth={2} className="text-white fill-white/10 group-hover:scale-110 transition-all" />
-                    <span className="text-white text-[11px] font-bold mt-1 drop-shadow-lg">{reel.comments_count || 0}</span>
+                  <button 
+                    onClick={(e) => handleToggleSave(reel, e)} 
+                    className="flex flex-col items-center group gap-1"
+                  >
+                    <div className="w-12 h-12 rounded-full bg-black/25 backdrop-blur-md border border-white/10 flex items-center justify-center group-hover:bg-black/40 transition-all">
+                      <Bookmark 
+                        size={26} 
+                        strokeWidth={2}
+                        className={`${reel.is_saved ? "fill-konecta-gold text-konecta-gold" : "text-white"}`} 
+                      />
+                    </div>
+                    <span className="text-white text-[11px] font-bold drop-shadow-lg">{reel.saves_count || 0}</span>
                   </button>
 
-                  <button onClick={(e) => handleToggleSave(reel, e)} className="flex flex-col items-center group">
-                    <Bookmark 
-                      size={28} 
-                      strokeWidth={2}
-                      className={`${reel.is_saved ? "fill-konecta-gold text-konecta-gold scale-110" : "text-white fill-white/10 group-hover:scale-110"} transition-all`} 
-                    />
-                    <span className="text-white text-[11px] font-bold mt-1 drop-shadow-lg">{reel.saves_count || 0}</span>
-                  </button>
-
-                  <button onClick={(e) => handleShare(reel, e)} className="flex flex-col items-center group">
-                    <Share2 size={26} strokeWidth={2} className="text-white fill-white/10 group-hover:scale-110 transition-all" />
-                    <span className="text-white text-[9px] font-black uppercase tracking-widest mt-1 drop-shadow-lg">{t('menu.share')}</span>
+                  <button 
+                    onClick={(e) => handleShare(reel, e)} 
+                    className="flex flex-col items-center group gap-1"
+                  >
+                    <div className="w-12 h-12 rounded-full bg-black/25 backdrop-blur-md border border-white/10 flex items-center justify-center group-hover:bg-black/40 transition-all">
+                      <Share2 size={24} strokeWidth={2} className="text-white" />
+                    </div>
+                    <span className="text-white text-[9px] font-black uppercase tracking-widest drop-shadow-lg">{t('menu.share')}</span>
                   </button>
 
                   <button 
                     onClick={(e) => { e.stopPropagation(); setIsMuted(!isMuted); }}
-                    className="w-9 h-9 rounded-full bg-white/10 backdrop-blur-md flex items-center justify-center text-white border border-white/20 hover:bg-white/20 transition-colors"
+                    className="w-10 h-10 rounded-full bg-black/25 backdrop-blur-md border border-white/10 flex items-center justify-center text-white hover:bg-black/40 transition-colors"
                   >
-                    {isMuted ? <VolumeX size={16} /> : <Volume2 size={16} />}
+                    {isMuted ? <VolumeX size={18} /> : <Volume2 size={18} />}
                   </button>
                 </div>
 
@@ -827,7 +885,7 @@ export const Reels: React.FC<ReelsProps> = ({ user, onOpenAuth, onSelectUser, in
                 {uploading && (
                   <div className="space-y-3">
                     <div className="flex justify-between text-[11px] font-black uppercase text-white/40 tracking-wider">
-                      <span>Sincronizando com Supabase...</span>
+                      <span>Sincronizando com o servidor...</span>
                       <span className="text-konecta-gold">{uploadProgress}%</span>
                     </div>
                     <div className="w-full bg-white/5 h-2 rounded-full overflow-hidden">

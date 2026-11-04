@@ -1,10 +1,11 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Idea, Project, Post, Follow } from '../types';
-import { uploadToCloudinary } from '../lib/cloudinary';
+import { uploadToCloudinary, cldAvatar, cldImage, cldBlurPlaceholder } from '../lib/cloudinary';
 import { d1Client } from '../lib/d1Client';
 import { useT } from '../i18n/LanguageContext';
 import { UserBadge } from '../components/UserBadges';
+import { useUI } from '../context/UIContext';
 
 interface ProfileProps {
   user: any;
@@ -26,6 +27,7 @@ export const Profile: React.FC<ProfileProps> = ({
   onDeleteIdea,
 }) => {
   const t = useT();
+  const { showToast } = useUI();
   const [uploading, setUploading] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [newPostText, setNewPostText] = useState('');
@@ -133,9 +135,10 @@ export const Profile: React.FC<ProfileProps> = ({
       onUpdateProfile({ ...user.user_metadata, avatar_url: url });
       onIdeaCreated();
       fetchUserPosts();
+      showToast(t('profile.update_photo_success'), 'success');
     } catch (err: any) {
       console.warn('Aviso ao atualizar fotografia de perfil:', err?.message || err);
-      alert(err?.message || t('profile.update_photo_err'));
+      showToast(err?.message || t('profile.update_photo_err'), 'error');
     } finally {
       setUploading(false);
     }
@@ -174,9 +177,10 @@ export const Profile: React.FC<ProfileProps> = ({
       if (pendingImagePreview) URL.revokeObjectURL(pendingImagePreview);
       setPendingImagePreview(null);
       fetchUserPosts();
+      showToast(t('profile.publish_success'), 'success');
     } catch (err: any) {
       console.warn('Aviso ao publicar post:', err?.message || err);
-      alert(err?.message || t('profile.publish_err'));
+      showToast(err?.message || t('profile.publish_err'), 'error');
     } finally {
       setPublishing(false);
     }
@@ -188,9 +192,10 @@ export const Profile: React.FC<ProfileProps> = ({
     try {
       await d1Client.posts.delete(id);
       setUserPosts(prev => prev.filter(p => p.id !== id));
+      showToast(t('profile.delete_post_success'), 'success');
     } catch (err: any) {
       console.warn('Aviso ao eliminar post:', err?.message || err);
-      alert(err?.message || t('profile.delete_post_err'));
+      showToast(err?.message || t('profile.delete_post_err'), 'error');
     }
   };
 
@@ -216,9 +221,10 @@ export const Profile: React.FC<ProfileProps> = ({
 
       setShowEditModal(false);
       onIdeaCreated();
+      showToast(t('profile.save_success'), 'success');
     } catch (err: any) {
       console.warn('Aviso ao guardar perfil:', err?.message || err);
-      alert(err?.message || t('profile.save_err'));
+      showToast(err?.message || t('profile.save_err'), 'error');
     } finally {
       setSavingProfile(false);
     }
@@ -246,7 +252,13 @@ export const Profile: React.FC<ProfileProps> = ({
           <div className="relative group">
             <div className="w-32 h-32 lg:w-40 lg:h-40 rounded-[32px] overflow-hidden bg-gray-50 border-4 border-white shadow-xl relative">
               {avatarUrl ? (
-                <img src={avatarUrl} alt={fullName} className="w-full h-full object-cover" />
+                <img 
+                  src={cldAvatar(avatarUrl, 160)} 
+                  alt={fullName} 
+                  className="w-full h-full object-cover" 
+                  loading="lazy"
+                  decoding="async"
+                />
               ) : (
                 <div className="w-full h-full flex items-center justify-center text-4xl font-black text-gray-200 uppercase">
                   {fullName.charAt(0)}
@@ -432,7 +444,15 @@ export const Profile: React.FC<ProfileProps> = ({
                       </button>
                     </div>
                     <div className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">{post.content}</div>
-                    {post.image_url && <img src={post.image_url} className="mt-5 rounded-2xl w-full h-auto max-h-96 object-cover border border-gray-100" alt="" />}
+                    {post.image_url && (
+                      <img 
+                        src={cldImage(post.image_url, { w: 800 })} 
+                        className="mt-5 rounded-2xl w-full h-auto max-h-96 object-cover border border-gray-100 bg-gray-50" 
+                        alt="" 
+                        loading="lazy"
+                        decoding="async"
+                      />
+                    )}
                     <div className="flex gap-6 mt-6 pt-4 border-t border-gray-50 text-xs text-gray-400 font-bold">
                       <span className="flex items-center gap-1.5">
                         <span className="material-symbols-outlined text-[18px] text-red-400">favorite</span> {post.likes_count || 0}
@@ -525,7 +545,13 @@ export const Profile: React.FC<ProfileProps> = ({
                   <div className="flex items-center gap-3 mb-4">
                     <div className="w-9 h-9 rounded-full bg-gray-100 overflow-hidden shrink-0">
                       {post.profiles?.avatar_url && (
-                        <img src={post.profiles.avatar_url} alt="" className="w-full h-full object-cover" />
+                        <img 
+                          src={cldAvatar(post.profiles.avatar_url, 36)} 
+                          alt="" 
+                          className="w-full h-full object-cover" 
+                          loading="lazy"
+                          decoding="async"
+                        />
                       )}
                     </div>
                     <div>
@@ -534,7 +560,15 @@ export const Profile: React.FC<ProfileProps> = ({
                     </div>
                   </div>
                   <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">{post.content}</p>
-                  {post.image_url && <img src={post.image_url} alt="" className="mt-4 rounded-xl max-h-80 w-full object-cover" />}
+                  {post.image_url && (
+                    <img 
+                      src={cldImage(post.image_url, { w: 800 })} 
+                      alt="" 
+                      className="mt-4 rounded-xl max-h-80 w-full object-cover bg-gray-50" 
+                      loading="lazy"
+                      decoding="async"
+                    />
+                  )}
                 </article>
               ))
             )}
@@ -683,7 +717,13 @@ export const Profile: React.FC<ProfileProps> = ({
                     <div key={item.id} className="p-3 bg-gray-50 rounded-xl flex items-center gap-3">
                       <div className="w-10 h-10 rounded-full bg-gray-200 overflow-hidden shrink-0">
                         {item.profiles?.avatar_url && (
-                          <img src={item.profiles.avatar_url} alt="" className="w-full h-full object-cover" />
+                          <img 
+                            src={cldAvatar(item.profiles.avatar_url, 40)} 
+                            alt="" 
+                            className="w-full h-full object-cover" 
+                            loading="lazy"
+                            decoding="async"
+                          />
                         )}
                       </div>
                       <div>

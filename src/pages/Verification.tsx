@@ -114,7 +114,7 @@ export const Verification: React.FC<VerificationProps> = ({ user, onOpenAuth, on
         setSelectedPaymentMethodId(activeMethods[0].id);
       }
     } catch (err: any) {
-      console.warn('Erro ao carregar dados do Supabase:', err);
+      console.warn('Erro ao carregar dados do servidor:', err);
     } finally {
       setLoadingData(false);
     }
@@ -248,7 +248,7 @@ export const Verification: React.FC<VerificationProps> = ({ user, onOpenAuth, on
         throw error;
       }
 
-      showToast('Pedido de verificação gravado com sucesso no Supabase! Está sob análise.', 'success');
+      showToast('Pedido de verificação gravado com sucesso! Está sob análise.', 'success');
       setSelectedTarget(null);
       setPersonalProofFile(null);
       setPersonalReason('');
@@ -333,7 +333,7 @@ export const Verification: React.FC<VerificationProps> = ({ user, onOpenAuth, on
         throw error;
       }
 
-      showToast('Pedido de verificação institucional gravado com sucesso no Supabase!', 'success');
+      showToast('Pedido de verificação institucional gravado com sucesso!', 'success');
       setSelectedTarget(null);
       setOrgProofFile(null);
       await loadUserData();
@@ -449,7 +449,7 @@ export const Verification: React.FC<VerificationProps> = ({ user, onOpenAuth, on
             Verificação de Conta
           </h1>
           <p className="text-gray-500 text-sm mt-1.5 max-w-2xl leading-relaxed">
-            Obtenha o selo oficial de verificação do KONECTA Angola com consulta aos dados reais do Supabase.
+            Obtenha o selo oficial de verificação do KONECTA Angola com consulta aos dados reais do sistema.
           </p>
         </div>
 
@@ -482,7 +482,7 @@ export const Verification: React.FC<VerificationProps> = ({ user, onOpenAuth, on
       {loadingData ? (
         <div className="py-20 text-center">
           <Loader2 className="animate-spin mx-auto text-konecta-navy" size={32} />
-          <p className="text-xs text-gray-400 mt-2">A carregar dados do Supabase...</p>
+          <p className="text-xs text-gray-400 mt-2">A carregar dados do servidor...</p>
         </div>
       ) : activeTab === 'request' ? (
         <>
@@ -492,7 +492,7 @@ export const Verification: React.FC<VerificationProps> = ({ user, onOpenAuth, on
               <div className="text-center max-w-xl mx-auto space-y-2 mb-8">
                 <h2 className="text-xl font-bold text-konecta-navy">Escolha a sua modalidade de verificação</h2>
                 <p className="text-xs text-gray-500">
-                  Preços e métodos de pagamento reais carregados do Supabase.
+                  Preços e métodos de pagamento reais carregados do sistema.
                 </p>
               </div>
 
@@ -782,7 +782,7 @@ export const Verification: React.FC<VerificationProps> = ({ user, onOpenAuth, on
                   className="btn-primary py-3.5 px-8 text-xs font-bold flex items-center gap-2"
                 >
                   {submitting ? <Loader2 size={16} className="animate-spin" /> : <ShieldCheck size={16} />}
-                  {submitting ? 'A gravar no Supabase...' : 'Enviar Pedido de Verificação'}
+                  {submitting ? 'A gravar no sistema...' : 'Enviar Pedido de Verificação'}
                 </button>
               </div>
             </form>
@@ -967,7 +967,7 @@ export const Verification: React.FC<VerificationProps> = ({ user, onOpenAuth, on
                   className="btn-gold py-3.5 px-8 text-xs font-bold flex items-center gap-2"
                 >
                   {submitting ? <Loader2 size={16} className="animate-spin" /> : <ShieldCheck size={16} />}
-                  {submitting ? 'A gravar no Supabase...' : 'Enviar Pedido Institucional'}
+                  {submitting ? 'A gravar no sistema...' : 'Enviar Pedido Institucional'}
                 </button>
               </div>
             </form>

@@ -3,6 +3,7 @@ import { Post } from '../types';
 import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { UserBadge } from './UserBadges';
+import { cldAvatar, cldCover, cldImage } from '../lib/cloudinary';
 
 interface PostCardProps {
   post: Post;
@@ -15,7 +16,12 @@ export const PostCard: React.FC<PostCardProps> = ({ post }) => {
       {post.communities && (
         <div className="h-20 relative overflow-hidden group/cover">
           {post.communities.cover_url ? (
-            <img src={post.communities.cover_url} className="w-full h-full object-cover transition-transform duration-700 group-hover/cover:scale-105" alt="" />
+            <img 
+              src={cldCover(post.communities.cover_url, 600)} 
+              className="w-full h-full object-cover transition-transform duration-700 group-hover/cover:scale-105" 
+              alt="" 
+              loading="lazy"
+            />
           ) : (
             <div className="w-full h-full bg-gradient-to-r from-konecta-navy to-slate-800" />
           )}
@@ -23,7 +29,7 @@ export const PostCard: React.FC<PostCardProps> = ({ post }) => {
           <div className="absolute bottom-2 left-4 flex items-center gap-2">
             <div className="w-7 h-7 rounded-lg bg-white p-0.5 border border-konecta-gold/50 shadow-sm shrink-0">
               {post.communities.avatar_url ? (
-                <img src={post.communities.avatar_url} className="w-full h-full object-cover rounded-md" alt="" />
+                <img src={cldAvatar(post.communities.avatar_url, 28)} className="w-full h-full object-cover rounded-md" alt="" />
               ) : (
                 <div className="w-full h-full bg-konecta-navy rounded-md flex items-center justify-center text-[10px] text-konecta-gold font-black">
                   {post.communities.name.charAt(0)}
@@ -38,9 +44,11 @@ export const PostCard: React.FC<PostCardProps> = ({ post }) => {
       <div className="p-5 sm:p-6">
         <div className="flex items-center mb-4">
           <img 
-            src={post.profiles?.avatar_url || '/placeholder-avatar.png'} 
+            src={cldAvatar(post.profiles?.avatar_url)} 
             alt={post.profiles?.full_name || 'User'} 
-            className="w-10 h-10 rounded-full mr-3 border border-gray-100 shadow-sm" 
+            className="w-10 h-10 rounded-full mr-3 border border-gray-100 shadow-sm bg-gray-50" 
+            loading="lazy"
+            decoding="async"
           />
           <div>
             <div className="flex items-center gap-1.5 flex-wrap">
@@ -56,8 +64,14 @@ export const PostCard: React.FC<PostCardProps> = ({ post }) => {
         <p className="text-gray-700 text-sm leading-relaxed mb-4 whitespace-pre-wrap">{post.content}</p>
         
         {post.image_url && (
-          <div className="rounded-xl overflow-hidden mb-4 border border-gray-50 max-h-96">
-            <img src={post.image_url} className="w-full h-full object-cover" alt="Post media" />
+          <div className="rounded-xl overflow-hidden mb-4 border border-gray-50 max-h-96 bg-gray-50">
+            <img 
+              src={cldImage(post.image_url, { w: 800 })} 
+              className="w-full h-full object-cover" 
+              alt="Post media" 
+              loading="lazy"
+              decoding="async"
+            />
           </div>
         )}
         

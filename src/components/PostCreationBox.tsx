@@ -25,18 +25,16 @@ export const PostCreationBox: React.FC<PostCreationBoxProps> = ({
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (file.size > 10 * 1024 * 1024) {
-      showToast('A imagem deve ter no máximo 10MB.', 'error');
-      return;
-    }
-
     setUploadingImage(true);
     try {
-      const res = await uploadMediaToCloudinary(file);
-      if (res.secure_url) {
-        setMediaUrl(res.secure_url);
-        showToast('Imagem carregada com sucesso.', 'success');
-      }
+      const res = await uploadMediaToCloudinary(file, (p) => {
+        // O progresso real é recebido aqui.
+        // Se quisermos mostrar numa barra, precisamos de estado.
+        // Por agora, usamos um toast de progresso ou só o estado uploading.
+        if (p < 100) console.log(`Progresso: ${p}%`);
+      }, { kind: 'post' });
+      setMediaUrl(res.secure_url);
+      showToast('Imagem carregada com sucesso.', 'success');
     } catch (err: any) {
       console.error('Erro ao carregar imagem para o post:', err);
       showToast(err?.message || 'Falha ao carregar imagem.', 'error');

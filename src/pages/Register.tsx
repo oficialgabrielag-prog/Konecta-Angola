@@ -36,7 +36,7 @@ export const Register: React.FC<RegisterProps> = ({ onSuccess, onNavigateLogin, 
     }
 
     try {
-      console.log('[Auth] Registo oficial no Supabase...');
+      console.log('[Auth] Registo oficial no sistema...');
       const d1Res = await d1Client.auth.register({
         email: cleanEmail,
         password,
@@ -46,7 +46,7 @@ export const Register: React.FC<RegisterProps> = ({ onSuccess, onNavigateLogin, 
       });
 
       if (d1Res.data?.user) {
-        console.log('[Auth] Conta registada no Supabase');
+        console.log('[Auth] Conta registada');
         if (d1Res.data?.session) {
           onSuccess(d1Res.data.user);
           setLoading(false);
@@ -62,13 +62,13 @@ export const Register: React.FC<RegisterProps> = ({ onSuccess, onNavigateLogin, 
         if (d1Res.error.status === 409 || d1Res.error.message?.includes('already registered') || d1Res.error.message?.includes('já está registado')) {
           setError('Este e-mail já está registado. Por favor, tente iniciar sessão.');
         } else {
-          setError(d1Res.error.message || 'Erro ao realizar registo no Supabase.');
+          setError(d1Res.error.message || 'Erro ao realizar registo no servidor.');
         }
       } else {
         setError('Não foi possível concluir o registo. Tente novamente.');
       }
     } catch (err: any) {
-      setError(err?.message || 'Erro de conexão com o Supabase. Tente novamente.');
+      setError(err?.message || 'Erro de conexão com o sistema. Tente novamente.');
     } finally {
       setLoading(false);
     }

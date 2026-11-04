@@ -336,6 +336,7 @@ export interface Reel {
   saves_count?: number;
   is_liked?: boolean;
   is_saved?: boolean;
+  allow_shares?: boolean;
   created_at: string;
   profiles?: Profile;
   music_info?: {

@@ -27,10 +27,10 @@ export const Footer: React.FC<{ onNavigateTab?: (tab: string) => void }> = ({ on
               Selo de Verificação Oficial
             </button>
             <button onClick={() => onNavigateTab && onNavigateTab('policy-center')} className="text-left hover:text-konecta-gold transition-colors">
-              Centro de Políticas & Privacidade
+              Centro de Termos & Políticas
             </button>
-            <button onClick={() => onNavigateTab && onNavigateTab('privacy-policy')} className="text-left hover:text-konecta-gold transition-colors font-bold text-konecta-gold">
-              Política de Privacidade (Tela Única)
+            <button onClick={() => onNavigateTab && onNavigateTab('help')} className="text-left hover:text-konecta-gold transition-colors font-bold text-konecta-gold">
+              Ajuda e Suporte (976 848 444)
             </button>
             <button onClick={() => onNavigateTab && onNavigateTab('settings')} className="text-left hover:text-konecta-gold transition-colors">
               Configurações da Conta
@@ -39,6 +39,12 @@ export const Footer: React.FC<{ onNavigateTab?: (tab: string) => void }> = ({ on
               Explorar & Descoberta Global
             </button>
           </nav>
+          <div className="mt-4 pt-3 border-t border-white/10 text-[11px]">
+            <span className="text-gray-400 block">Suporte WhatsApp:</span>
+            <a href="https://wa.me/244976848444" target="_blank" rel="noopener noreferrer" className="font-mono font-bold text-konecta-gold hover:underline">
+              976 848 444
+            </a>
+          </div>
         </div>
 
         <div>

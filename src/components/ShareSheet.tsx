@@ -1,9 +1,10 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useT } from '../context/LanguageContext';
 import { motion, AnimatePresence } from 'motion/react';
 import { useUI } from '../context/UIContext';
 import { supabase } from '../lib/supabaseClient';
-import { Copy, Share2, MessageSquare, Users, X } from 'lucide-react';
+import { Copy, Share2, MessageSquare, Users, X, Download } from 'lucide-react';
+import { cldReelDownload } from '../lib/cloudinary';
 
 export const ShareSheet = ({ 
   isOpen, 
@@ -12,7 +13,9 @@ export const ShareSheet = ({
   targetType, 
   title, 
   authorName, 
-  thumbnail 
+  thumbnail,
+  videoUrl,
+  allowShares = true
 }: { 
   isOpen: boolean; 
   onClose: () => void; 
@@ -21,9 +24,12 @@ export const ShareSheet = ({
   title: string; 
   authorName: string; 
   thumbnail?: string; 
+  videoUrl?: string;
+  allowShares?: boolean;
 }) => {
   const { t } = useT();
   const { showToast } = useUI();
+  const [downloading, setDownloading] = useState(false);
 
   const getDirectUrl = () => {
     switch (targetType) {
@@ -56,6 +62,51 @@ export const ShareSheet = ({
     } catch {
       showToast('Não foi possível copiar o link.', 'error');
     }
+    onClose();
+  };
+
+  const handleDownloadVideo = async () => {
+    if (!videoUrl || downloading) return;
+    setDownloading(true);
+    showToast('A preparar o vídeo com marca de água...', 'info');
+
+    // Remove @ from authorName if it's there
+    const cleanAuthor = authorName.replace(/^@/, '');
+    const downloadUrl = cldReelDownload(videoUrl, cleanAuthor, `konecta-reel-${targetId}`);
+
+    // Wait logic: Cloudinary might take a few seconds to generate the watermarked version on first request
+    let ready = false;
+    let attempts = 0;
+    const maxAttempts = 6;
+
+    while (!ready && attempts < maxAttempts) {
+      try {
+        const response = await fetch(downloadUrl, { method: 'HEAD' });
+        if (response.ok) {
+          ready = true;
+        } else {
+          attempts++;
+          await new Promise(r => setTimeout(r, 2000));
+        }
+      } catch {
+        attempts++;
+        await new Promise(r => setTimeout(r, 2000));
+      }
+    }
+
+    if (ready) {
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.setAttribute('download', '');
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      showToast('Transferência iniciada!', 'success');
+    } else {
+      showToast('O processamento demorou muito. Tenta novamente em instantes.', 'error');
+    }
+    
+    setDownloading(false);
     onClose();
   };
 
@@ -165,6 +216,19 @@ export const ShareSheet = ({
                 {getDirectUrl().replace(/^https?:\/\//, '')}
               </span>
             </button>
+
+            {targetType === 'reel' && videoUrl && allowShares && (
+              <button 
+                onClick={handleDownloadVideo}
+                disabled={downloading}
+                className="flex items-center gap-3.5 w-full text-left p-3.5 hover:bg-gray-50 border border-gray-100 rounded-2xl transition-all font-semibold text-xs text-konecta-navy group disabled:opacity-50"
+              >
+                <div className="w-9 h-9 rounded-xl bg-konecta-gold/10 flex items-center justify-center group-hover:bg-konecta-gold group-hover:text-konecta-navy transition-colors text-konecta-gold">
+                  <Download size={16} className={downloading ? 'animate-bounce' : ''} />
+                </div>
+                <span className="flex-1">{downloading ? 'A preparar vídeo...' : 'Guardar vídeo'}</span>
+              </button>
+            )}
 
             <button 
               onClick={handleShareToChat}

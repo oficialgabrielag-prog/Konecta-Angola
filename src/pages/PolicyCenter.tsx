@@ -1,331 +1,391 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
+import { useUI } from '../context/UIContext';
 
 interface PolicyCenterProps {
   onNavigateTab: (tab: string) => void;
+  initialDocId?: string | null;
 }
 
-export const PolicyCenter: React.FC<PolicyCenterProps> = ({ onNavigateTab }) => {
-  const [activeDoc, setActiveDoc] = useState<string>('terms');
+export const PolicyCenter: React.FC<PolicyCenterProps> = ({ onNavigateTab, initialDocId }) => {
+  const { showToast } = useUI();
+  const [selectedDocId, setSelectedDocId] = useState<string | null>(initialDocId || null);
   const [searchDoc, setSearchDoc] = useState('');
 
+  const supportPhone = '976 848 444';
+  const whatsappUrl = 'https://wa.me/244976848444';
+
   const documents = [
-    { id: 'terms', title: '1. Termos de Utilização', icon: 'gavel', category: 'Geral' },
-    { id: 'privacy', title: '2. Política de Privacidade', icon: 'lock', category: 'Dados' },
-    { id: 'cookies', title: '3. Política de Cookies e Tecnologias', icon: 'cookie', category: 'Dados' },
-    { id: 'guidelines', title: '4. Diretrizes da Comunidade', icon: 'groups', category: 'Conduta' },
-    { id: 'messaging', title: '5. Política de Mensagens e Chats', icon: 'chat', category: 'Conduta' },
-    { id: 'communities', title: '6. Política de Grupos e Comunidades', icon: 'forum', category: 'Conduta' },
-    { id: 'content', title: '7. Política de Publicações e Conteúdos', icon: 'article', category: 'Conteúdo' },
-    { id: 'minors', title: '8. Política de Segurança de Menores', icon: 'child_care', category: 'Segurança' },
-    { id: 'moderation', title: '9. Política de Denúncias e Moderação', icon: 'verified_user', category: 'Segurança' },
-    { id: 'blocks', title: '10. Política de Bloqueios e Restrições', icon: 'block', category: 'Segurança' },
-    { id: 'copyright', title: '11. Direitos de Autor e Propriedade Intelectual', icon: 'copyright', category: 'Legal' },
-    { id: 'events', title: '12. Política de Eventos e Workshops', icon: 'event', category: 'Serviços' },
-    { id: 'organizations', title: '13. Organizações e Páginas Institucionais', icon: 'domain', category: 'Serviços' },
-    { id: 'library', title: '14. Escritores, Livros e Biblioteca Digital', icon: 'menu_book', category: 'Serviços' },
-    { id: 'accounts', title: '15. Contas, Segurança e Autenticação', icon: 'badge', category: 'Segurança' },
-    { id: 'data_retention', title: '16. Retenção, Eliminação e Portabilidade', icon: 'delete_sweep', category: 'Dados' },
-    { id: 'advertising', title: '17. Publicidade e Conteúdo Patrocinado', icon: 'campaign', category: 'Comercial' },
-    { id: 'suspension', title: '18. Suspensão, Recursos e Encerramento', icon: 'report_problem', category: 'Legal' },
-    { id: 'ai_policy', title: '19. Política de Inteligência Artificial', icon: 'smart_toy', category: 'Tecnologia' },
-    { id: 'transparency', title: '20. Transparência e Responsabilidade', icon: 'policy', category: 'Geral' },
-    { id: 'ecosystem', title: '21. Ecossistema KONECTA (CuneneVagas & VDN)', icon: 'hub', category: 'Ecossistema' }
+    {
+      id: 'termos-de-utilizacao',
+      number: '01',
+      title: 'Termos de Utilização',
+      icon: 'gavel',
+      category: 'Geral',
+      summary: 'Condições gerais, direitos e obrigações dos utilizadores da rede social KONECTA Angola.'
+    },
+    {
+      id: 'privacidade',
+      number: '02',
+      title: 'Política de Privacidade',
+      icon: 'lock',
+      category: 'Dados',
+      summary: 'Como recolhemos, tratamos e protegemos os dados pessoais dos cidadãos angolanos na plataforma.'
+    },
+    {
+      id: 'cookies',
+      number: '03',
+      title: 'Política de Cookies',
+      icon: 'cookie',
+      category: 'Dados',
+      summary: 'Utilização de cookies e tecnologias de armazenamento local para otimizar a experiência de navegação.'
+    },
+    {
+      id: 'regras-da-comunidade',
+      number: '04',
+      title: 'Regras da Comunidade',
+      icon: 'groups',
+      category: 'Conduta',
+      summary: 'Padrões de respeito mútuo, urbanidade e civilidade exigidos em todas as interações da comunidade.'
+    },
+    {
+      id: 'mensagens',
+      number: '05',
+      title: 'Política de Mensagens',
+      icon: 'chat',
+      category: 'Conduta',
+      summary: 'Normas de segurança, privacidade nas conversas privadas e prevenção de spam ou assédio.'
+    },
+    {
+      id: 'seguranca',
+      number: '06',
+      title: 'Política de Segurança',
+      icon: 'security',
+      category: 'Segurança',
+      summary: 'Mecanismos de encriptação, proteção de credenciais e boas práticas para salvaguardar a conta.'
+    },
+    {
+      id: 'conteudos',
+      number: '07',
+      title: 'Política de Conteúdos e Publicações',
+      icon: 'article',
+      category: 'Conteúdo',
+      summary: 'Diretrizes sobre o que pode ser partilhado no feed, ideias, projetos e reels na rede.'
+    },
+    {
+      id: 'protecao-de-menores',
+      number: '08',
+      title: 'Protecção de Menores',
+      icon: 'child_care',
+      category: 'Segurança',
+      summary: 'Proteções acrescidas, restrições e salvaguardas para utilizadores menores de idade.'
+    },
+    {
+      id: 'direitos-de-autor',
+      number: '09',
+      title: 'Direitos de Autor',
+      icon: 'copyright',
+      category: 'Legal',
+      summary: 'Proteção da propriedade intelectual, obras literárias, imagens, vídeos e criações dos membros.'
+    },
+    {
+      id: 'denuncias',
+      number: '10',
+      title: 'Denúncias e Recursos',
+      icon: 'verified_user',
+      category: 'Segurança',
+      summary: 'Como reportar conteúdos violadores e submeter recursos ou contestações de moderação.'
+    },
+    {
+      id: 'eliminar-conta',
+      number: '11',
+      title: 'Eliminação de Conta',
+      icon: 'delete_sweep',
+      category: 'Dados',
+      summary: 'Procedimentos para encerrar permanentemente a conta e remover dados associados.'
+    }
   ];
 
-  const filteredDocs = documents.filter(d => 
+  useEffect(() => {
+    if (initialDocId) {
+      setSelectedDocId(initialDocId);
+    }
+  }, [initialDocId]);
+
+  const filteredDocs = documents.filter(d =>
     d.title.toLowerCase().includes(searchDoc.toLowerCase()) ||
+    d.summary.toLowerCase().includes(searchDoc.toLowerCase()) ||
     d.category.toLowerCase().includes(searchDoc.toLowerCase())
   );
 
+  const handleShareDoc = (title: string) => {
+    if (navigator.share) {
+      navigator.share({
+        title: `${title} — KONECTA Angola`,
+        url: window.location.href
+      }).catch(() => {});
+    } else {
+      navigator.clipboard.writeText(window.location.href);
+      showToast('Link do documento copiado!', 'success');
+    }
+  };
+
+  const copyLink = () => {
+    navigator.clipboard.writeText(window.location.href);
+    showToast('Link copiado para a área de transferência!', 'success');
+  };
+
+  const activeDocData = documents.find(d => d.id === selectedDocId);
+
   return (
-    <div className="max-w-7xl mx-auto px-6 py-10 lg:py-16">
-      
-      {/* Header */}
-      <header className="mb-10 text-center max-w-3xl mx-auto">
-        <span className="text-xs font-black tracking-widest text-konecta-gold uppercase bg-konecta-gold/10 px-3 py-1.5 rounded-full border border-konecta-gold/20 inline-block mb-3">
-          Transparência & Conformidade Legal
-        </span>
-        <h1 className="text-3xl sm:text-4xl font-extrabold text-konecta-navy tracking-tight">
-          Centro de Políticas, Segurança & Normas
-        </h1>
-        <p className="text-gray-500 mt-3 text-sm leading-relaxed">
-          Consulta os termos jurídicos, diretrizes de segurança, proteção de dados e funcionamento oficial do ecossistema KONECTA Angola.
-        </p>
-
-        {/* Search */}
-        <div className="mt-6 relative max-w-md mx-auto">
-          <span className="material-symbols-outlined absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400">search</span>
-          <input
-            type="text"
-            value={searchDoc}
-            onChange={(e) => setSearchDoc(e.target.value)}
-            placeholder="Pesquisar documento, termo ou política..."
-            className="w-full bg-white border border-gray-200 rounded-2xl pl-11 pr-4 py-3 text-xs shadow-xs focus:outline-none focus:border-konecta-gold"
-          />
-        </div>
-      </header>
-
-      {/* Main Layout */}
-      <div className="flex flex-col lg:flex-row gap-8 items-start">
+    <div className="min-h-screen bg-konecta-bg py-8 px-4 sm:px-6 lg:px-12">
+      <div className="max-w-6xl mx-auto space-y-8">
         
-        {/* Navigation Sidebar */}
-        <div className="w-full lg:w-80 bg-white rounded-3xl p-4 border border-gray-100 shadow-sm sticky top-24 shrink-0">
-          <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider px-3 mb-3">Índice de Documentos</h3>
-          <div className="space-y-1 max-h-[65vh] overflow-y-auto pr-1 scrollbar-thin">
-            {filteredDocs.map((doc) => {
-              const isActive = activeDoc === doc.id;
-              return (
-                <button
-                  key={doc.id}
-                  onClick={() => {
-                    setActiveDoc(doc.id);
-                    window.scrollTo({ top: 200, behavior: 'smooth' });
-                  }}
-                  className={`w-full flex items-center gap-3 p-3 rounded-xl text-left transition-all text-xs font-semibold ${
-                    isActive
-                      ? 'bg-konecta-navy text-white shadow-sm font-bold'
-                      : 'text-gray-600 hover:bg-gray-50'
-                  }`}
-                >
-                  <span className={`material-symbols-outlined text-[18px] ${isActive ? 'text-konecta-gold' : 'text-gray-400'}`}>
-                    {doc.icon}
-                  </span>
-                  <span className="truncate">{doc.title}</span>
-                </button>
-              );
-            })}
+        {/* Top bar with back/hub actions */}
+        <div className="flex items-center justify-between border-b border-gray-100 pb-6">
+          <div className="flex items-center gap-3">
+            {selectedDocId ? (
+              <button
+                onClick={() => setSelectedDocId(null)}
+                className="inline-flex items-center gap-2 text-xs font-bold text-konecta-navy hover:text-konecta-gold transition-colors bg-white px-4 py-2.5 rounded-xl border border-gray-200 shadow-xs"
+              >
+                <span className="material-symbols-outlined text-[18px]">arrow_back</span>
+                Voltar ao Centro de Políticas
+              </button>
+            ) : (
+              <button
+                onClick={() => onNavigateTab('home')}
+                className="inline-flex items-center gap-2 text-xs font-bold text-konecta-navy hover:text-konecta-gold transition-colors bg-white px-4 py-2.5 rounded-xl border border-gray-200 shadow-xs"
+              >
+                <span className="material-symbols-outlined text-[18px]">arrow_back</span>
+                Voltar ao Início
+              </button>
+            )}
           </div>
+
+          <button
+            onClick={() => onNavigateTab('help')}
+            className="text-xs font-bold text-konecta-navy bg-konecta-gold hover:bg-yellow-400 px-4 py-2.5 rounded-xl transition-all shadow-xs flex items-center gap-1.5"
+          >
+            <span className="material-symbols-outlined text-sm">support_agent</span>
+            Ajuda e Suporte (976 848 444)
+          </button>
         </div>
 
-        {/* Document Content View */}
-        <div className="flex-1 bg-white rounded-3xl p-6 sm:p-10 border border-gray-100 shadow-sm space-y-8 leading-relaxed text-gray-700 text-sm">
-          
-          {activeDoc === 'terms' && (
-            <article className="space-y-6">
-              <div className="border-b border-gray-100 pb-4">
-                <span className="text-xs font-bold text-konecta-gold uppercase">Documento Oficial N.º 01</span>
-                <h2 className="text-2xl font-extrabold text-konecta-navy mt-1">Termos de Utilização do KONECTA Angola</h2>
-                <div className="flex items-center gap-4 text-xs text-gray-400 mt-2">
-                  <span>Data de Entrada em Vigor: 01 de Novembro de 2026</span>
-                  <span>•</span>
-                  <span>Última Atualização: 01 de Novembro de 2026</span>
+        {/* HUB VIEW */}
+        {!selectedDocId && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-8">
+            <div className="text-center max-w-3xl mx-auto space-y-3">
+              <span className="text-[10px] font-black uppercase tracking-[0.25em] text-konecta-gold bg-konecta-gold/10 px-3.5 py-1.5 rounded-full border border-konecta-gold/20 inline-block">
+                Transparência, Direitos & Normas
+              </span>
+              <h1 className="text-3xl sm:text-5xl font-extrabold text-konecta-navy tracking-tight">
+                Centro de Termos e Políticas
+              </h1>
+              <p className="text-gray-500 text-xs sm:text-sm leading-relaxed">
+                Consulte todos os regulamentos oficiais, políticas de privacidade, regras de comunidade e direitos aplicáveis na rede KONECTA Angola.
+              </p>
+
+              {/* Search */}
+              <div className="pt-2 relative max-w-xl mx-auto">
+                <span className="material-symbols-outlined absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400">search</span>
+                <input
+                  type="text"
+                  value={searchDoc}
+                  onChange={(e) => setSearchDoc(e.target.value)}
+                  placeholder="Pesquisar documento, termo ou política..."
+                  className="w-full bg-white border border-gray-200 rounded-2xl pl-11 pr-4 py-3 text-xs shadow-xs focus:outline-none focus:border-konecta-gold"
+                />
+              </div>
+            </div>
+
+            {/* Documents Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+              {filteredDocs.map((doc) => (
+                <motion.div
+                  key={doc.id}
+                  whileHover={{ scale: 1.01 }}
+                  whileTap={{ scale: 0.99 }}
+                  onClick={() => {
+                    setSelectedDocId(doc.id);
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                  }}
+                  className="bg-white rounded-3xl p-6 border border-gray-200/80 shadow-xs hover:border-konecta-gold hover:shadow-md transition-all cursor-pointer flex flex-col justify-between space-y-4 group"
+                >
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-black uppercase text-konecta-gold bg-konecta-navy px-2.5 py-1 rounded-md">
+                        N.º {doc.number}
+                      </span>
+                      <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
+                        {doc.category}
+                      </span>
+                    </div>
+
+                    <h3 className="text-base font-extrabold text-konecta-navy group-hover:text-konecta-gold transition-colors">
+                      {doc.title}
+                    </h3>
+                    <p className="text-xs text-gray-500 line-clamp-2 leading-relaxed">
+                      {doc.summary}
+                    </p>
+                  </div>
+
+                  <div className="pt-3 border-t border-gray-100 flex items-center justify-between text-xs font-bold text-konecta-navy">
+                    <span>Ler documento completo</span>
+                    <span className="material-symbols-outlined text-sm group-hover:translate-x-1 transition-transform">arrow_forward</span>
+                  </div>
+                </motion.div>
+              ))}
+            </div>
+
+            {/* Support footer card */}
+            <div className="bg-konecta-navy text-white rounded-3xl p-8 flex flex-col sm:flex-row items-center justify-between gap-6 shadow-xl mt-12">
+              <div className="space-y-1 text-center sm:text-left">
+                <span className="text-[10px] font-black text-konecta-gold uppercase tracking-widest">Dúvidas Jurídicas ou de Suporte?</span>
+                <h3 className="text-xl font-bold">Contacte a nossa assistência oficial em Angola</h3>
+                <p className="text-xs text-gray-300">Atendimento disponível via WhatsApp: <strong className="text-konecta-gold">{supportPhone}</strong></p>
+              </div>
+              <a
+                href={whatsappUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="btn-gold text-xs py-3.5 px-6 whitespace-nowrap shadow-lg font-bold"
+              >
+                Falar com o Suporte ↗
+              </a>
+            </div>
+          </motion.div>
+        )}
+
+        {/* INDIVIDUAL DOCUMENT FULL PAGE VIEW */}
+        {selectedDocId && activeDocData && (
+          <motion.div 
+            initial={{ opacity: 0, y: 15 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-white rounded-3xl p-6 sm:p-14 border border-gray-200 shadow-sm space-y-10"
+          >
+            {/* Header */}
+            <div className="border-b border-gray-100 pb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-xs font-black uppercase text-konecta-gold bg-konecta-navy px-3 py-1 rounded-full">
+                    Documento Oficial N.º {activeDocData.number}
+                  </span>
+                  <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">
+                    · {activeDocData.category}
+                  </span>
                 </div>
+                <h1 className="text-2xl sm:text-4xl font-extrabold text-konecta-navy tracking-tight">
+                  {activeDocData.title}
+                </h1>
+                <p className="text-xs text-gray-400 mt-2">
+                  Data de Entrada em Vigor: 01 de Novembro de 2026 · Última Atualização: 01 de Novembro de 2026
+                </p>
               </div>
 
+              {/* Actions */}
+              <div className="flex items-center gap-2 self-start sm:self-auto">
+                <button
+                  onClick={() => handleShareDoc(activeDocData.title)}
+                  className="bg-gray-100 hover:bg-gray-200 text-konecta-navy text-xs font-bold py-2.5 px-4 rounded-xl transition-all flex items-center gap-1.5"
+                >
+                  <span className="material-symbols-outlined text-sm">share</span>
+                  Partilhar
+                </button>
+                <button
+                  onClick={copyLink}
+                  className="bg-gray-100 hover:bg-gray-200 text-konecta-navy text-xs font-bold py-2.5 px-4 rounded-xl transition-all flex items-center gap-1.5"
+                >
+                  <span className="material-symbols-outlined text-sm">content_copy</span>
+                  Copiar Link
+                </button>
+              </div>
+            </div>
+
+            {/* Document Body Content */}
+            <div className="space-y-8 text-sm text-gray-700 leading-relaxed max-w-4xl">
+              
               <section className="space-y-3">
-                <h3 className="text-base font-bold text-konecta-navy">Artigo 1.º — Âmbito e Objeto</h3>
+                <h2 className="text-lg font-bold text-konecta-navy">Capítulo 1.º — Âmbito, Objeto e Enquadramento</h2>
                 <p>
-                  O presente regulamento estabelece as condições jurídicas e operacionais para o acesso e utilização da rede social multifuncional KONECTA Angola, desenvolvida para promover a inovação, colaboração comunitária, projetos cívicos, comunicação interpessoal, partilha de conhecimento e interação digital em Angola.
+                  O presente documento estabelece as diretrizes normativas oficiais referentes a <strong>{activeDocData.title.toLowerCase()}</strong> no ecossistema da rede social KONECTA Angola. A utilização dos serviços da plataforma pressupõe a leitura, compreensão e aceitação integral dos padrões aqui definidos.
+                </p>
+                <p>
+                  Este regulamento fundamenta-se nos princípios constitucionais e legais em vigor na República de Angola, assegurando a proteção dos direitos fundamentais, a liberdade responsável de expressão, a segurança digital e a ética comunitária.
                 </p>
               </section>
 
               <section className="space-y-3">
-                <h3 className="text-base font-bold text-konecta-navy">Artigo 2.º — Elegibilidade e Capacidade Jurídica</h3>
+                <h2 className="text-lg font-bold text-konecta-navy">Capítulo 2.º — Direitos e Deveres dos Membros</h2>
                 <p>
-                  1. O registo na plataforma é permitido a indivíduos com idade igual ou superior a 13 anos. Utilizadores entre os 13 e os 17 anos estão sujeitos às restrições acrescidas de proteção de menores estabelecidas no artigo 8.º das presentes políticas.
+                  1. Todos os utilizadores registados na rede KONECTA gozam de igualdade de tratamento perante as regras de moderação, tendo o direito de usufruir de um ambiente digital seguro, construtivo e livre de assédio.
                 </p>
                 <p>
-                  2. Ao criar uma conta, o utilizador garante prestar informações verdadeiras, exatas e atualizadas referentes à sua identidade e localização em Angola.
-                </p>
-              </section>
-
-              <section className="space-y-3">
-                <h3 className="text-base font-bold text-konecta-navy">Artigo 3.º — Responsabilidade do Utilizador</h3>
-                <p>
-                  O utilizador é o único e exclusivo responsável por todas as atividades realizadas através da sua conta, assim como pela veracidade, legalidade e adequação de todas as publicações, imagens, anexos, mensagens ou documentos partilhados na rede.
+                  2. Constitui dever imperativo de cada membro abster-se de publicar conteúdos falsos, difamatórios, ofensivos, de ódio étnico ou regional, bem como respeitar a privacidade e a integridade de terceiros.
                 </p>
               </section>
 
               <section className="space-y-3">
-                <h3 className="text-base font-bold text-konecta-navy">Artigo 4.º — Condutas Proibidas</h3>
-                <ul className="list-disc pl-5 space-y-2">
-                  <li>Discurso de ódio, discriminação étnica, racial, religiosa ou de género.</li>
-                  <li>Incitamento à violência, difamação ou assédio sistemático contra qualquer cidadão.</li>
-                  <li>Partilha de conteúdos pornograficos, explicitamente sexuais ou de exploração infantil.</li>
-                  <li>Publicação deliberada de desinformação ("fake news") com intuito de criar alarme social.</li>
-                  <li>Tentativas de contornar mecanismos de autenticação ou exploração não autorizada de dados.</li>
+                <h2 className="text-lg font-bold text-konecta-navy">Capítulo 3.º — Normas Operacionais Específicas</h2>
+                <p>
+                  Relativamente a <strong>{activeDocData.title.toLowerCase()}</strong>, o KONECTA Angola aplica rigorosamente os seguintes critérios técnicos e procedimentais:
+                </p>
+                <ul className="list-disc pl-5 space-y-2 text-xs text-gray-600">
+                  <li>Monitorização contínua de conformidade através de ferramentas automatizadas de moderação e análise de denúncias.</li>
+                  <li>Possibilidade de aplicação de medidas cautelares em caso de infração grave, incluindo advertência, suspensão temporária ou encerramento definitivo da conta.</li>
+                  <li>Salvaguarda do direito de recurso por parte do utilizador afetado, através do contacto direto com a assistência oficial.</li>
                 </ul>
               </section>
-            </article>
-          )}
-
-          {activeDoc === 'privacy' && (
-            <article className="space-y-6">
-              <div className="border-b border-gray-100 pb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <div>
-                  <span className="text-xs font-bold text-konecta-gold uppercase">Documento Oficial N.º 02</span>
-                  <h2 className="text-2xl font-extrabold text-konecta-navy mt-1">Política de Privacidade e Proteção de Dados Pessoais</h2>
-                  <div className="flex items-center gap-4 text-xs text-gray-400 mt-2">
-                    <span>Vigor: 01/11/2026</span>
-                    <span>•</span>
-                    <span>Última Atualização: 01/11/2026</span>
-                  </div>
-                </div>
-                <button
-                  onClick={() => onNavigateTab('privacy-policy')}
-                  className="btn-gold text-xs py-2.5 px-5 whitespace-nowrap shadow-xs self-start sm:self-auto"
-                >
-                  Abrir em Tela Única
-                </button>
-              </div>
 
               <section className="space-y-3">
-                <h3 className="text-base font-bold text-konecta-navy">1. Recolha de Dados Legítima</h3>
+                <h2 className="text-lg font-bold text-konecta-navy">Capítulo 4.º — Assistência e Suporte Oficial</h2>
                 <p>
-                  O KONECTA recolhe exclusivamente os dados necessários ao fornecimento dos serviços: nome de exibição, endereço de correio eletrónico, nome de utilizador, província, município e conteúdos submetidos voluntariamente.
+                  Em caso de dúvidas na interpretação destas normas ou para relatar qualquer irregularidade, os cidadãos e membros podem contactar o suporte oficial da plataforma pelo número e WhatsApp: <strong>{supportPhone}</strong> ({whatsappUrl}).
                 </p>
               </section>
 
-              <section className="space-y-3">
-                <h3 className="text-base font-bold text-konecta-navy">2. Níveis Granulares de Visibilidade</h3>
-                <p>
-                  Cada utilizador dispõe de controlos reais para definir quem pode aceder às suas publicações (Todos, Seguidores, Família, Comunidades específicas, Pessoas específicas ou Apenas Eu) e ao seu perfil público.
-                </p>
-              </section>
+            </div>
 
-              <section className="space-y-3">
-                <h3 className="text-base font-bold text-konecta-navy">3. Não Partilha Sem Consentimento</h3>
-                <p>
-                  O KONECTA não vende nem cede dados pessoais a terceiros para fins comerciais. O armazenamento e transmissão são efetuados mediante protocolos encriptados no Supabase.
-                </p>
-              </section>
-            </article>
-          )}
-
-          {activeDoc === 'minors' && (
-            <article className="space-y-6">
-              <div className="border-b border-gray-100 pb-4">
-                <span className="text-xs font-bold text-konecta-gold uppercase">Documento Oficial N.º 08</span>
-                <h2 className="text-2xl font-extrabold text-konecta-navy mt-1">Política de Segurança e Proteção de Menores</h2>
-                <div className="flex items-center gap-4 text-xs text-gray-400 mt-2">
-                  <span>Vigor: 01/11/2026</span>
-                </div>
-              </div>
-
-              <section className="space-y-3">
-                <h3 className="text-base font-bold text-konecta-navy">1. Proteções Automáticas Acrescidas</h3>
-                <p>
-                  Contas pertencentes a menores de idade possuem por padrão restrições de visibilidade mais estritas, impedindo a aproximação e contacto direto por utilizadores adultos não ligados à rede de amigos aprovados.
-                </p>
-              </section>
-
-              <section className="space-y-3">
-                <h3 className="text-base font-bold text-konecta-navy">2. Proibição de Partilha de Localização Precisa</h3>
-                <p>
-                  Não é permitida a exposição pública de dados de localização geográfica em tempo real ou endereços residenciais de menores de idade.
-                </p>
-              </section>
-            </article>
-          )}
-
-          {activeDoc === 'ecosystem' && (
-            <article className="space-y-8">
-              <div className="border-b border-gray-100 pb-4">
-                <span className="text-xs font-bold text-konecta-gold uppercase">Apresentação Estruturada</span>
-                <h2 className="text-2xl font-extrabold text-konecta-navy mt-1">O Ecossistema Digital KONECTA Angola</h2>
-                <p className="text-gray-500 text-xs mt-1">
-                  Visão geral das plataformas interligadas que compõem o ecossistema digital.
-                </p>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                
-                {/* Konecta */}
-                <div className="p-6 rounded-2xl bg-konecta-navy text-white space-y-3 shadow-md">
-                  <div className="w-10 h-10 rounded-xl bg-konecta-gold text-konecta-navy font-black flex items-center justify-center text-lg">
-                    K
-                  </div>
-                  <h3 className="font-extrabold text-base text-konecta-gold">KONECTA ANGOLA</h3>
-                  <p className="text-xs text-gray-200 leading-relaxed">
-                    Grande rede social multifuncional para projetos, ideias, comunidades, eventos, organizações, biblioteca digital e mensagens em tempo real.
-                  </p>
-                </div>
-
-                {/* CuneneVagas */}
-                <div className="p-6 rounded-2xl bg-white border border-gray-200 space-y-3 shadow-xs">
-                  <div className="w-10 h-10 rounded-xl bg-emerald-500 text-white font-black flex items-center justify-center text-lg">
-                    C
-                  </div>
-                  <h3 className="font-extrabold text-base text-gray-900">CuneneVagas</h3>
-                  <p className="text-xs text-gray-600 leading-relaxed">
-                    Plataforma especializada do ecossistema focada em ofertas de emprego, lojas, produtos, marketplace e oportunidades económicas.
-                  </p>
-                  <a
-                    href="https://cunenevagas.online"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-600 hover:underline pt-2"
+            {/* Internal Links to Other Documents */}
+            <div className="pt-8 border-t border-gray-100 space-y-4">
+              <h4 className="font-extrabold text-xs uppercase tracking-wider text-konecta-navy">Outros Documentos do Centro de Políticas:</h4>
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                {documents.filter(d => d.id !== selectedDocId).slice(0, 6).map((doc) => (
+                  <button
+                    key={doc.id}
+                    onClick={() => {
+                      setSelectedDocId(doc.id);
+                      window.scrollTo({ top: 0, behavior: 'smooth' });
+                    }}
+                    className="p-3 bg-gray-50 hover:bg-gray-100 rounded-xl text-left transition-colors border border-gray-100 flex items-center justify-between text-xs font-bold text-konecta-navy"
                   >
-                    Visitar cunenevagas.online
-                    <span className="material-symbols-outlined text-sm">open_in_new</span>
-                  </a>
-                </div>
-
-                {/* VDN */}
-                <div className="p-6 rounded-2xl bg-white border border-gray-200 space-y-3 shadow-xs">
-                  <div className="w-10 h-10 rounded-xl bg-rose-500 text-white font-black flex items-center justify-center text-lg">
-                    V
-                  </div>
-                  <h3 className="font-extrabold text-base text-gray-900">VDN — Vai Dar Namoro</h3>
-                  <p className="text-xs text-gray-600 leading-relaxed">
-                    Plataforma do ecossistema voltada para interação social, encontros, relacionamentos interpessoais e descoberta de novas conexões.
-                  </p>
-                  <a
-                    href="https://freevdn.netlify.app"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 text-xs font-bold text-rose-600 hover:underline pt-2"
-                  >
-                    Visitar freevdn.netlify.app
-                    <span className="material-symbols-outlined text-sm">open_in_new</span>
-                  </a>
-                </div>
-
+                    <span className="truncate">{doc.title}</span>
+                    <span className="material-symbols-outlined text-xs text-konecta-gold">chevron_right</span>
+                  </button>
+                ))}
               </div>
-            </article>
-          )}
+            </div>
 
-          {/* Generic fallback content for any other selected document */}
-          {!['terms', 'privacy', 'minors', 'ecosystem'].includes(activeDoc) && (
-            <article className="space-y-6">
-              <div className="border-b border-gray-100 pb-4">
-                <span className="text-xs font-bold text-konecta-gold uppercase">Regulamento KONECTA</span>
-                <h2 className="text-2xl font-extrabold text-konecta-navy mt-1">
-                  {documents.find(d => d.id === activeDoc)?.title}
-                </h2>
-                <p className="text-xs text-gray-400 mt-1">
-                  Entrada em vigor: 01 de Novembro de 2026 | Aplicável em todo o território de Angola
-                </p>
-              </div>
+            {/* Footer Navigation */}
+            <div className="pt-6 border-t border-gray-100 flex justify-between items-center">
+              <button
+                onClick={() => setSelectedDocId(null)}
+                className="btn-secondary text-xs py-3 px-6"
+              >
+                ← Voltar à Lista de Políticas
+              </button>
+              <button
+                onClick={() => onNavigateTab('home')}
+                className="btn-primary text-xs py-3 px-6"
+              >
+                Ir para o Início
+              </button>
+            </div>
 
-              <section className="space-y-3">
-                <h3 className="text-base font-bold text-konecta-navy">1. Disposições Gerais</h3>
-                <p>
-                  O presente regulamento define os padrões legais, de conduta e de segurança aplicáveis a esta vertente da rede social KONECTA Angola, alinhado às diretrizes de privacidade e proteção de dados em vigor no país.
-                </p>
-              </section>
-
-              <section className="space-y-3">
-                <h3 className="text-base font-bold text-konecta-navy">2. Responsabilidades dos Membros</h3>
-                <p>
-                  Todos os membros concordam em agir com transparência, urbanidade e respeito mútuo, abstendo-se de condutas abusivas, uso não autorizado de propriedade intelectual ou violação de privacidade de terceiros.
-                </p>
-              </section>
-
-              <section className="space-y-3">
-                <h3 className="text-base font-bold text-konecta-navy">3. Denúncias e Moderação</h3>
-                <p>
-                  Qualquer violação identificada pode ser reportada através dos botões de denúncia existentes em cada publicação, perfil ou mensagem. A equipa de moderação procederá à análise rigorosa das evidências.
-                </p>
-              </section>
-            </article>
-          )}
-
-        </div>
+          </motion.div>
+        )}
 
       </div>
-
     </div>
   );
 };

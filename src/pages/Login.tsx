@@ -28,11 +28,11 @@ export const Login: React.FC<LoginProps> = ({ onSuccess, onNavigateRegister, onB
     }
 
     try {
-      console.log('[Auth] Autenticação Supabase...');
+      console.log('[Auth] Autenticação no servidor...');
       const d1Res = await d1Client.auth.login({ email: cleanEmail, password });
       
       if (d1Res.data?.user) {
-        console.log('[Auth] Sessão iniciada com Supabase Auth');
+        console.log('[Auth] Sessão iniciada');
         onSuccess(d1Res.data.user);
         setLoading(false);
         return;
@@ -50,7 +50,7 @@ export const Login: React.FC<LoginProps> = ({ onSuccess, onNavigateRegister, onB
         setError('Não foi possível autenticar o utilizador. Verifique as suas credenciais.');
       }
     } catch (err: any) {
-      setError(err?.message || 'Erro de conexão com o Supabase. Tente novamente.');
+      setError(err?.message || 'Erro de conexão com o servidor. Tente novamente.');
     } finally {
       setLoading(false);
     }

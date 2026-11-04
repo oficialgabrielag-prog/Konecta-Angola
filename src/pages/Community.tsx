@@ -152,7 +152,7 @@ export const Community: React.FC<CommunityProps> = ({
       });
 
       if (d1PostRes.error || !d1PostRes.data) {
-        throw new Error(d1PostRes.error?.message || 'Falha ao gravar publicação no Supabase.');
+        throw new Error(d1PostRes.error?.message || 'Falha ao gravar publicação no sistema.');
       }
 
       const inserted = d1PostRes.data;

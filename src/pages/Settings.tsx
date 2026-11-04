@@ -270,8 +270,8 @@ export const Settings: React.FC<SettingsProps> = ({
     { id: 'messages', label: 'Mensagens diretas', icon: 'chat' },
     { id: 'blocks', label: 'Membros bloqueados', icon: 'block' },
     { id: 'language', label: t('settings.lang'), icon: 'language' },
-    { id: 'policies', label: 'Centro de políticas', icon: 'policy' },
-    { id: 'soon', label: 'Outras opções', icon: 'tune', isSoon: true }
+    { id: 'policies', label: 'Centro de Termos & Políticas', icon: 'policy' },
+    { id: 'help', label: 'Ajuda e Suporte (976 848 444)', icon: 'support_agent' }
   ];
 
   return (
@@ -282,7 +282,7 @@ export const Settings: React.FC<SettingsProps> = ({
         <span className="text-xs font-bold text-konecta-gold uppercase tracking-wider">Gestão da conta</span>
         <h1 className="text-2xl sm:text-3xl font-extrabold text-konecta-navy mt-1">Configurações e privacidade</h1>
         <p className="text-gray-500 text-xs sm:text-sm mt-1.5">
-          Gere os teus dados de acesso, localização, alertas em tempo real e segurança.
+          Gere os teus dados de acesso, localização, alertas e segurança.
         </p>
       </header>
 
@@ -300,6 +300,8 @@ export const Settings: React.FC<SettingsProps> = ({
                   onClick={() => {
                     if (t.id === 'policies') {
                       onNavigateTab('policy-center');
+                    } else if (t.id === 'help') {
+                      onNavigateTab('help');
                     } else {
                       setActiveTab(t.id);
                     }
@@ -316,11 +318,6 @@ export const Settings: React.FC<SettingsProps> = ({
                     </span>
                     <span>{t.label}</span>
                   </div>
-                  {t.isSoon && (
-                    <span className="text-[10px] text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">
-                      Em breve
-                    </span>
-                  )}
                 </button>
               );
             })}

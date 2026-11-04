@@ -6,6 +6,8 @@ interface ShareData {
   title: string;
   authorName: string;
   thumbnail?: string;
+  videoUrl?: string;
+  allowShares?: boolean;
 }
 
 interface ToastData {

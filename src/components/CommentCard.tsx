@@ -1,6 +1,7 @@
 import React from 'react';
 import { CommentItem } from '../types';
 import { UserBadge } from './UserBadges';
+import { cldAvatar } from '../lib/cloudinary';
 
 interface CommentCardProps {
   comment: CommentItem;
@@ -11,7 +12,13 @@ export const CommentCard: React.FC<CommentCardProps> = ({ comment }) => {
     <div className="card-konecta p-6 flex gap-4 shadow-sm border border-gray-100 bg-white rounded-3xl transition-all hover:shadow-md">
       <div className="w-11 h-11 rounded-full bg-gray-100 overflow-hidden shrink-0 border border-gray-100 shadow-inner">
         {comment.profiles?.avatar_url ? (
-          <img src={comment.profiles.avatar_url} alt="" className="w-full h-full object-cover" />
+          <img 
+            src={cldAvatar(comment.profiles.avatar_url, 44)} 
+            alt="" 
+            className="w-full h-full object-cover" 
+            loading="lazy"
+            decoding="async"
+          />
         ) : (
           <div className="w-full h-full flex items-center justify-center font-bold text-konecta-navy text-xs bg-konecta-navy/5">
             {comment.profiles?.full_name?.charAt(0) || 'U'}

@@ -2,12 +2,14 @@ import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Idea, Challenge, Post, CommentItem, Reel } from '../types';
 import { d1Client } from '../lib/d1Client';
-import { uploadToCloudinary } from '../lib/cloudinary';
+import { cldAvatar, cldCover, cldImage, cldSrcSet, cldBlurPlaceholder, uploadToCloudinary } from '../lib/cloudinary';
 import { KonectaRealtimeService } from '../lib/realtime';
 import { PostCardSkeleton, IdeaCardSkeleton } from '../components/Skeletons';
 import { useUI } from '../context/UIContext';
 import { ContentMenu } from '../components/ContentMenu';
+import { ReelPreviewCard } from '../components/ReelPreviewCard';
 import { useT } from '../context/LanguageContext';
+import { ChevronLeft, ChevronRight, Play } from 'lucide-react';
 
 interface HomeProps {
   setCurrentTab: (tab: string) => void;
@@ -289,7 +291,7 @@ export const Home: React.FC<HomeProps> = ({
       let imageUrl = '';
       if (newPostImage) {
         try {
-          imageUrl = await uploadToCloudinary(newPostImage, (p) => setUploadProgress(p));
+          imageUrl = await uploadToCloudinary(newPostImage, (p: number) => setUploadProgress(p));
         } catch (imgErr: any) {
           alert(imgErr?.message || t('error.general'));
           setPublishing(false);
@@ -303,7 +305,7 @@ export const Home: React.FC<HomeProps> = ({
       });
 
       if (postRes.error || !postRes.data) {
-        throw new Error(postRes.error?.message || 'Falha ao gravar publicação no Supabase.');
+        throw new Error(postRes.error?.message || 'Falha ao gravar publicação no sistema.');
       }
 
       const inserted = postRes.data;
@@ -467,11 +469,10 @@ export const Home: React.FC<HomeProps> = ({
     const items: any[] = filtered.map(p => ({ type: 'post', data: p }));
     if (feedType === 'all') {
       reels.forEach((reel, index) => {
-        const position = (index + 1) * 3;
+        // Insert after 3rd post, then every 10 posts
+        const position = index === 0 ? 3 : 3 + (index * 10);
         if (position <= items.length) {
           items.splice(position, 0, { type: 'reel', data: reel });
-        } else if (items.length < 3 && index === 0) {
-          items.push({ type: 'reel', data: reel });
         }
       });
     }
@@ -583,6 +584,19 @@ export const Home: React.FC<HomeProps> = ({
                   className="flex flex-row gap-4 overflow-x-auto scrollbar-hide snap-x snap-mandatory py-2 px-1 touch-pan-x -mx-3 sm:mx-0 px-3 sm:px-0"
                 >
                   {reels.map((reel) => (
+                    <div key={`exposed-reel-${reel.id}`} className="shrink-0 w-[180px] sm:w-[220px] snap-start">
+                      <ReelPreviewCard 
+                        reel={reel}
+                        onClick={() => onSelectReel ? onSelectReel(reel.id) : setCurrentTab('reels')}
+                        shouldPreview={false}
+                      />
+                    </div>
+                  ))}
+                </div>
+                {/* Manual row removed */}
+                <div className="hidden">
+                  <div className="flex flex-row gap-4 overflow-x-auto scrollbar-hide snap-x snap-mandatory py-2 px-1 touch-pan-x -mx-3 sm:mx-0 px-3 sm:px-0">
+                  {reels.map((reel) => (
                     <motion.div
                       key={`exposed-reel-${reel.id}`}
                       whileHover={{ scale: 1.02 }}
@@ -643,7 +657,8 @@ export const Home: React.FC<HomeProps> = ({
                   ))}
                 </div>
               </div>
-            )}
+            </div>
+          )}
             
             {/* Quick Post Box for Logged-In Users */}
             {user ? (
@@ -804,135 +819,69 @@ export const Home: React.FC<HomeProps> = ({
                       {t('home.fullscreen')}
                     </button>
                   </div>
-                  {reels.length === 0 ? (
-                    <div className="bg-white rounded-2xl border border-gray-100 p-12 text-center text-gray-400">
-                      {t('home.reels_empty')}
-                    </div>
-                  ) : (
-                    <div className="flex flex-row gap-4 overflow-x-auto scrollbar-hide snap-x snap-mandatory py-2 px-1 touch-pan-x -mx-3 sm:mx-0 px-3 sm:px-0">
+                  
+                  <div className="relative group/reels">
+                    <div 
+                      ref={reelsRowRef}
+                      className="flex flex-row gap-4 overflow-x-auto scrollbar-hide snap-x snap-mandatory py-2 px-1 touch-pan-x -mx-3 sm:mx-0 px-3 sm:px-0"
+                    >
                       {reels.map((reel) => (
-                        <motion.div
-                          key={`reels-tab-${reel.id}`}
-                          whileHover={{ scale: 1.02 }}
-                          whileTap={{ scale: 0.96 }}
-                          onClick={() => onSelectReel ? onSelectReel(reel.id) : setCurrentTab('reels')}
-                          className="shrink-0 w-[200px] sm:w-[240px] md:w-[260px] aspect-[9/16] bg-slate-950 rounded-2xl sm:rounded-3xl overflow-hidden cursor-pointer relative group border border-slate-800 shadow-md snap-start select-none"
-                        >
-                          <video
-                            src={reel.video_url}
-                            className="w-full h-full object-cover pointer-events-none group-hover:scale-105 transition-transform duration-500"
-                            muted
-                            loop
-                            playsInline
-                            onMouseOver={(e) => (e.target as HTMLVideoElement).play().catch(() => {})}
-                            onMouseOut={(e) => {
-                              const v = e.target as HTMLVideoElement;
-                              v.pause();
-                              v.currentTime = 0;
-                            }}
+                        <div key={`reels-tab-${reel.id}`} className="shrink-0 w-[180px] sm:w-[220px] snap-start">
+                          <ReelPreviewCard 
+                            reel={reel} 
+                            onClick={() => onSelectReel ? onSelectReel(reel.id) : setCurrentTab('reels')}
+                            shouldPreview={false} 
                           />
-                          <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/25 to-black/30 p-3.5 sm:p-4 flex flex-col justify-between pointer-events-none">
-                            <div className="flex justify-between items-start">
-                              <span className="bg-konecta-gold text-konecta-navy text-[10px] font-black px-2.5 py-1 rounded-full uppercase tracking-wider shadow-sm">
-                                {t('nav.reels')}
-                              </span>
-                              <div className="w-8 h-8 rounded-full bg-white/25 backdrop-blur-md text-white flex items-center justify-center shadow border border-white/20 group-hover:scale-110 transition-transform">
-                                <span className="material-symbols-outlined text-sm font-bold">play_arrow</span>
-                              </div>
-                            </div>
-                            <div>
-                              <div className="flex items-center gap-2 mb-1.5">
-                                {reel.profiles?.avatar_url ? (
-                                  <img src={reel.profiles.avatar_url} alt="" className="w-6 h-6 rounded-full object-cover border border-white/40" />
-                                ) : (
-                                  <div className="w-6 h-6 rounded-full bg-konecta-gold text-konecta-navy font-black text-[10px] flex items-center justify-center">
-                                    {reel.profiles?.full_name?.charAt(0) || 'K'}
-                                  </div>
-                                )}
-                                <p className="font-bold text-xs sm:text-sm text-white line-clamp-1 drop-shadow-sm">
-                                  {reel.profiles?.full_name || 'Criador Konecta'}
-                                </p>
-                              </div>
-                              <p className="text-xs text-gray-200 line-clamp-2 leading-relaxed opacity-95 drop-shadow-xs">
-                                {reel.caption || t('home.no_caption')}
-                              </p>
-                              <div className="flex items-center justify-between mt-2.5 pt-2 border-t border-white/10 text-xs">
-                                <div className="flex items-center gap-1.5 font-extrabold text-konecta-gold">
-                                  <span>❤️ {reel.likes_count || 0}</span>
-                                </div>
-                                <span className="text-[11px] text-gray-300 font-medium">{t('home.reels_scroll')}</span>
-                              </div>
-                            </div>
-                          </div>
-                        </motion.div>
+                        </div>
                       ))}
+                      <div className="shrink-0 w-8" />
                     </div>
-                  )}
+                    
+                    {reels.length > 3 && (
+                      <>
+                        <button 
+                          onClick={() => scrollReels('left')}
+                          className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-4 w-10 h-10 rounded-full bg-white shadow-lg border border-gray-100 flex items-center justify-center text-konecta-navy opacity-0 group-hover/reels:opacity-100 transition-opacity z-10 hidden sm:flex"
+                        >
+                          <ChevronLeft size={20} />
+                        </button>
+                        <button 
+                          onClick={() => scrollReels('right')}
+                          className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-4 w-10 h-10 rounded-full bg-white shadow-lg border border-gray-100 flex items-center justify-center text-konecta-navy opacity-0 group-hover/reels:opacity-100 transition-opacity z-10 hidden sm:flex"
+                        >
+                          <ChevronRight size={20} />
+                        </button>
+                      </>
+                    )}
+                  </div>
                 </div>
-              ) : (feedType === 'all' || feedType === 'posts' || feedType === 'communities') && mixedFeed.length > 0 && (
-                <div className="space-y-6">
-                  {mixedFeed.map((item) => {
+              ) : (feedType === 'all' || feedType === 'posts' || feedType === 'communities') && mixedFeed.length > 0 ? (
+                <div className="space-y-10">
+                  {mixedFeed.map((item, idx) => {
                     if (item.type === 'reel') {
                       const reel = item.data as Reel;
                       return (
-                        <motion.article 
-                          key={`reel-${reel.id}`} 
-                          initial={{ opacity: 0, y: 15 }} 
-                          whileInView={{ opacity: 1, y: 0 }} 
-                          viewport={{ once: true }} 
-                          onClick={() => onSelectReel ? onSelectReel(reel.id) : setCurrentTab('reels')}
-                          className="rounded-2xl p-4 sm:p-5 bg-gradient-to-br from-slate-900 via-slate-950 to-konecta-navy text-white overflow-hidden relative border border-slate-800 shadow-md cursor-pointer hover:border-konecta-gold transition-all"
-                        >
-                          <div className="flex items-center justify-between mb-3">
-                            <div className="flex items-center gap-3">
-                              <div className="w-9 h-9 rounded-full bg-konecta-gold text-konecta-navy flex items-center justify-center font-extrabold text-xs shadow-md">
-                                {reel.profiles?.full_name?.charAt(0) || 'R'}
-                              </div>
-                              <div>
-                                <h4 className="font-bold text-xs text-white">{reel.profiles?.full_name || 'Criador Konecta'}</h4>
-                                <span className="text-[10px] text-konecta-gold uppercase tracking-wider font-extrabold">{t('home.reel_suggestion')}</span>
-                              </div>
-                            </div>
+                        <div key={`feed-reel-${reel.id}`} className="py-2">
+                          <div className="flex items-center justify-between mb-4 px-1">
+                            <h3 className="text-sm font-black uppercase tracking-widest text-konecta-navy flex items-center gap-2">
+                              <Play size={16} fill="currentColor" />
+                              Reel Sugerido
+                            </h3>
                             <button 
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                onSelectReel ? onSelectReel(reel.id) : setCurrentTab('reels');
-                              }} 
-                              className="text-xs text-konecta-navy bg-konecta-gold hover:bg-yellow-400 font-black flex items-center gap-1 px-3 py-1.5 rounded-full transition-all shadow"
+                              onClick={() => setCurrentTab('reels')}
+                              className="text-[10px] font-black uppercase tracking-tighter text-konecta-gold hover:underline"
                             >
-                              {t('home.reel_watch')}
+                              Ver todos
                             </button>
                           </div>
-
-                          <div className="relative aspect-[16/9] sm:aspect-video bg-black rounded-2xl overflow-hidden group border border-white/10">
-                            <video 
-                              src={reel.video_url} 
-                              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" 
-                              muted 
-                              loop 
-                              playsInline 
-                              onMouseOver={(e) => (e.target as HTMLVideoElement).play().catch(() => {})} 
-                              onMouseOut={(e) => {
-                                const v = e.target as HTMLVideoElement;
-                                v.pause();
-                                v.currentTime = 0;
-                              }} 
+                          <div className="max-w-sm mx-auto">
+                            <ReelPreviewCard 
+                              reel={reel}
+                              onClick={() => onSelectReel ? onSelectReel(reel.id) : setCurrentTab('reels')}
+                              shouldPreview={false}
                             />
-                            <div className="absolute inset-0 bg-black/30 group-hover:bg-black/20 transition-colors flex items-center justify-center">
-                              <div className="w-12 h-12 rounded-full bg-konecta-gold text-konecta-navy flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform">
-                                <span className="material-symbols-outlined text-2xl font-black">play_arrow</span>
-                              </div>
-                            </div>
                           </div>
-
-                          <div className="mt-3 flex items-center justify-between text-xs text-gray-300">
-                            <p className="font-medium line-clamp-1 max-w-[80%]">{reel.caption || t('home.reel_konecta')}</p>
-                            <span className="font-bold text-red-400 flex items-center gap-1">
-                              ❤️ {reel.likes_count || 0}
-                            </span>
-                          </div>
-                        </motion.article>
+                        </div>
                       );
                     }
                     const post = item.data as Post;
@@ -957,7 +906,13 @@ export const Home: React.FC<HomeProps> = ({
                             className="mb-6 -mx-6 -mt-6 sm:-mx-8 sm:-mt-8 h-24 relative cursor-pointer group/cover"
                           >
                             {post.communities.cover_url ? (
-                              <img src={post.communities.cover_url} className="w-full h-full object-cover transition-transform duration-700 group-hover/cover:scale-105" alt="" />
+                              <img 
+                                src={cldCover(post.communities.cover_url, 800)} 
+                                className="w-full h-full object-cover transition-transform duration-700 group-hover/cover:scale-105" 
+                                alt="" 
+                                loading="lazy"
+                                decoding="async"
+                              />
                             ) : (
                               <div className="w-full h-full bg-gradient-to-r from-konecta-navy to-slate-800" />
                             )}
@@ -965,7 +920,12 @@ export const Home: React.FC<HomeProps> = ({
                             <div className="absolute bottom-3 left-4 sm:left-6 flex items-center gap-3">
                               <div className="w-10 h-10 rounded-xl bg-white p-0.5 border border-konecta-gold/50 shadow-lg shrink-0">
                                 {post.communities.avatar_url ? (
-                                  <img src={post.communities.avatar_url} className="w-full h-full object-cover rounded-lg" alt="" />
+                                  <img 
+                                    src={cldAvatar(post.communities.avatar_url, 40)} 
+                                    className="w-full h-full object-cover rounded-lg" 
+                                    alt="" 
+                                    loading="lazy"
+                                  />
                                 ) : (
                                   <div className="w-full h-full bg-konecta-navy rounded-lg flex items-center justify-center text-xs text-konecta-gold font-black">
                                     {post.communities.name.charAt(0)}
@@ -989,7 +949,12 @@ export const Home: React.FC<HomeProps> = ({
                           >
                             <div className="w-10 h-10 rounded-full bg-gray-100 overflow-hidden shrink-0 border border-gray-100">
                               {post.profiles?.avatar_url ? (
-                                <img src={post.profiles.avatar_url} alt="" className="w-full h-full object-cover" />
+                                <img 
+                                  src={cldAvatar(post.profiles.avatar_url, 40)} 
+                                  alt="" 
+                                  className="w-full h-full object-cover" 
+                                  loading="lazy"
+                                />
                               ) : (
                                 <div className="w-full h-full flex items-center justify-center font-bold text-xs text-gray-400">
                                   {post.profiles?.full_name?.charAt(0) || 'U'}
@@ -1041,8 +1006,20 @@ export const Home: React.FC<HomeProps> = ({
                             onClick={() => onImageClick(post.image_url!)}
                             className="rounded-2xl overflow-hidden mb-6 max-h-[450px] bg-gray-50 border border-gray-100 cursor-pointer group relative"
                           >
-                            <img src={post.image_url} alt="" className="w-full h-full object-cover group-hover:scale-[1.01] transition-transform duration-300" />
-                            <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center">
+                            <div 
+                              className="absolute inset-0 bg-cover bg-center blur-xl opacity-50"
+                              style={{ backgroundImage: `url(${cldBlurPlaceholder(post.image_url)})` }}
+                            />
+                            <img 
+                              src={cldImage(post.image_url, { w: 640 })} 
+                              srcSet={cldSrcSet(post.image_url)}
+                              sizes="(max-width: 640px) 100vw, 640px"
+                              alt="" 
+                              className="w-full h-full object-cover group-hover:scale-[1.01] transition-transform duration-300 relative z-10" 
+                              loading="lazy"
+                              decoding="async"
+                            />
+                            <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center z-20">
                               <span className="material-symbols-outlined text-white opacity-0 group-hover:opacity-100 transition-opacity bg-black/50 p-2 rounded-full backdrop-blur-xs">
                                 fullscreen
                               </span>
@@ -1153,10 +1130,7 @@ export const Home: React.FC<HomeProps> = ({
                     );
                   })}
                 </div>
-              )}
-
-              {/* Show Ideas if 'all' or 'ideas' */}
-              {(feedType === 'all' || feedType === 'ideas') && (
+              ) : (feedType === 'all' || feedType === 'ideas') && (
                 <div className="space-y-8">
                   {ideas.length === 0 && posts.length === 0 ? (
                     <div className="py-20 text-center bg-white rounded-3xl border border-dashed border-gray-200">
@@ -1208,7 +1182,12 @@ export const Home: React.FC<HomeProps> = ({
                               <div className="flex items-center gap-3">
                                 <div className="w-10 h-10 rounded-full bg-gray-100 overflow-hidden border-2 border-white shadow-sm">
                                   {idea.profiles?.avatar_url ? (
-                                    <img src={idea.profiles.avatar_url} alt="" className="w-full h-full object-cover" />
+                                    <img 
+                                      src={cldAvatar(idea.profiles.avatar_url, 40)} 
+                                      alt="" 
+                                      className="w-full h-full object-cover" 
+                                      loading="lazy"
+                                    />
                                   ) : (
                                     <div className="w-full h-full flex items-center justify-center text-gray-300 font-bold">
                                       {idea.profiles?.full_name?.charAt(0) || 'U'}
