@@ -57,6 +57,7 @@ export const Admin: React.FC<AdminProps> = ({ user, onOpenAuth, onNavigateTab })
 
   // Reports
   const [reports, setReports] = useState<Report[]>([]);
+  const [moderationQueue, setModerationQueue] = useState<any[]>([]);
   const [reportFilter, setReportFilter] = useState<'pending' | 'reviewed' | 'all'>('pending');
   const [updatingReportId, setUpdatingReportId] = useState<string | null>(null);
 
@@ -122,13 +123,14 @@ export const Admin: React.FC<AdminProps> = ({ user, onOpenAuth, onNavigateTab })
   const fetchAllAdminData = async () => {
     setLoadingVerifData(true);
     try {
-      const [metricsRes, reportsRes, verifRes, subRes, plansRes, activeSubsRes] = await Promise.all([
+      const [metricsRes, reportsRes, verifRes, subRes, plansRes, activeSubsRes, modRes] = await Promise.all([
         d1Client.admin.getMetrics(),
         d1Client.reports.list(),
         d1Client.verification.listVerificationRequests(),
         d1Client.subscriptions.listSubscriptionRequests(),
         d1Client.subscriptions.listPlans(true), // include inactive
-        d1Client.subscriptions.listUserSubscriptions()
+        d1Client.subscriptions.listUserSubscriptions(),
+        d1Client.admin.getModerationQueue()
       ]);
 
       if (metricsRes.data?.data) setMetrics(metricsRes.data.data);
@@ -137,10 +139,21 @@ export const Admin: React.FC<AdminProps> = ({ user, onOpenAuth, onNavigateTab })
       if (subRes.data) setSubscriptionRequests(subRes.data);
       if (plansRes.data) setAllPlans(plansRes.data);
       if (activeSubsRes.data) setActiveSubscriptions(activeSubsRes.data);
+      if (modRes.data) setModerationQueue(modRes.data);
     } catch (err: any) {
       console.warn('Aviso ao carregar dados de administração:', err?.message || err);
     } finally {
       setLoadingVerifData(false);
+    }
+  };
+
+  const handleModerationAction = async (queueId: string, action: 'approve' | 'block') => {
+    try {
+      await d1Client.admin.takeModerationAction(queueId, action, 'Ação administrativa rápida');
+      setModerationQueue(prev => prev.filter(item => item.id !== queueId));
+      showToast('Ação de moderação executada.', 'success');
+    } catch (err: any) {
+      showToast('Erro: ' + err.message, 'error');
     }
   };
 
@@ -404,8 +417,42 @@ export const Admin: React.FC<AdminProps> = ({ user, onOpenAuth, onNavigateTab })
           >
             Music Library
           </button>
+          <button
+            onClick={() => setActiveTab('moderation')}
+            className={`px-4 py-2 rounded-xl text-xs font-black transition-all ${
+              activeTab === 'moderation' ? 'bg-white text-konecta-navy shadow-sm' : 'text-gray-500 hover:text-gray-900'
+            }`}
+          >
+            Moderação
+          </button>
         </div>
       </header>
+      
+      {/* SECTION: MODERAÇÃO */}
+      {activeTab === 'moderation' && (
+        <section className="bg-white p-8 rounded-3xl border border-gray-100 shadow-xs">
+          <h3 className="text-lg font-bold text-konecta-navy mb-6">Fila de Moderação ({moderationQueue.length})</h3>
+          <div className="space-y-4">
+            {moderationQueue.length === 0 ? (
+              <p className="text-sm text-gray-500">Nenhum conteúdo pendente na fila de moderação.</p>
+            ) : (
+              moderationQueue.map((item: any) => (
+                <div key={item.id} className="p-5 border border-gray-100 rounded-2xl flex justify-between items-center bg-gray-50">
+                  <div>
+                    <p className="text-xs font-bold text-konecta-navy uppercase">{item.content_type}</p>
+                    <p className="text-xs text-gray-500 mt-1">ID: {item.content_id}</p>
+                    <p className="text-xs text-gray-400 mt-0.5">Motivo: {item.reason}</p>
+                  </div>
+                  <div className="flex gap-2">
+                    <button onClick={() => handleModerationAction(item.id, 'approve')} className="btn-primary py-1.5 px-4 text-xs font-bold">Aprovar</button>
+                    <button onClick={() => handleModerationAction(item.id, 'block')} className="btn-secondary py-1.5 px-4 text-xs font-bold">Bloquear</button>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </section>
+      )}
 
       {/* SECTION: VERIFICAÇÃO E PLANOS */}
       {activeTab === 'verification_plans' && (

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { supabase } from '../lib/supabaseClient';
+import { d1Client } from '../lib/d1Client';
 import { useToast } from '../context/UIContext';
 import { uploadMediaToCloudinary } from '../lib/cloudinary';
 import { Image, X } from 'lucide-react';
@@ -55,6 +56,22 @@ export const PostCreationBox: React.FC<PostCreationBoxProps> = ({
         return;
       }
 
+      // 1. Moderate content before insertion
+      const moderation = await d1Client.moderation.analyze({
+        text: content.trim(),
+        image_urls: mediaUrl ? [mediaUrl] : [],
+        content_type: 'post',
+        content_id: 'pending'
+      });
+      
+      if (moderation.data?.action === 'block') {
+        showToast('Publicação não permitida por motivos de segurança.', 'error');
+        setLoading(false);
+        return;
+      }
+
+      const postStatus = moderation.data?.action === 'review' ? 'review' : 'published';
+
       const { error } = await supabase
         .from('posts')
         .insert({
@@ -62,12 +79,12 @@ export const PostCreationBox: React.FC<PostCreationBoxProps> = ({
           community_id: communityId || null,
           author_id: user.id,
           visibility: 'public',
-          status: 'published',
+          status: postStatus,
           media_url: mediaUrl || null
         });
 
       if (error) {
-        // Fallback if media_url column is not on posts directly
+        // Fallback
         const fallback = await supabase
           .from('posts')
           .insert({
@@ -75,14 +92,18 @@ export const PostCreationBox: React.FC<PostCreationBoxProps> = ({
             community_id: communityId || null,
             author_id: user.id,
             visibility: 'public',
-            status: 'published'
+            status: postStatus
           });
         if (fallback.error) throw fallback.error;
       }
       
       setContent('');
       setMediaUrl(null);
-      showToast('Publicação criada com sucesso!', 'success');
+      if (postStatus === 'review') {
+        showToast('Publicação enviada para revisão de segurança.', 'info');
+      } else {
+        showToast('Publicação criada com sucesso!', 'success');
+      }
       onPostCreated();
       if (onClose) onClose();
     } catch (err: any) {

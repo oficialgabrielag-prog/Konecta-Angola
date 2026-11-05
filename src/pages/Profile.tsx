@@ -176,14 +176,42 @@ export const Profile: React.FC<ProfileProps> = ({
         imageUrl = await uploadToCloudinary(pendingImage);
       }
 
+      const moderation = await d1Client.moderation.analyze({
+        text: newPostText.trim(),
+        image_urls: imageUrl ? [imageUrl] : [],
+        content_type: 'post',
+        content_id: 'pending'
+      });
+      
+      if (moderation.data?.action === 'block') {
+        showToast('Publicação não permitida por motivos de segurança.', 'error');
+        setPublishing(false);
+        return;
+      }
+
       const res = await d1Client.posts.create({
         content: newPostText.trim(),
         image_url: imageUrl || undefined,
+        status: moderation.data?.action === 'review' ? 'review' : 'published'
       });
 
       const createdPost = res.data?.data;
       if (createdPost) {
         setUserPosts(prev => [createdPost, ...prev]);
+        
+        if (moderation.data?.action === 'review') {
+          await supabase.from('content_moderation_queue').insert({
+            content_id: createdPost.id,
+            content_type: 'post',
+            author_id: user.id,
+            reason: JSON.stringify(moderation.data?.categories || {}),
+            status: 'pending',
+            created_at: new Date().toISOString()
+          });
+          showToast('Publicação enviada para revisão de segurança.', 'info');
+        } else {
+          showToast(t('profile.publish_success'), 'success');
+        }
       }
       
       setNewPostText('');
@@ -191,7 +219,6 @@ export const Profile: React.FC<ProfileProps> = ({
       if (pendingImagePreview) URL.revokeObjectURL(pendingImagePreview);
       setPendingImagePreview(null);
       fetchUserPosts();
-      showToast(t('profile.publish_success'), 'success');
     } catch (err: any) {
       console.warn('Aviso ao publicar post:', err?.message || err);
       showToast(err?.message || t('profile.publish_err'), 'error');

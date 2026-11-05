@@ -18,6 +18,22 @@ function wrapObject(obj: any) {
 }
 
 export const d1Client: any = {
+  moderation: {
+    async analyze(data: { text?: string; image_urls?: string[]; content_type: string; content_id: string }): Promise<any> {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return { success: false, error: 'Não autenticado' };
+
+      const { data: result, error } = await supabase.functions.invoke('moderate-content', {
+        body: {
+          text: data.text,
+          image_urls: data.image_urls,
+          content_type: data.content_type,
+          content_id: data.content_id
+        }
+      });
+      return { data: result, error };
+    }
+  },
   auth: {
     async register(data: { email: string; password: string; full_name?: string; province?: string; municipality?: string }): Promise<any> {
       const cleanEmail = data.email.trim().toLowerCase();
@@ -293,6 +309,29 @@ export const d1Client: any = {
     },
 
     async update(userId: string, data: any): Promise<any> {
+      if (data.bio) {
+        const moderation = await d1Client.moderation.analyze({
+          text: data.bio.trim(),
+          content_type: 'profile',
+          content_id: userId
+        });
+
+        if (moderation.data?.action === 'block') {
+          return { success: false, error: { message: 'Biografia não permitida por motivos de segurança.' } };
+        }
+
+        if (moderation.data?.action === 'review') {
+          await supabase.from('content_moderation_queue').insert({
+            content_id: userId,
+            content_type: 'profile',
+            author_id: userId,
+            reason: JSON.stringify(moderation.data?.categories || {}),
+            status: 'pending',
+            created_at: new Date().toISOString()
+          });
+        }
+      }
+
       const payload: any = { updated_at: new Date().toISOString() };
       if (data.full_name) payload.display_name = data.full_name;
       if (data.display_name) payload.display_name = data.display_name;
@@ -764,18 +803,40 @@ export const d1Client: any = {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return { data: null, error: { message: 'Não autenticado' } };
 
+      const moderation = await d1Client.moderation.analyze({
+        text: text.trim(),
+        content_type: 'comment',
+        content_id: 'pending'
+      });
+
+      if (moderation.data?.action === 'block') {
+        return { data: null, error: { message: 'Comentário não permitido por motivos de segurança.' } };
+      }
+
       const { data: newComment, error } = await supabase
         .from('post_comments')
         .insert({
           post_id: postId,
           author_id: user.id,
           body: text.trim(),
-          created_at: new Date().toISOString()
+          created_at: new Date().toISOString(),
+          status: moderation.data?.action === 'review' ? 'review' : 'published'
         })
         .select()
         .single();
 
       if (error || !newComment) return { data: null, error };
+
+      if (moderation.data?.action === 'review') {
+        await supabase.from('content_moderation_queue').insert({
+          content_id: newComment.id,
+          content_type: 'comment',
+          author_id: user.id,
+          reason: JSON.stringify(moderation.data?.categories || {}),
+          status: 'pending',
+          created_at: new Date().toISOString()
+        });
+      }
 
       const { data: profile } = await supabase
         .from('profiles')
@@ -4679,6 +4740,19 @@ export const d1Client: any = {
         .match({ blocker_id: user.id, blocked_id: targetUserId });
 
       return { success: !error, error };
+    }
+  },
+
+  admin: {
+    async getModerationQueue(): Promise<any> {
+      const { data, error } = await supabase.from('content_moderation_queue').select('*').eq('status', 'pending');
+      return { data: wrapArray(data || []), error };
+    },
+    async takeModerationAction(queueId: string, action: 'approve' | 'block', reason: string): Promise<any> {
+      const { data: result, error } = await supabase.functions.invoke('manage-moderation', {
+        body: { queue_id: queueId, action, reason }
+      });
+      return { data: result, error };
     }
   },
 

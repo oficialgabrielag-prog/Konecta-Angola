@@ -233,17 +233,44 @@ export const OrganizationDetail: React.FC<OrganizationDetailProps> = ({ slug, us
     if (!postBody.trim() || posting) return;
     setPosting(true);
     try {
+      const moderation = await d1Client.moderation.analyze({
+        text: postBody.trim(),
+        image_urls: postMediaUrl ? [postMediaUrl] : [],
+        content_type: 'organization_post',
+        content_id: org.id
+      });
+      
+      if (moderation.data?.action === 'block') {
+        showToast('Publicação não permitida por motivos de segurança.', 'error');
+        setPosting(false);
+        return;
+      }
+
       await d1Client.organizations.createPost(org.id, {
         title: postTitle.trim() || undefined,
         body: postBody.trim(),
-        media_url: postMediaUrl || undefined
+        media_url: postMediaUrl || undefined,
+        status: moderation.data?.action === 'review' ? 'review' : 'published'
       });
+
+      if (moderation.data?.action === 'review') {
+        await supabase.from('content_moderation_queue').insert({
+          content_type: 'organization_post',
+          author_id: user.id,
+          reason: JSON.stringify(moderation.data?.categories || {}),
+          status: 'pending',
+          created_at: new Date().toISOString()
+        });
+        showToast('Publicação enviada para revisão de segurança.', 'info');
+      } else {
+        showToast('Publicação criada com sucesso!', 'success');
+      }
+
       setShowPostModal(false);
       setPostTitle('');
       setPostBody('');
       setPostMediaUrl('');
       fetchOrgDetail();
-      showToast('Publicação criada com sucesso!', 'success');
     } catch (err: any) {
       console.error('Erro ao publicar na organização:', err);
       showToast(err.message || 'Erro ao publicar.', 'error');
