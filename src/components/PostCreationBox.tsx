@@ -50,57 +50,23 @@ export const PostCreationBox: React.FC<PostCreationBoxProps> = ({
 
     setLoading(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        showToast('Inicia sessão para publicar.', 'error');
-        return;
-      }
-
-      // 1. Moderate content before insertion
-      const moderation = await d1Client.moderation.analyze({
-        text: content.trim(),
-        image_urls: mediaUrl ? [mediaUrl] : [],
-        content_type: 'post',
-        content_id: 'pending'
+      const res = await d1Client.posts.create({
+        content: content.trim(),
+        image_url: mediaUrl || undefined,
+        community_id: communityId || undefined
       });
-      
-      if (moderation.data?.action === 'block') {
-        showToast('Publicação não permitida por motivos de segurança.', 'error');
-        setLoading(false);
+
+      if (res.error) {
+        showToast(res.error.message || 'Erro ao guardar publicação.', 'error');
         return;
       }
 
-      const postStatus = moderation.data?.action === 'review' ? 'review' : 'published';
-
-      const { error } = await supabase
-        .from('posts')
-        .insert({
-          body: content.trim(),
-          community_id: communityId || null,
-          author_id: user.id,
-          visibility: 'public',
-          status: postStatus,
-          media_url: mediaUrl || null
-        });
-
-      if (error) {
-        // Fallback
-        const fallback = await supabase
-          .from('posts')
-          .insert({
-            body: mediaUrl ? `${content.trim()}\n\n${mediaUrl}` : content.trim(),
-            community_id: communityId || null,
-            author_id: user.id,
-            visibility: 'public',
-            status: postStatus
-          });
-        if (fallback.error) throw fallback.error;
-      }
-      
       setContent('');
       setMediaUrl(null);
-      if (postStatus === 'review') {
-        showToast('Publicação enviada para revisão de segurança.', 'info');
+
+      const createdPost = res.data?.data || res.data;
+      if (res.message || createdPost?.status === 'review') {
+        showToast(res.message || 'Enviado para revisão. Vai aparecer depois de aprovado.', 'info');
       } else {
         showToast('Publicação criada com sucesso!', 'success');
       }

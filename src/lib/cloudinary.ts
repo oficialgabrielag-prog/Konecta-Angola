@@ -418,3 +418,37 @@ export function getOptimizedImageUrl(url?: string | null, width = 800): string |
 export function getThumbnailUrl(url?: string | null): string | undefined {
   return cldImage(url, { w: 100 });
 }
+
+/** Fotogramas espalhados pelo vídeo para moderação da OpenAI. */
+export function cldVideoFrames(
+  url: string | null | undefined,
+  durationSeconds: number = 10,
+  count = 4
+): string[] {
+  if (!url || !isCloudinaryUrl(url)) return [];
+  const dur = Math.max(1, durationSeconds || 10);
+  const times: number[] = [];
+
+  if (count <= 1) {
+    times.push(1);
+  } else if (count === 2) {
+    times.push(1, Math.max(1, dur - 1));
+  } else if (count === 3) {
+    times.push(1, Math.round(dur * 0.5), Math.max(1, dur - 1));
+  } else {
+    times.push(
+      1,
+      Math.max(1, Math.round(dur * 0.33)),
+      Math.max(1, Math.round(dur * 0.66)),
+      Math.max(1, Math.round(dur - 1))
+    );
+  }
+
+  const uniqueTimes = Array.from(new Set(times));
+
+  return uniqueTimes.map((sec) => {
+    const frameUrl = inject(url, `so_${sec},c_limit,w_640/q_auto`);
+    return frameUrl.replace(/\.[a-z0-9]+(\?.*)?$/i, '.jpg$1');
+  });
+}
+

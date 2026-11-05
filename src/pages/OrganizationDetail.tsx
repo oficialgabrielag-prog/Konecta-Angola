@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import { supabase } from '../lib/supabaseClient';
 import { d1Client } from '../lib/d1Client';
 import { uploadMediaToCloudinary } from '../lib/cloudinary';
 import { useToast } from '../context/UIContext';
@@ -233,35 +234,21 @@ export const OrganizationDetail: React.FC<OrganizationDetailProps> = ({ slug, us
     if (!postBody.trim() || posting) return;
     setPosting(true);
     try {
-      const moderation = await d1Client.moderation.analyze({
-        text: postBody.trim(),
-        image_urls: postMediaUrl ? [postMediaUrl] : [],
-        content_type: 'organization_post',
-        content_id: org.id
+      const res = await d1Client.organizations.createPost(org.id, {
+        title: postTitle.trim() || undefined,
+        body: postBody.trim(),
+        media_url: postMediaUrl || undefined
       });
-      
-      if (moderation.data?.action === 'block') {
-        showToast('Publicação não permitida por motivos de segurança.', 'error');
+
+      if (res.error) {
+        showToast(typeof res.error === 'string' ? res.error : res.error.message || 'Erro ao publicar.', 'error');
         setPosting(false);
         return;
       }
 
-      await d1Client.organizations.createPost(org.id, {
-        title: postTitle.trim() || undefined,
-        body: postBody.trim(),
-        media_url: postMediaUrl || undefined,
-        status: moderation.data?.action === 'review' ? 'review' : 'published'
-      });
-
-      if (moderation.data?.action === 'review') {
-        await supabase.from('content_moderation_queue').insert({
-          content_type: 'organization_post',
-          author_id: user.id,
-          reason: JSON.stringify(moderation.data?.categories || {}),
-          status: 'pending',
-          created_at: new Date().toISOString()
-        });
-        showToast('Publicação enviada para revisão de segurança.', 'info');
+      const createdPost = res.data?.data || res.data;
+      if (res.message || createdPost?.status === 'review') {
+        showToast(res.message || 'Publicação enviada para revisão de segurança.', 'info');
       } else {
         showToast('Publicação criada com sucesso!', 'success');
       }

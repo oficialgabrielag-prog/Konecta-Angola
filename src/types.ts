@@ -139,6 +139,7 @@ export interface Post {
   communities?: Community;
   likes_count?: number;
   comments_count?: number;
+  status?: 'published' | 'review' | 'removed';
   created_at: string;
 }
 
@@ -150,6 +151,7 @@ export interface CommentItem {
   content: string;
   user_id: string;
   profiles?: Profile;
+  status?: 'published' | 'review' | 'removed';
   created_at: string;
 }
 
@@ -279,10 +281,10 @@ export interface Follow {
 export interface Report {
   id: string;
   reporter_id: string;
-  target_type: 'post' | 'idea' | 'user' | 'comment';
+  target_type: 'post' | 'idea' | 'user' | 'comment' | string;
   target_id: string;
   reason: string;
-  status: 'pending' | 'reviewed' | 'actioned';
+  status: 'open' | 'pending' | 'reviewed' | 'actioned' | 'resolved' | 'dismissed';
   created_at: string;
 }
 

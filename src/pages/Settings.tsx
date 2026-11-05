@@ -63,6 +63,10 @@ export const Settings: React.FC<SettingsProps> = ({
   const [blockedUsers, setBlockedUsers] = useState<any[]>([]);
   const [unblockingId, setUnblockingId] = useState<string | null>(null);
 
+  // Appeals State
+  const [appeals, setAppeals] = useState<any[]>([]);
+  const [loadingAppeals, setLoadingAppeals] = useState(false);
+
   // Web Push Hook
   const { isSubscribed, enablePushNotifications, disablePushNotifications, loading: pushLoading } = useWebPush(user);
 
@@ -116,10 +120,20 @@ export const Settings: React.FC<SettingsProps> = ({
       // 4. Load Blocked Users
       const blocksRes = await d1Client.blocks.list();
       setBlockedUsers(blocksRes.data?.data || blocksRes.data || []);
+
+      // 5. Load User Appeals
+      setLoadingAppeals(true);
+      const { data: appealsData } = await supabase
+        .from('moderation_appeals')
+        .select('*')
+        .eq('appellant_id', user.id)
+        .order('created_at', { ascending: false });
+      setAppeals(appealsData || []);
     } catch (err: any) {
       console.warn('Aviso ao carregar dados de configurações:', err);
     } finally {
       setLoading(false);
+      setLoadingAppeals(false);
     }
   };
 
@@ -266,6 +280,7 @@ export const Settings: React.FC<SettingsProps> = ({
     { id: 'profile', label: t('nav.profile'), icon: 'badge' },
     { id: 'privacy', label: 'Privacidade e estado', icon: 'lock' },
     { id: 'notifications', label: t('nav.notifications'), icon: 'notifications' },
+    { id: 'appeals', label: 'Os meus recursos', icon: 'gavel' },
     { id: 'security', label: 'Segurança e palavra-passe', icon: 'security' },
     { id: 'messages', label: 'Mensagens diretas', icon: 'chat' },
     { id: 'blocks', label: 'Membros bloqueados', icon: 'block' },
@@ -521,6 +536,55 @@ export const Settings: React.FC<SettingsProps> = ({
                   </label>
                 ))}
               </div>
+            </div>
+          )}
+
+          {/* Appeals Tab */}
+          {activeTab === 'appeals' && (
+            <div className="space-y-5">
+              <div>
+                <h3 className="text-base font-bold text-konecta-navy">Os meus recursos de moderação</h3>
+                <p className="text-xs text-gray-500">Acompanha o estado dos teus pedidos de revisão de conteúdos moderados.</p>
+              </div>
+
+              {loadingAppeals ? (
+                <div className="py-12 text-center text-xs text-gray-400">
+                  <span className="animate-spin inline-block w-5 h-5 border-2 border-konecta-navy border-t-transparent rounded-full mb-2"></span>
+                  <p>A carregar recursos...</p>
+                </div>
+              ) : appeals.length === 0 ? (
+                <div className="p-8 text-center bg-gray-50 rounded-2xl border border-dashed border-gray-200 space-y-2">
+                  <span className="material-symbols-outlined text-4xl text-gray-300">gavel</span>
+                  <p className="text-xs text-gray-500">Não tens nenhum recurso submetido.</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {appeals.map(app => (
+                    <div key={app.id} className="p-4 bg-gray-50 rounded-2xl border border-gray-100 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
+                          app.status === 'accepted' ? 'bg-emerald-100 text-emerald-800' :
+                          app.status === 'rejected' ? 'bg-red-100 text-red-800' :
+                          'bg-amber-100 text-amber-800'
+                        }`}>
+                          {app.status === 'accepted' ? 'Aprovado (Conteúdo restaurado)' :
+                           app.status === 'rejected' ? 'Rejeitado' :
+                           'Pendente de Análise'}
+                        </span>
+                        <span className="text-[10px] text-gray-400">{new Date(app.created_at).toLocaleDateString('pt-AO')}</span>
+                      </div>
+                      <p className="text-xs font-semibold text-gray-700 bg-white p-3 rounded-xl border border-gray-200">
+                        "{app.explanation}"
+                      </p>
+                      {app.admin_note && (
+                        <p className="text-xs text-gray-500 italic">
+                          <span className="font-bold text-konecta-navy">Nota da administração:</span> {app.admin_note}
+                        </p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 

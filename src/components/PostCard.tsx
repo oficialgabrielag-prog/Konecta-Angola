@@ -66,8 +66,19 @@ export const PostCard: React.FC<PostCardProps> = ({
                 <h3 className="font-bold text-konecta-navy text-sm">{post.profiles?.full_name || 'Utilizador'}</h3>
                 <UserBadge profile={post.profiles} size="xs" showPlan={true} />
               </div>
-              <p className="text-[10px] text-gray-400 uppercase tracking-wider font-medium">
-                {formatDistanceToNow(new Date(post.created_at), { addSuffix: true, locale: ptBR })}
+              <p className="text-[10px] text-gray-400 uppercase tracking-wider font-medium flex items-center gap-2">
+                <span>{formatDistanceToNow(new Date(post.created_at), { addSuffix: true, locale: ptBR })}</span>
+                {post.status === 'review' && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
+                    Em revisão
+                  </span>
+                )}
+                {post.status === 'removed' && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-50 text-red-700 border border-red-200">
+                    Removido por violar as regras
+                  </span>
+                )}
               </p>
             </div>
           </div>

@@ -1,5 +1,7 @@
 import { supabase } from './supabaseClient';
 import { KonectaRealtimeService } from './realtime';
+import { moderateContent } from './moderation';
+import { cldVideoFrames } from './cloudinary';
 
 // Initialize Realtime subscriptions
 KonectaRealtimeService.init();
@@ -19,19 +21,14 @@ function wrapObject(obj: any) {
 
 export const d1Client: any = {
   moderation: {
-    async analyze(data: { text?: string; image_urls?: string[]; content_type: string; content_id: string }): Promise<any> {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return { success: false, error: 'Não autenticado' };
-
-      const { data: result, error } = await supabase.functions.invoke('moderate-content', {
-        body: {
-          text: data.text,
-          image_urls: data.image_urls,
-          content_type: data.content_type,
-          content_id: data.content_id
-        }
+    async analyze(data: { text?: string; image_urls?: string[]; video_frame_urls?: string[]; content_type: string; content_id?: string }): Promise<any> {
+      const res = await moderateContent({
+        contentType: data.content_type,
+        text: data.text,
+        imageUrls: data.image_urls,
+        videoFrameUrls: data.video_frame_urls
       });
-      return { data: result, error };
+      return { data: res, error: null };
     }
   },
   auth: {
@@ -309,26 +306,18 @@ export const d1Client: any = {
     },
 
     async update(userId: string, data: any): Promise<any> {
-      if (data.bio) {
-        const moderation = await d1Client.moderation.analyze({
-          text: data.bio.trim(),
-          content_type: 'profile',
-          content_id: userId
+      const textToModerate = [data.display_name || data.full_name, data.username, data.bio]
+        .filter(Boolean)
+        .join(' ');
+
+      if (textToModerate.trim()) {
+        const mod = await moderateContent({
+          contentType: 'profile',
+          text: textToModerate.trim()
         });
 
-        if (moderation.data?.action === 'block') {
-          return { success: false, error: { message: 'Biografia não permitida por motivos de segurança.' } };
-        }
-
-        if (moderation.data?.action === 'review') {
-          await supabase.from('content_moderation_queue').insert({
-            content_id: userId,
-            content_type: 'profile',
-            author_id: userId,
-            reason: JSON.stringify(moderation.data?.categories || {}),
-            status: 'pending',
-            created_at: new Date().toISOString()
-          });
+        if (mod.decision !== 'allow') {
+          return { success: false, error: { message: mod.message || 'Perfil não permitido por motivos de segurança.' } };
         }
       }
 
@@ -496,26 +485,43 @@ export const d1Client: any = {
       return { data: wrapArray(formatted), error: null };
     },
 
-    async create(data: { content?: string; body?: string; image_url?: string; community_id?: string }): Promise<any> {
+    async create(data: { content?: string; body?: string; image_url?: string; image_urls?: string[]; community_id?: string; status?: string }): Promise<any> {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         return { data: null, error: { message: 'Autenticação necessária para publicar.' } };
       }
 
       const postBody = (data.content || data.body || '').trim();
-      if (!postBody && !data.image_url) {
+      const imageUrls = data.image_url ? [data.image_url] : (data.image_urls || []);
+
+      if (!postBody && imageUrls.length === 0) {
         return { data: null, error: { message: 'O post precisa de texto ou imagem.' } };
       }
 
-      // 1. Insert into posts table (author_id = user.id, body = content)
+      // 1. Moderate content before insertion
+      const mod = await moderateContent({
+        contentType: 'post',
+        text: postBody,
+        imageUrls
+      });
+
+      if (mod.decision === 'block') {
+        return { data: null, error: { message: mod.message || 'Este conteúdo parece violar as regras da comunidade e não pode ser publicado.' }, blocked: true };
+      }
+
+      const postStatus = mod.decision === 'review' ? 'review' : 'published';
+      const contentId = mod.contentId;
+
+      // 2. Insert into posts table with contentId
       const { data: newPost, error: postErr } = await supabase
         .from('posts')
         .insert({
+          id: contentId,
           author_id: user.id,
           body: postBody,
           community_id: data.community_id || null,
           visibility: 'public',
-          status: 'published',
+          status: postStatus,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
         })
@@ -527,40 +533,29 @@ export const d1Client: any = {
         return { data: null, error: postErr };
       }
 
-      // 2. Insert image into post_media if provided
-      let mediaUrl = null;
-      if (data.image_url) {
-        const { data: mediaData, error: mediaErr } = await supabase
+      // 3. Insert image/videos into post_media
+      let firstMediaUrl = null;
+      for (let i = 0; i < imageUrls.length; i++) {
+        const url = imageUrls[i];
+        const { data: mediaData } = await supabase
           .from('post_media')
           .insert({
             post_id: newPost.id,
-            media_url: data.image_url,
+            media_url: url,
             media_type: 'image',
+            position: i,
             created_at: new Date().toISOString()
           })
           .select()
           .maybeSingle();
-
-        if (mediaErr) {
-          console.warn('Aviso ao registar post_media:', mediaErr);
-        }
-        mediaUrl = mediaData?.media_url || data.image_url;
+        if (i === 0) firstMediaUrl = mediaData?.media_url || url;
       }
 
-      // 3. Fetch author profile and community info
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('user_id', user.id)
-        .maybeSingle();
-
+      // 4. Fetch profile and community info
+      const { data: profile } = await supabase.from('profiles').select('*').eq('user_id', user.id).maybeSingle();
       let communityData = null;
       if (newPost.community_id) {
-        const { data: comm } = await supabase
-          .from('communities')
-          .select('*')
-          .eq('id', newPost.community_id)
-          .maybeSingle();
+        const { data: comm } = await supabase.from('communities').select('*').eq('id', newPost.community_id).maybeSingle();
         communityData = comm;
       }
 
@@ -582,14 +577,20 @@ export const d1Client: any = {
         body: newPost.body,
         community_id: newPost.community_id,
         communities: communityData,
-        image_url: mediaUrl,
+        image_url: firstMediaUrl,
+        status: newPost.status,
         likes_count: 0,
         comments_count: 0,
         created_at: newPost.created_at,
-        profiles: formattedProfile
+        profiles: formattedProfile,
+        _pending: postStatus === 'review'
       };
 
-      return { data: wrapObject(formattedPost), error: null };
+      return {
+        data: wrapObject(formattedPost),
+        error: null,
+        message: mod.decision === 'review' ? mod.message : undefined
+      };
     },
 
     async getById(id: string): Promise<any> {
@@ -651,17 +652,24 @@ export const d1Client: any = {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return { success: false, error: 'Não autenticado' };
 
-      await supabase.from('post_media').delete().eq('post_id', postId);
-      await supabase.from('post_comments').delete().eq('post_id', postId);
-      await supabase.from('post_reactions').delete().eq('post_id', postId);
-      await supabase.from('saved_posts').delete().eq('post_id', postId);
+      const isAdminUser = await d1Client.isAdmin();
 
-      const { error } = await supabase
-        .from('posts')
-        .delete()
-        .match({ id: postId, author_id: user.id });
+      let query = supabase.from('posts').delete().eq('id', postId);
+      if (!isAdminUser) {
+        query = query.eq('author_id', user.id);
+      }
 
-      return { success: !error, error };
+      const { data, error } = await query.select('id');
+      if (error) {
+        console.error('Erro ao eliminar publicação:', error);
+        return { success: false, error: error.message || error };
+      }
+
+      if (!data || data.length === 0) {
+        return { success: false, error: 'Não foi possível eliminar: a publicação já não existe ou não és o autor.' };
+      }
+
+      return { success: true, error: null };
     },
 
     async toggleLike(postId: string, isLiked?: boolean): Promise<any> {
@@ -803,40 +811,31 @@ export const d1Client: any = {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return { data: null, error: { message: 'Não autenticado' } };
 
-      const moderation = await d1Client.moderation.analyze({
-        text: text.trim(),
-        content_type: 'comment',
-        content_id: 'pending'
+      const mod = await moderateContent({
+        contentType: 'comment',
+        text: text.trim()
       });
 
-      if (moderation.data?.action === 'block') {
-        return { data: null, error: { message: 'Comentário não permitido por motivos de segurança.' } };
+      if (mod.decision === 'block') {
+        return { data: null, error: { message: mod.message || 'Comentário não permitido por motivos de segurança.' } };
       }
+
+      const commentStatus = mod.decision === 'review' ? 'review' : 'published';
 
       const { data: newComment, error } = await supabase
         .from('post_comments')
         .insert({
+          id: mod.contentId,
           post_id: postId,
           author_id: user.id,
           body: text.trim(),
-          created_at: new Date().toISOString(),
-          status: moderation.data?.action === 'review' ? 'review' : 'published'
+          status: commentStatus,
+          created_at: new Date().toISOString()
         })
         .select()
         .single();
 
       if (error || !newComment) return { data: null, error };
-
-      if (moderation.data?.action === 'review') {
-        await supabase.from('content_moderation_queue').insert({
-          content_id: newComment.id,
-          content_type: 'comment',
-          author_id: user.id,
-          reason: JSON.stringify(moderation.data?.categories || {}),
-          status: 'pending',
-          created_at: new Date().toISOString()
-        });
-      }
 
       const { data: profile } = await supabase
         .from('profiles')
@@ -851,13 +850,18 @@ export const d1Client: any = {
         author_id: newComment.author_id,
         content: newComment.body,
         body: newComment.body,
+        status: newComment.status,
         created_at: newComment.created_at,
         profiles: profile
           ? { ...profile, id: profile.user_id, full_name: profile.display_name }
           : { id: user.id, full_name: 'Membro Konecta' }
       };
 
-      return { data: wrapObject(formatted), error: null };
+      return {
+        data: wrapObject(formatted),
+        error: null,
+        message: mod.decision === 'review' ? mod.message : undefined
+      };
     }
   },
 
@@ -2077,17 +2081,27 @@ export const d1Client: any = {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return { data: null, error: { message: 'Não autenticado' } };
 
-      if (!payload.cloudinary_public_id) {
-        return { data: null, error: { message: 'Identificador do Cloudinary (cloudinary_public_id) é obrigatório.' } };
+      if (!payload.cloudinary_public_id || !payload.video_url) {
+        return { data: null, error: { message: 'Vídeo é obrigatório.' } };
       }
 
-      if (!payload.video_url) {
-        return { data: null, error: { message: 'URL do vídeo (video_url) é obrigatória.' } };
+      const frameUrls = cldVideoFrames(payload.video_url, payload.duration_seconds || 10, 4);
+      const mod = await moderateContent({
+        contentType: 'reel',
+        text: payload.caption || '',
+        videoFrameUrls: frameUrls
+      });
+
+      if (mod.decision === 'block') {
+        return { data: null, error: { message: mod.message || 'Reel não permitido por motivos de segurança.' }, blocked: true };
       }
+
+      const reelStatus = mod.decision === 'review' ? 'review' : 'published';
 
       const { data, error } = await supabase
         .from('reels')
         .insert({
+          id: mod.contentId,
           author_id: user.id,
           cloudinary_public_id: payload.cloudinary_public_id,
           video_url: payload.video_url,
@@ -2099,7 +2113,7 @@ export const d1Client: any = {
           duration_seconds: payload.duration_seconds || null,
           bytes: payload.bytes || null,
           visibility: payload.visibility || 'public',
-          status: payload.status || 'published',
+          status: reelStatus,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
         })
@@ -2123,7 +2137,7 @@ export const d1Client: any = {
         profiles: profile ? { ...profile, full_name: profile.display_name } : { full_name: 'Criador Konecta' }
       };
 
-      return { data: wrapObject(formatted), error: null };
+      return { data: wrapObject(formatted), error: null, message: mod.decision === 'review' ? mod.message : undefined };
     },
 
     async toggleReaction(reelId: string, isLiked?: boolean): Promise<any> {
@@ -2187,9 +2201,19 @@ export const d1Client: any = {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return { data: null, error: { message: 'Não autenticado' } };
 
+      const mod = await moderateContent({
+        contentType: 'reel_comment',
+        text: body.trim()
+      });
+
+      if (mod.decision !== 'allow') {
+        return { data: null, error: { message: mod.message || 'Comentário não permitido por motivos de segurança.' } };
+      }
+
       const { data, error } = await supabase
         .from('reel_comments')
         .insert({
+          id: mod.contentId,
           reel_id: reelId,
           author_id: user.id,
           body: body.trim(),
@@ -3590,22 +3614,38 @@ export const d1Client: any = {
       if (!user) return { data: null, error: 'Não autenticado' };
 
       const content = payload.body.trim();
+      const imageUrls = payload.media_url ? [payload.media_url] : [];
+
+      const mod = await moderateContent({
+        contentType: 'organization_post',
+        text: (payload.title ? payload.title + '\n' + content : content),
+        imageUrls
+      });
+
+      if (mod.decision === 'block') {
+        return { data: null, error: { message: mod.message || 'Publicação não permitida por motivos de segurança.' }, blocked: true };
+      }
+
+      const postStatus = mod.decision === 'review' ? 'review' : 'published';
       const media = payload.media_url ? [{ url: payload.media_url }] : [];
 
       const { data, error } = await supabase
         .from('organization_posts')
         .insert({
+          id: mod.contentId,
           organization_id: orgId,
           author_id: user.id,
           title: payload.title?.trim() || null,
           content,
           media,
+          status: postStatus,
           post_type: payload.post_type || 'announcement',
           created_at: new Date().toISOString()
         })
         .select()
         .single();
-      return { data: wrapObject(data), error };
+
+      return { data: wrapObject(data), error, message: mod.decision === 'review' ? mod.message : undefined };
     },
 
     async getDocuments(orgId: string): Promise<any> {
@@ -4744,35 +4784,124 @@ export const d1Client: any = {
   },
 
   admin: {
+    async getMetrics(): Promise<any> {
+      try {
+        const [usersCount, postsCount, commsCount, eventsCount, reportsCount] = await Promise.all([
+          supabase.from('profiles').select('user_id', { count: 'exact', head: true }),
+          supabase.from('posts').select('id', { count: 'exact', head: true }),
+          supabase.from('communities').select('id', { count: 'exact', head: true }),
+          supabase.from('events').select('id', { count: 'exact', head: true }),
+          supabase.from('reports').select('id', { count: 'exact', head: true })
+        ]);
+
+        return {
+          data: {
+            users: usersCount.count || 0,
+            ideas: postsCount.count || 0,
+            projects: commsCount.count || 0,
+            challenges: eventsCount.count || 0,
+            communities: commsCount.count || 0,
+            events: eventsCount.count || 0,
+            reports: reportsCount.count || 0
+          }
+        };
+      } catch (err) {
+        console.warn('Erro ao obter métricas de admin:', err);
+        return {
+          data: {
+            users: 0,
+            ideas: 0,
+            projects: 0,
+            challenges: 0,
+            communities: 0,
+            events: 0,
+            reports: 0
+          }
+        };
+      }
+    },
+
     async getModerationQueue(): Promise<any> {
-      const { data, error } = await supabase.from('content_moderation_queue').select('*').eq('status', 'pending');
+      try {
+        const { data, error } = await supabase
+          .from('content_moderation_queue')
+          .select('*')
+          .in('status', ['pending', 'assigned', 'escalated', 'open', 'review'])
+          .order('priority', { ascending: false })
+          .order('created_at', { ascending: true });
+        return { data: wrapArray(data || []), error };
+      } catch (err) {
+        console.warn('Erro ao carregar fila de moderação:', err);
+        return { data: wrapArray([]), error: err };
+      }
+    },
+
+    async takeModerationAction(queueId: string, action: 'approve' | 'reject' | 'escalate', reason: string): Promise<any> {
+      if (!reason || reason.trim().length < 3) {
+        return { data: null, error: { message: 'O motivo é obrigatório (mínimo 3 caracteres).' } };
+      }
+      try {
+        const { data, error } = await supabase.rpc('moderation_decide', {
+          p_queue_id: queueId,
+          p_decision: action,
+          p_reason: reason.trim()
+        });
+        if (error) {
+          console.error('Erro na RPC moderation_decide:', error);
+          return { data: null, error };
+        }
+        return { data, error: null };
+      } catch (err: any) {
+        console.error('Falha ao executar moderation_decide:', err);
+        return { data: null, error: err };
+      }
+    },
+
+    async decideAppeal(appealId: string, accept: boolean, note: string): Promise<any> {
+      try {
+        const { data, error } = await supabase.rpc('moderation_appeal_decide', {
+          p_appeal_id: appealId,
+          p_accept: accept,
+          p_note: (note || '').trim()
+        });
+        if (error) {
+          return { data: null, error };
+        }
+        return { data, error: null };
+      } catch (err: any) {
+        return { data: null, error: err };
+      }
+    },
+
+    async listAppeals(): Promise<any> {
+      const { data, error } = await supabase
+        .from('moderation_appeals')
+        .select('*, moderation_actions(*)')
+        .order('created_at', { ascending: false });
       return { data: wrapArray(data || []), error };
     },
-    async takeModerationAction(queueId: string, action: 'approve' | 'block', reason: string): Promise<any> {
-      const { data: result, error } = await supabase.functions.invoke('manage-moderation', {
-        body: { queue_id: queueId, action, reason }
-      });
-      return { data: result, error };
+
+    async listActions(): Promise<any> {
+      const { data, error } = await supabase
+        .from('moderation_actions')
+        .select('*')
+        .order('created_at', { ascending: false });
+      return { data: wrapArray(data || []), error };
     }
   },
 
   async isAdmin(): Promise<boolean> {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return false;
-    
-    // Explicit email matching for verified admin account
-    if (user.email === 'oficialgabrielag@gmail.com' || user.email === 'officialgabrielag@gmail.com') {
-      return true;
-    }
-    
+
     // Identified via official is_konecta_admin RPC
     try {
       const { data, error } = await supabase.rpc('is_konecta_admin');
       if (!error && (data === true || (typeof data === 'boolean' && data))) {
         return true;
       }
-    } catch {
-      // ignore
+    } catch (err) {
+      console.warn('RPC is_konecta_admin notice:', err);
     }
 
     try {
@@ -4788,29 +4917,5 @@ export const d1Client: any = {
     }
 
     return false;
-  },
-
-  admin: {
-    async getMetrics(): Promise<any> {
-      const [usersCount, postsCount, commsCount, eventsCount, reportsCount] = await Promise.all([
-        supabase.from('profiles').select('user_id', { count: 'exact', head: true }),
-        supabase.from('posts').select('id', { count: 'exact', head: true }),
-        supabase.from('communities').select('id', { count: 'exact', head: true }),
-        supabase.from('events').select('id', { count: 'exact', head: true }),
-        supabase.from('reports').select('id', { count: 'exact', head: true })
-      ]);
-
-      return {
-        data: {
-          users: usersCount.count || 0,
-          ideas: postsCount.count || 0,
-          projects: commsCount.count || 0,
-          challenges: eventsCount.count || 0,
-          communities: commsCount.count || 0,
-          events: eventsCount.count || 0,
-          reports: reportsCount.count || 0
-        }
-      };
-    }
   }
 };

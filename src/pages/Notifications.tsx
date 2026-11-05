@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { NotificationItem } from '../types';
 import { d1Client } from '../lib/d1Client';
+import { supabase } from '../lib/supabaseClient';
+import { useToast } from '../context/UIContext';
 import { useWebPush } from '../hooks/useWebPush';
 import { useT } from '../i18n/LanguageContext';
 
@@ -23,8 +25,15 @@ export const Notifications: React.FC<NotificationsProps> = ({
   onNavigateTab
 }) => {
   const t = useT();
+  const { showToast } = useToast();
   const [filterCategory, setFilterCategory] = useState<'all' | 'unread'>('all');
   const [markingAll, setMarkingAll] = useState(false);
+
+  // Moderation decision modal & appeal state
+  const [selectedNotif, setSelectedNotif] = useState<NotificationItem | null>(null);
+  const [showAppealModal, setShowAppealModal] = useState(false);
+  const [explanation, setExplanation] = useState('');
+  const [submittingAppeal, setSubmittingAppeal] = useState(false);
 
   // Web Push Hook
   const { isSubscribed, loading: pushLoading, enablePushNotifications, disablePushNotifications } = useWebPush(user);
@@ -106,6 +115,12 @@ export const Notifications: React.FC<NotificationsProps> = ({
   const handleNotificationClick = (notif: NotificationItem) => {
     onMarkAsRead(notif.id);
 
+    const type = notif.notification_type || notif.type;
+    if (type === 'moderation_decision' || notif.target_type === 'moderation_action') {
+      setSelectedNotif(notif);
+      return;
+    }
+
     if (onNavigateTab) {
       const targetType = notif.target_type || notif.notification_type || notif.type;
       if (targetType === 'message' || targetType === 'conversation') {
@@ -121,6 +136,38 @@ export const Notifications: React.FC<NotificationsProps> = ({
       } else {
         onNavigateTab('home');
       }
+    }
+  };
+
+  const handleSubmitAppeal = async () => {
+    if (!selectedNotif || !selectedNotif.target_id) return;
+    if (explanation.trim().length < 10) {
+      showToast('A explicação deve ter pelo menos 10 caracteres', 'error');
+      return;
+    }
+    setSubmittingAppeal(true);
+    try {
+      const { error } = await supabase.from('moderation_appeals').insert({
+        appellant_id: user.id,
+        moderation_action_id: selectedNotif.target_id,
+        explanation: explanation.trim()
+      });
+      if (error) {
+        if (error.code === '23505') {
+          showToast('Já submeteu um recurso para esta decisão.', 'error');
+        } else {
+          showToast(`Erro ao enviar recurso: ${error.message}`, 'error');
+        }
+      } else {
+        showToast('Recurso enviado com sucesso! Será analisado pelos administradores.', 'success');
+        setShowAppealModal(false);
+        setSelectedNotif(null);
+        setExplanation('');
+      }
+    } catch (err: any) {
+      showToast(err?.message || 'Erro inesperado ao submeter recurso', 'error');
+    } finally {
+      setSubmittingAppeal(false);
     }
   };
 
@@ -278,6 +325,112 @@ export const Notifications: React.FC<NotificationsProps> = ({
         </div>
       )}
 
+      {/* Moderation Decision Modal */}
+      <AnimatePresence>
+        {selectedNotif && (
+          <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-gray-100"
+            >
+              <div className="w-12 h-12 rounded-2xl bg-amber-100 text-amber-700 flex items-center justify-center mb-4">
+                <span className="material-symbols-outlined text-2xl">gavel</span>
+              </div>
+              <h3 className="text-lg font-bold text-konecta-navy mb-1">{selectedNotif.title || 'Decisão de Moderação'}</h3>
+              <p className="text-xs text-gray-500 mb-4">{formatRelativeTime(selectedNotif.created_at)}</p>
+              <div className="bg-gray-50 p-4 rounded-2xl border border-gray-100 text-xs text-gray-700 leading-relaxed mb-6 space-y-2">
+                <p>{selectedNotif.body || selectedNotif.message}</p>
+              </div>
+
+              <div className="flex flex-col gap-2">
+                {selectedNotif.target_id && (
+                  <button
+                    onClick={() => {
+                      setShowAppealModal(true);
+                    }}
+                    className="w-full py-2.5 px-4 bg-konecta-navy text-white rounded-xl text-xs font-bold hover:bg-slate-800 transition-colors flex items-center justify-center gap-2"
+                  >
+                    <span className="material-symbols-outlined text-base">assignment_return</span>
+                    <span>Submeter Recurso</span>
+                  </button>
+                )}
+                <button
+                  onClick={() => setSelectedNotif(null)}
+                  className="w-full py-2.5 px-4 bg-gray-100 text-gray-700 rounded-xl text-xs font-semibold hover:bg-gray-200 transition-colors"
+                >
+                  Fechar
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Appeal Submission Modal */}
+      <AnimatePresence>
+        {showAppealModal && selectedNotif && (
+          <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-gray-100"
+            >
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <span className="material-symbols-outlined text-konecta-navy">gavel</span>
+                  <h3 className="text-lg font-bold text-konecta-navy">Recurso de Moderação</h3>
+                </div>
+                <button
+                  onClick={() => setShowAppealModal(false)}
+                  className="text-gray-400 hover:text-gray-600"
+                >
+                  <span className="material-symbols-outlined">close</span>
+                </button>
+              </div>
+
+              <p className="text-xs text-gray-500 mb-4 leading-relaxed">
+                Se consideras que a decisão de moderação foi um equívoco, explica o teu ponto de vista. A equipa de administração irá rever a tua solicitação.
+              </p>
+
+              <textarea
+                value={explanation}
+                onChange={e => setExplanation(e.target.value)}
+                placeholder="Explica o motivo pelo qual a publicação deve ser restaurada (mínimo 10 caracteres)..."
+                rows={5}
+                className="w-full p-3.5 border border-gray-200 rounded-2xl text-xs focus:ring-2 focus:ring-konecta-gold focus:border-transparent outline-none resize-none mb-4"
+              />
+
+              <div className="flex justify-end gap-2">
+                <button
+                  onClick={() => setShowAppealModal(false)}
+                  disabled={submittingAppeal}
+                  className="px-4 py-2.5 rounded-xl border border-gray-200 text-xs font-semibold text-gray-600 hover:bg-gray-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleSubmitAppeal}
+                  disabled={submittingAppeal || explanation.trim().length < 10}
+                  className="px-5 py-2.5 rounded-xl bg-konecta-navy text-white text-xs font-bold hover:bg-slate-800 disabled:opacity-50 transition-colors flex items-center gap-1.5"
+                >
+                  {submittingAppeal ? (
+                    <>
+                      <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
+                      <span>Enviando...</span>
+                    </>
+                  ) : (
+                    <span>Enviar Recurso</span>
+                  )}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
     </div>
   );
 };
@@ -307,6 +460,8 @@ function getNotificationIcon(type?: string): { icon: string; badgeColor: string 
       return { icon: 'event', badgeColor: 'bg-purple-600' };
     case 'project_application':
       return { icon: 'folder_special', badgeColor: 'bg-teal-600' };
+    case 'moderation_decision':
+      return { icon: 'gavel', badgeColor: 'bg-red-600' };
     default:
       return { icon: 'notifications', badgeColor: 'bg-konecta-navy' };
   }

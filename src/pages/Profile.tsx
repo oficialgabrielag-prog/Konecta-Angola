@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import { supabase } from '../lib/supabaseClient';
 import { Idea, Project, Post, Follow } from '../types';
 import { uploadToCloudinary, cldAvatar, cldImage, cldBlurPlaceholder } from '../lib/cloudinary';
 import { d1Client } from '../lib/d1Client';
@@ -176,39 +177,22 @@ export const Profile: React.FC<ProfileProps> = ({
         imageUrl = await uploadToCloudinary(pendingImage);
       }
 
-      const moderation = await d1Client.moderation.analyze({
-        text: newPostText.trim(),
-        image_urls: imageUrl ? [imageUrl] : [],
-        content_type: 'post',
-        content_id: 'pending'
+      const res = await d1Client.posts.create({
+        content: newPostText.trim(),
+        image_url: imageUrl || undefined
       });
-      
-      if (moderation.data?.action === 'block') {
-        showToast('Publicação não permitida por motivos de segurança.', 'error');
+
+      if (res.error) {
+        showToast(res.error.message || t('profile.publish_err'), 'error');
         setPublishing(false);
         return;
       }
 
-      const res = await d1Client.posts.create({
-        content: newPostText.trim(),
-        image_url: imageUrl || undefined,
-        status: moderation.data?.action === 'review' ? 'review' : 'published'
-      });
-
-      const createdPost = res.data?.data;
+      const createdPost = res.data?.data || res.data;
       if (createdPost) {
         setUserPosts(prev => [createdPost, ...prev]);
-        
-        if (moderation.data?.action === 'review') {
-          await supabase.from('content_moderation_queue').insert({
-            content_id: createdPost.id,
-            content_type: 'post',
-            author_id: user.id,
-            reason: JSON.stringify(moderation.data?.categories || {}),
-            status: 'pending',
-            created_at: new Date().toISOString()
-          });
-          showToast('Publicação enviada para revisão de segurança.', 'info');
+        if (res.message || createdPost.status === 'review') {
+          showToast(res.message || 'Publicação enviada para revisão de segurança.', 'info');
         } else {
           showToast(t('profile.publish_success'), 'success');
         }

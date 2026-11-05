@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
+import { supabase } from '../lib/supabaseClient';
 import { d1Client } from '../lib/d1Client';
 import { Report } from '../types';
 import { MusicManager } from '../components/MusicManager';
@@ -39,7 +40,7 @@ export const Admin: React.FC<AdminProps> = ({ user, onOpenAuth, onNavigateTab })
 
   const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'metrics' | 'reports' | 'music' | 'verification_plans'>('verification_plans');
+  const [activeTab, setActiveTab] = useState<'metrics' | 'reports' | 'music' | 'verification_plans' | 'moderation'>('verification_plans');
 
   // Sub-tabs for "Verificação e Planos"
   const [verifSubTab, setVerifSubTab] = useState<'personal' | 'org' | 'sub_requests' | 'plans_mgmt' | 'active_subs'>('personal');
@@ -60,6 +61,11 @@ export const Admin: React.FC<AdminProps> = ({ user, onOpenAuth, onNavigateTab })
   const [moderationQueue, setModerationQueue] = useState<any[]>([]);
   const [reportFilter, setReportFilter] = useState<'pending' | 'reviewed' | 'all'>('pending');
   const [updatingReportId, setUpdatingReportId] = useState<string | null>(null);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+
+  // Moderation action reasons & state
+  const [decisionNoteMap, setDecisionNoteMap] = useState<Record<string, string>>({});
+  const [submittingDecisions, setSubmittingDecisions] = useState<Record<string, boolean>>({});
 
   // Verification & Subscriptions state
   const [verificationRequests, setVerificationRequests] = useState<{ profiles: any[]; organizations: any[] }>({
@@ -102,6 +108,37 @@ export const Admin: React.FC<AdminProps> = ({ user, onOpenAuth, onNavigateTab })
     }
   }, [user]);
 
+  // Real-time synchronization for the administration panel
+  useEffect(() => {
+    if (!isAdmin) return;
+
+    const channel = supabase
+      .channel('admin_live_updates')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'content_moderation_queue' }, () => {
+        fetchAllAdminData();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'reports' }, () => {
+        fetchAllAdminData();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'profile_verification_requests' }, () => {
+        fetchAllAdminData();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'organization_verification_requests' }, () => {
+        fetchAllAdminData();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'subscription_requests' }, () => {
+        fetchAllAdminData();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'posts' }, () => {
+        fetchAllAdminData();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [isAdmin]);
+
   const checkAdminRole = async () => {
     setLoading(true);
     try {
@@ -110,7 +147,7 @@ export const Admin: React.FC<AdminProps> = ({ user, onOpenAuth, onNavigateTab })
       setIsAdmin(isAdminUser);
 
       if (isAdminUser) {
-        fetchAllAdminData();
+        await fetchAllAdminData();
       }
     } catch (err: any) {
       console.warn('Aviso ao verificar permissão de admin:', err?.message || err);
@@ -123,7 +160,7 @@ export const Admin: React.FC<AdminProps> = ({ user, onOpenAuth, onNavigateTab })
   const fetchAllAdminData = async () => {
     setLoadingVerifData(true);
     try {
-      const [metricsRes, reportsRes, verifRes, subRes, plansRes, activeSubsRes, modRes] = await Promise.all([
+      const results = await Promise.allSettled([
         d1Client.admin.getMetrics(),
         d1Client.reports.list(),
         d1Client.verification.listVerificationRequests(),
@@ -133,13 +170,64 @@ export const Admin: React.FC<AdminProps> = ({ user, onOpenAuth, onNavigateTab })
         d1Client.admin.getModerationQueue()
       ]);
 
-      if (metricsRes.data?.data) setMetrics(metricsRes.data.data);
-      if (reportsRes.data?.data) setReports(reportsRes.data.data);
-      if (verifRes.data) setVerificationRequests(verifRes.data);
-      if (subRes.data) setSubscriptionRequests(subRes.data);
-      if (plansRes.data) setAllPlans(plansRes.data);
-      if (activeSubsRes.data) setActiveSubscriptions(activeSubsRes.data);
-      if (modRes.data) setModerationQueue(modRes.data);
+      const [metricsRes, reportsRes, verifRes, subRes, plansRes, activeSubsRes, modRes] = results.map(r => 
+        r.status === 'fulfilled' ? r.value : { data: null, error: r.reason }
+      );
+
+      // 1. Metrics
+      const mData = metricsRes?.data?.data || metricsRes?.data;
+      if (mData && typeof mData === 'object') {
+        setMetrics({
+          users: Number(mData.users) || 0,
+          ideas: Number(mData.ideas) || 0,
+          projects: Number(mData.projects) || 0,
+          challenges: Number(mData.challenges) || 0,
+          communities: Number(mData.communities) || 0,
+          events: Number(mData.events) || 0,
+          reports: Number(mData.reports) || 0
+        });
+      }
+
+      // 2. Reports
+      const rData = reportsRes?.data?.data || reportsRes?.data;
+      if (Array.isArray(rData)) {
+        setReports(rData);
+      }
+
+      // 3. Verification Requests
+      const vData = verifRes?.data;
+      if (vData && typeof vData === 'object') {
+        setVerificationRequests({
+          profiles: Array.isArray(vData.profiles) ? vData.profiles : [],
+          organizations: Array.isArray(vData.organizations) ? vData.organizations : []
+        });
+      }
+
+      // 4. Subscription Requests
+      const sData = subRes?.data?.data || subRes?.data;
+      if (Array.isArray(sData)) {
+        setSubscriptionRequests(sData);
+      }
+
+      // 5. Plans
+      const pData = plansRes?.data?.data || plansRes?.data;
+      if (Array.isArray(pData)) {
+        setAllPlans(pData);
+      }
+
+      // 6. Active Subscriptions
+      const aData = activeSubsRes?.data?.data || activeSubsRes?.data;
+      if (Array.isArray(aData)) {
+        setActiveSubscriptions(aData);
+      }
+
+      // 7. Moderation Queue
+      const modData = modRes?.data?.data || modRes?.data;
+      if (Array.isArray(modData)) {
+        setModerationQueue(modData);
+      }
+
+      setLastUpdated(new Date());
     } catch (err: any) {
       console.warn('Aviso ao carregar dados de administração:', err?.message || err);
     } finally {
@@ -147,25 +235,43 @@ export const Admin: React.FC<AdminProps> = ({ user, onOpenAuth, onNavigateTab })
     }
   };
 
-  const handleModerationAction = async (queueId: string, action: 'approve' | 'block') => {
+  const handleModerationAction = async (queueId: string, action: 'approve' | 'reject' | 'escalate') => {
+    const reason = (decisionNoteMap[queueId] || '').trim();
+    if (reason.length < 3) {
+      showToast('O motivo da decisão é obrigatório (mínimo 3 caracteres).', 'error');
+      return;
+    }
+    setSubmittingDecisions(prev => ({ ...prev, [queueId]: true }));
     try {
-      await d1Client.admin.takeModerationAction(queueId, action, 'Ação administrativa rápida');
+      const res = await d1Client.admin.takeModerationAction(queueId, action, reason);
+      if (res?.error) {
+        showToast('Erro ao processar ação: ' + (res.error.message || JSON.stringify(res.error)), 'error');
+        return;
+      }
       setModerationQueue(prev => prev.filter(item => item.id !== queueId));
-      showToast('Ação de moderação executada.', 'success');
+      showToast(`Decisão (${action}) executada com sucesso.`, 'success');
+      fetchAllAdminData();
     } catch (err: any) {
-      showToast('Erro: ' + err.message, 'error');
+      showToast('Erro: ' + (err?.message || err), 'error');
+    } finally {
+      setSubmittingDecisions(prev => ({ ...prev, [queueId]: false }));
     }
   };
 
   const handleUpdateReportStatus = async (reportId: string, newStatus: 'reviewed' | 'actioned') => {
     setUpdatingReportId(reportId);
     try {
-      await d1Client.reports.update(reportId, { status: newStatus });
+      const res = await d1Client.reports.update(reportId, { status: newStatus });
+      if (res?.error) {
+        showToast('Erro ao atualizar denúncia: ' + (res.error.message || res.error), 'error');
+        return;
+      }
       setReports(prev => prev.map(r => r.id === reportId ? { ...r, status: newStatus } : r));
       showToast('Estado da denúncia atualizado com sucesso.', 'success');
+      fetchAllAdminData();
     } catch (err: any) {
       console.warn('Aviso ao atualizar denúncia:', err?.message || err);
-      alert(err?.message || t('admin.update_err'));
+      showToast(err?.message || t('admin.update_err'), 'error');
     } finally {
       setUpdatingReportId(null);
     }
@@ -367,88 +473,218 @@ export const Admin: React.FC<AdminProps> = ({ user, onOpenAuth, onNavigateTab })
   }
 
   const filteredReports = reports.filter(r => {
-    if (reportFilter === 'pending') return r.status === 'pending';
-    if (reportFilter === 'reviewed') return r.status === 'reviewed' || r.status === 'actioned';
+    if (reportFilter === 'pending') return r.status === 'open' || r.status === 'pending';
+    if (reportFilter === 'reviewed') return r.status === 'reviewed' || r.status === 'actioned' || r.status === 'resolved';
     return true;
   });
+
+  const pendingReportsCount = reports.filter(r => r.status === 'open' || r.status === 'pending').length;
+  const pendingVerifsCount = verificationRequests.profiles.length + verificationRequests.organizations.length;
+  const pendingSubsCount = subscriptionRequests.length;
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8 lg:py-16 space-y-8">
       {/* Top Header */}
-      <header className="flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-gray-100 pb-8">
+      <header className="flex flex-col lg:flex-row lg:items-end justify-between gap-6 border-b border-gray-100 pb-8">
         <div>
-          <span className="text-[10px] font-extrabold text-konecta-gold uppercase tracking-[0.2em]">{t('admin.kicker')}</span>
+          <div className="flex items-center gap-3">
+            <span className="text-[10px] font-extrabold text-konecta-gold uppercase tracking-[0.2em]">{t('admin.kicker')}</span>
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+              Tempo Real Ativo
+            </span>
+          </div>
           <h1 className="hero-title">{t('nav.admin')}</h1>
           <p className="text-gray-500 mt-2 text-sm leading-relaxed">
             Painel Central de Controlo, Moderação, Verificações e Planos de Subscrição do KONECTA Angola.
           </p>
         </div>
 
-        <div className="flex flex-wrap bg-gray-100 p-1 rounded-2xl self-start md:self-auto gap-1">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 self-start lg:self-auto">
+          {/* Universal Refresh Button */}
           <button
-            onClick={() => setActiveTab('verification_plans')}
-            className={`px-4 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 ${
-              activeTab === 'verification_plans' ? 'bg-white text-konecta-navy shadow-sm' : 'text-gray-500 hover:text-gray-900'
-            }`}
+            onClick={() => fetchAllAdminData()}
+            disabled={loadingVerifData}
+            className="px-4 py-2.5 rounded-2xl text-xs font-black bg-white border border-gray-200 text-konecta-navy hover:text-konecta-gold hover:border-konecta-gold/50 shadow-xs flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-60 shrink-0"
+            title="Atualizar dados manualmente"
           >
-            <ShieldCheck size={14} className="text-konecta-gold" /> Verificação e Planos
+            <RefreshCw size={14} className={loadingVerifData ? 'animate-spin text-konecta-gold' : 'text-konecta-navy'} />
+            <span>{loadingVerifData ? 'A atualizar...' : 'Atualizar Dados'}</span>
+            {lastUpdated && (
+              <span className="text-[10px] text-gray-400 font-normal hidden sm:inline">
+                ({lastUpdated.toLocaleTimeString('pt-AO', { hour: '2-digit', minute: '2-digit', second: '2-digit' })})
+              </span>
+            )}
           </button>
-          <button
-            onClick={() => setActiveTab('metrics')}
-            className={`px-4 py-2 rounded-xl text-xs font-black transition-all ${
-              activeTab === 'metrics' ? 'bg-white text-konecta-navy shadow-sm' : 'text-gray-500 hover:text-gray-900'
-            }`}
-          >
-            {t('admin.tab_metrics')}
-          </button>
-          <button
-            onClick={() => setActiveTab('reports')}
-            className={`px-4 py-2 rounded-xl text-xs font-black transition-all ${
-              activeTab === 'reports' ? 'bg-white text-konecta-navy shadow-sm' : 'text-gray-500 hover:text-gray-900'
-            }`}
-          >
-            {t('admin.tab_reports')} ({reports.filter(r => r.status === 'pending').length})
-          </button>
-          <button
-            onClick={() => setActiveTab('music')}
-            className={`px-4 py-2 rounded-xl text-xs font-black transition-all ${
-              activeTab === 'music' ? 'bg-white text-konecta-navy shadow-sm' : 'text-gray-500 hover:text-gray-900'
-            }`}
-          >
-            Music Library
-          </button>
-          <button
-            onClick={() => setActiveTab('moderation')}
-            className={`px-4 py-2 rounded-xl text-xs font-black transition-all ${
-              activeTab === 'moderation' ? 'bg-white text-konecta-navy shadow-sm' : 'text-gray-500 hover:text-gray-900'
-            }`}
-          >
-            Moderação
-          </button>
+
+          {/* Navigation Tabs */}
+          <div className="flex flex-wrap bg-gray-100 p-1 rounded-2xl gap-1">
+            <button
+              onClick={() => setActiveTab('verification_plans')}
+              className={`px-3.5 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 ${
+                activeTab === 'verification_plans' ? 'bg-white text-konecta-navy shadow-sm' : 'text-gray-500 hover:text-gray-900'
+              }`}
+            >
+              <ShieldCheck size={14} className="text-konecta-gold" />
+              <span>Verificação e Planos</span>
+              {(pendingVerifsCount + pendingSubsCount) > 0 && (
+                <span className="px-1.5 py-0.2 bg-konecta-navy text-white text-[10px] rounded-full font-bold ml-1">
+                  {pendingVerifsCount + pendingSubsCount}
+                </span>
+              )}
+            </button>
+            <button
+              onClick={() => setActiveTab('metrics')}
+              className={`px-3.5 py-2 rounded-xl text-xs font-black transition-all ${
+                activeTab === 'metrics' ? 'bg-white text-konecta-navy shadow-sm' : 'text-gray-500 hover:text-gray-900'
+              }`}
+            >
+              {t('admin.tab_metrics')}
+            </button>
+            <button
+              onClick={() => setActiveTab('reports')}
+              className={`px-3.5 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-1 ${
+                activeTab === 'reports' ? 'bg-white text-konecta-navy shadow-sm' : 'text-gray-500 hover:text-gray-900'
+              }`}
+            >
+              <span>{t('admin.tab_reports')}</span>
+              {pendingReportsCount > 0 && (
+                <span className="px-1.5 py-0.2 bg-red-600 text-white text-[10px] rounded-full font-bold">
+                  {pendingReportsCount}
+                </span>
+              )}
+            </button>
+            <button
+              onClick={() => setActiveTab('music')}
+              className={`px-3.5 py-2 rounded-xl text-xs font-black transition-all ${
+                activeTab === 'music' ? 'bg-white text-konecta-navy shadow-sm' : 'text-gray-500 hover:text-gray-900'
+              }`}
+            >
+              Music Library
+            </button>
+            <button
+              onClick={() => setActiveTab('moderation')}
+              className={`px-3.5 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-1 ${
+                activeTab === 'moderation' ? 'bg-white text-konecta-navy shadow-sm' : 'text-gray-500 hover:text-gray-900'
+              }`}
+            >
+              <span>Moderação</span>
+              {moderationQueue.length > 0 && (
+                <span className="px-1.5 py-0.2 bg-konecta-gold text-konecta-navy text-[10px] rounded-full font-bold">
+                  {moderationQueue.length}
+                </span>
+              )}
+            </button>
+          </div>
         </div>
       </header>
       
       {/* SECTION: MODERAÇÃO */}
       {activeTab === 'moderation' && (
-        <section className="bg-white p-8 rounded-3xl border border-gray-100 shadow-xs">
-          <h3 className="text-lg font-bold text-konecta-navy mb-6">Fila de Moderação ({moderationQueue.length})</h3>
+        <section className="bg-white p-6 sm:p-8 rounded-3xl border border-gray-100 shadow-xs space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-gray-100 pb-4">
+            <div>
+              <h3 className="text-lg font-bold text-konecta-navy">Fila de Moderação em Tempo Real</h3>
+              <p className="text-xs text-gray-500">Conteúdos sinalizados pela OpenAI ou utilizadores aguardando revisão humana.</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold text-konecta-gold bg-amber-50 border border-amber-200 px-3 py-1 rounded-full">
+                {moderationQueue.length} Fila Pendente
+              </span>
+            </div>
+          </div>
+
           <div className="space-y-4">
             {moderationQueue.length === 0 ? (
-              <p className="text-sm text-gray-500">Nenhum conteúdo pendente na fila de moderação.</p>
+              <div className="py-16 text-center border border-dashed border-gray-200 rounded-3xl">
+                <span className="material-symbols-outlined text-4xl text-gray-300 mb-2">verified_user</span>
+                <p className="text-sm text-gray-500">Nenhum conteúdo pendente na fila de moderação no momento.</p>
+              </div>
             ) : (
-              moderationQueue.map((item: any) => (
-                <div key={item.id} className="p-5 border border-gray-100 rounded-2xl flex justify-between items-center bg-gray-50">
-                  <div>
-                    <p className="text-xs font-bold text-konecta-navy uppercase">{item.content_type}</p>
-                    <p className="text-xs text-gray-500 mt-1">ID: {item.content_id}</p>
-                    <p className="text-xs text-gray-400 mt-0.5">Motivo: {item.reason}</p>
+              moderationQueue.map((item: any) => {
+                const itemReason = decisionNoteMap[item.id] || '';
+                return (
+                  <div key={item.id} className="p-6 border border-gray-200 rounded-2xl flex flex-col gap-4 bg-gray-50/50 hover:bg-white transition-colors shadow-2xs">
+                    <div className="flex items-center justify-between flex-wrap gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-[10px] font-black uppercase tracking-wider bg-konecta-navy text-white px-2.5 py-0.5 rounded-full">
+                          {item.content_type || 'Conteúdo'}
+                        </span>
+                        {item.priority && (
+                          <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${
+                            item.priority > 5 ? 'bg-red-100 text-red-800' : 'bg-amber-100 text-amber-800'
+                          }`}>
+                            Prioridade: {item.priority}
+                          </span>
+                        )}
+                        <span className="text-xs font-semibold text-gray-600">
+                          Autor: {item.submitted_by || item.content_author_id || item.author_id || 'Membro'}
+                        </span>
+                        <span className="text-[10px] text-gray-400">
+                          · {new Date(item.created_at).toLocaleString('pt-AO')}
+                        </span>
+                      </div>
+                      <span className="text-[10px] font-mono text-gray-400">ID: {item.content_id || item.id}</span>
+                    </div>
+
+                    {/* Excerpt and Media */}
+                    {item.content_excerpt && (
+                      <div className="text-xs text-gray-800 bg-white p-3 rounded-xl border border-gray-100 font-normal leading-relaxed">
+                        <strong>Excerto do Conteúdo:</strong> "{item.content_excerpt}"
+                      </div>
+                    )}
+
+                    {item.media_urls && Array.isArray(item.media_urls) && item.media_urls.length > 0 && (
+                      <div className="flex gap-2 overflow-x-auto py-1">
+                        {item.media_urls.map((url: string, idx: number) => (
+                          <img key={idx} src={url} alt="" className="w-16 h-16 object-cover rounded-xl border border-gray-200 shrink-0" />
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Decision reason from OpenAI/Trigger */}
+                    {item.decision_reason && (
+                      <div className="text-xs text-red-700 bg-red-50/60 p-2.5 rounded-xl border border-red-100">
+                        <strong>Motivo da sinalização:</strong> {item.decision_reason}
+                      </div>
+                    )}
+
+                    {/* Reason input for decision */}
+                    <div className="flex flex-col md:flex-row items-stretch md:items-center gap-3 pt-2 border-t border-gray-100">
+                      <input
+                        type="text"
+                        value={itemReason}
+                        onChange={(e) => setDecisionNoteMap(prev => ({ ...prev, [item.id]: e.target.value }))}
+                        placeholder="Motivo da decisão (obrigatório, mín. 3 caracteres)..."
+                        className="flex-1 bg-white border border-gray-200 rounded-xl px-3 py-2 text-xs text-konecta-navy focus:outline-none focus:ring-1 focus:ring-konecta-gold"
+                      />
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button 
+                          onClick={() => handleModerationAction(item.id, 'approve')} 
+                          disabled={submittingDecisions[item.id]}
+                          className="btn-primary py-2 px-3.5 text-xs font-bold disabled:opacity-50"
+                        >
+                          Aprovar
+                        </button>
+                        <button 
+                          onClick={() => handleModerationAction(item.id, 'reject')} 
+                          disabled={submittingDecisions[item.id]}
+                          className="py-2 px-3.5 text-xs font-bold text-red-700 bg-red-50 hover:bg-red-100 rounded-xl transition-colors border border-red-200 disabled:opacity-50"
+                        >
+                          Rejeitar
+                        </button>
+                        <button 
+                          onClick={() => handleModerationAction(item.id, 'escalate')} 
+                          disabled={submittingDecisions[item.id]}
+                          className="py-2 px-3.5 text-xs font-bold text-amber-800 bg-amber-50 hover:bg-amber-100 rounded-xl transition-colors border border-amber-200 disabled:opacity-50"
+                        >
+                          Escalar
+                        </button>
+                      </div>
+                    </div>
                   </div>
-                  <div className="flex gap-2">
-                    <button onClick={() => handleModerationAction(item.id, 'approve')} className="btn-primary py-1.5 px-4 text-xs font-bold">Aprovar</button>
-                    <button onClick={() => handleModerationAction(item.id, 'block')} className="btn-secondary py-1.5 px-4 text-xs font-bold">Bloquear</button>
-                  </div>
-                </div>
-              ))
+                );
+              })
             )}
           </div>
         </section>
@@ -860,7 +1096,7 @@ export const Admin: React.FC<AdminProps> = ({ user, onOpenAuth, onNavigateTab })
                   reportFilter === 'pending' ? 'bg-konecta-navy text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
                 }`}
               >
-                {t('admin.pending')} ({reports.filter(r => r.status === 'pending').length})
+                {t('admin.pending')} ({reports.filter(r => r.status === 'pending' || r.status === 'open').length})
               </button>
               <button
                 onClick={() => setReportFilter('reviewed')}
@@ -899,14 +1135,14 @@ export const Admin: React.FC<AdminProps> = ({ user, onOpenAuth, onNavigateTab })
                       {t('admin.reason')}: <span className="font-normal text-gray-700">{report.reason}</span>
                     </p>
                     <span className={`text-[9px] font-black uppercase tracking-widest ${
-                      report.status === 'pending' ? 'text-amber-600' : 'text-green-600'
+                      (report.status === 'pending' || report.status === 'open') ? 'text-amber-600' : 'text-green-600'
                     }`}>
-                      {t('admin.status')}: {report.status === 'pending' ? t('admin.pending_action') : report.status === 'reviewed' ? t('admin.reviewed') : t('admin.actioned_status')}
+                      {t('admin.status')}: {(report.status === 'pending' || report.status === 'open') ? t('admin.pending_action') : report.status === 'reviewed' ? t('admin.reviewed') : t('admin.actioned_status')}
                     </span>
                   </div>
 
                   <div className="flex gap-2 shrink-0">
-                    {report.status === 'pending' && (
+                    {(report.status === 'pending' || report.status === 'open') && (
                       <>
                         <button
                           onClick={() => handleUpdateReportStatus(report.id, 'reviewed')}
