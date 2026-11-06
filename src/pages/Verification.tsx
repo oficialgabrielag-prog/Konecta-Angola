@@ -66,6 +66,30 @@ export const Verification: React.FC<VerificationProps> = ({ user, onOpenAuth, on
 
   useEffect(() => {
     loadUserData();
+
+    // Check for Didit verification return query parameters
+    const params = new URLSearchParams(window.location.search);
+    const sessionId = params.get('session_id') || params.get('sessionId');
+    const isReturn = params.get('verification') === 'return' || window.location.pathname.includes('verification-return');
+
+    if (isReturn || sessionId) {
+      showToast('De volta ao KONECTA! A verificar o estado da tua sessão Didit...', 'info');
+      if (sessionId) {
+        fetch(`/api/verification/session/${sessionId}`)
+          .then(res => res.json())
+          .then(data => {
+            if (data?.status === 'approved') {
+              showToast('Verificação concluída com sucesso! O teu selo está ativo.', 'success');
+            } else if (data?.status === 'rejected') {
+              showToast('A verificação não foi aprovada pela Didit.', 'error');
+            } else if (data?.status === 'verification_pending') {
+              showToast('Documentos em processamento na Didit.', 'info');
+            }
+            loadUserData();
+          })
+          .catch(() => loadUserData());
+      }
+    }
   }, [user?.id]);
 
   useEffect(() => {

@@ -4557,139 +4557,50 @@ export const d1Client: any = {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return { data: null, error: 'Não autenticado' };
 
-      const diditConfig = this.getDiditConfig();
       const isOrg = payload.targetType === 'organization';
-      const targetWorkflow = isOrg ? diditConfig.organization : diditConfig.individual;
-      const priceKz = targetWorkflow.priceKz;
-      const rawSessionUuid = crypto.randomUUID();
-      const diditSessionId = `didit_sess_${rawSessionUuid}`;
-      const verificationUrl = `${targetWorkflow.link}?vendor_data=${encodeURIComponent(payload.targetId || '')}&user_id=${encodeURIComponent(user.id)}&session_id=${diditSessionId}&app_id=${diditConfig.appId}`;
-
-      const evidenceMeta = {
-        didit_session_id: diditSessionId,
-        session_uuid: rawSessionUuid,
-        workflow_id: targetWorkflow.workflowId,
-        verification_url: verificationUrl,
-        full_name: payload.fullName,
-        nif_or_bi: payload.nifOrBi,
-        price_kz: priceKz,
-        payment_status: 'payment_pending',
-        created_at: new Date().toISOString()
-      };
+      const endpoint = isOrg ? '/api/verification/company/start' : '/api/verification/bi/start';
 
       try {
-        let createdReqId: string = rawSessionUuid;
-
-        if (payload.targetType === 'profile') {
-          // Check if there is an existing payment_pending or pending request
-          const { data: existing } = await supabase
-            .from('profile_verification_requests')
-            .select('id')
-            .eq('user_id', user.id)
-            .in('status', ['payment_pending', 'pending'])
-            .order('created_at', { ascending: false })
-            .limit(1)
-            .maybeSingle();
-
-          if (existing?.id) {
-            createdReqId = existing.id;
-            await supabase
-              .from('profile_verification_requests')
-              .update({
-                status: 'payment_pending',
-                evidence_url: JSON.stringify(evidenceMeta)
-              })
-              .eq('id', existing.id);
-          } else {
-            const { data: inserted, error: insertErr } = await supabase
-              .from('profile_verification_requests')
-              .insert({
-                user_id: user.id,
-                status: 'payment_pending',
-                explanation: payload.fullName,
-                price_amount: priceKz,
-                currency: 'Kz',
-                duration_days: 30,
-                evidence_url: JSON.stringify(evidenceMeta)
-              })
-              .select('id')
-              .maybeSingle();
-
-            if (inserted?.id) {
-              createdReqId = inserted.id;
-            } else if (insertErr) {
-              console.warn('Insert profile request fallback error:', insertErr);
-            }
-          }
-        } else {
-          // Organization
-          const orgId = payload.targetId;
-          const { data: existing } = await supabase
-            .from('organization_verification_requests')
-            .select('id')
-            .eq('organization_id', orgId)
-            .in('status', ['payment_pending', 'pending'])
-            .order('created_at', { ascending: false })
-            .limit(1)
-            .maybeSingle();
-
-          if (existing?.id) {
-            createdReqId = existing.id;
-            await supabase
-              .from('organization_verification_requests')
-              .update({
-                status: 'payment_pending',
-                evidence_url: JSON.stringify(evidenceMeta)
-              })
-              .eq('id', existing.id);
-          } else {
-            const { data: inserted, error: insertErr } = await supabase
-              .from('organization_verification_requests')
-              .insert({
-                organization_id: orgId,
-                requested_by: user.id,
-                status: 'payment_pending',
-                evidence_url: JSON.stringify(evidenceMeta)
-              })
-              .select('id')
-              .maybeSingle();
-
-            if (inserted?.id) {
-              createdReqId = inserted.id;
-            } else if (insertErr) {
-              console.warn('Insert org request fallback error:', insertErr);
-            }
-          }
-        }
-
-        // Notify backend route
-        fetch('/api/didit/create-session', {
+        const response = await fetch(endpoint, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            targetType: payload.targetType,
-            targetId: payload.targetId,
             userId: user.id,
+            targetId: payload.targetId,
+            organizationId: payload.targetId,
             fullName: payload.fullName,
-            nifOrBi: payload.nifOrBi,
-            requestId: createdReqId
+            companyName: payload.fullName,
+            biNumber: payload.nifOrBi,
+            nif: payload.nifOrBi
           })
-        }).catch(() => {});
+        });
+
+        const text = await response.text();
+        let resData: any = {};
+        try {
+          resData = JSON.parse(text);
+        } catch {
+          resData = { error: text || `Erro HTTP ${response.status}: resposta inválida do servidor` };
+        }
+
+        if (!response.ok || resData.error) {
+          return { data: null, error: resData.error || `Erro ao iniciar sessão Didit (${response.status})` };
+        }
 
         return {
           data: {
-            sessionId: diditSessionId,
-            workflowId: targetWorkflow.workflowId,
-            verificationUrl,
-            priceKz,
-            status: 'payment_pending',
-            requestId: createdReqId
+            sessionId: resData.sessionId,
+            workflowId: resData.workflowId,
+            verificationUrl: resData.verificationUrl,
+            priceKz: resData.priceAOA || resData.priceKz,
+            status: resData.status || 'payment_pending',
+            requestId: resData.requestId
           },
           error: null
         };
       } catch (err: any) {
-        console.error('Erro em createDiditSession:', err);
-        return { data: null, error: err.message };
+        console.error('Backend API request error:', err);
+        return { data: null, error: err.message || 'Falha na comunicação com o servidor de verificação.' };
       }
     },
 
