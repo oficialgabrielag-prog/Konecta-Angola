@@ -225,20 +225,8 @@ export const Home: React.FC<HomeProps> = ({
         const commCount = fetchedPosts.filter(p => p.community_id).length;
         console.debug(`[Feed Home] Publicações recebidas do Supabase: ${fetchedPosts.length} (das quais ${commCount} em comunidades)`);
 
-        setPosts(prev => {
-          const map = new Map<string, Post>();
-          // Put fresh posts from server first
-          fetchedPosts.forEach((p: Post) => map.set(p.id, p));
-          // Retain any pending posts from local state if not yet in server list
-          prev.forEach(p => {
-            if (!map.has(p.id)) map.set(p.id, p);
-          });
-          const merged = Array.from(map.values()).sort(
-            (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-          );
-          savePostsToCache(merged);
-          return merged;
-        });
+        setPosts(fetchedPosts);
+        savePostsToCache(fetchedPosts);
       }
     } catch (err: any) {
       console.warn('Aviso ao carregar publicações:', err?.message || err);
@@ -275,7 +263,7 @@ export const Home: React.FC<HomeProps> = ({
     const file = e.target.files?.[0];
     if (file) {
       if (file.size > 10 * 1024 * 1024) {
-        alert(t('error.general'));
+        showToast('A imagem excede o tamanho máximo de 10MB.', 'error');
         return;
       }
       if (newPostImagePreview) URL.revokeObjectURL(newPostImagePreview);
@@ -291,7 +279,7 @@ export const Home: React.FC<HomeProps> = ({
       return;
     }
     if (!newPostContent.trim() && !newPostImage) {
-      alert(t('home.post_comment_placeholder'));
+      showToast(t('home.post_comment_placeholder'), 'info');
       return;
     }
     if (publishing) return;
@@ -303,7 +291,7 @@ export const Home: React.FC<HomeProps> = ({
         try {
           imageUrl = await uploadToCloudinary(newPostImage, (p: number) => setUploadProgress(p));
         } catch (imgErr: any) {
-          alert(imgErr?.message || t('error.general'));
+          showToast(imgErr?.message || t('error.general'), 'error');
           setPublishing(false);
           return;
         }
@@ -342,9 +330,15 @@ export const Home: React.FC<HomeProps> = ({
       if (newPostImagePreview) URL.revokeObjectURL(newPostImagePreview);
       setNewPostImagePreview(null);
       setUploadProgress(0);
+
+      if (postRes.message || inserted.status === 'review') {
+        showToast(postRes.message || 'Publicação enviada para revisão pela moderação.', 'info');
+      } else {
+        showToast('Publicação criada com sucesso!', 'success');
+      }
     } catch (err: any) {
       console.error('Erro ao publicar no feed:', err?.message || err);
-      alert(err?.message || t('error.general'));
+      showToast(err?.message || t('error.general'), 'error');
     } finally {
       setPublishing(false);
     }

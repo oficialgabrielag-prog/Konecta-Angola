@@ -61,10 +61,30 @@ export const Reels: React.FC<ReelsProps> = ({ user, onOpenAuth, onSelectUser, in
   const [videoOrientationMap, setVideoOrientationMap] = useState<Record<string, 'cover' | 'contain'>>({});
   const [autoplayBlocked, setAutoplayBlocked] = useState(false);
 
+  const [followingSet, setFollowingSet] = useState<Set<string>>(new Set());
+
   // Single shared audio element ref
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const videoRefs = useRef<Record<string, HTMLVideoElement | null>>({});
+
+  useEffect(() => {
+    if (user?.id) {
+      d1Client.profiles.getFollowing(user.id).then((res: any) => {
+        const list = res.data?.data || res.data || [];
+        const ids = new Set<string>(list.map((p: any) => p.id || p.user_id));
+        setFollowingSet(ids);
+      });
+    }
+  }, [user?.id]);
+
+  // Pause videos when create modal, music studio, or comments drawer is open
+  useEffect(() => {
+    if (showCreateModal || showMusicStudio || activeCommentsReel) {
+      Object.values(videoRefs.current).forEach(v => v?.pause());
+      if (audioRef.current) audioRef.current.pause();
+    }
+  }, [showCreateModal, showMusicStudio, activeCommentsReel]);
 
   // Cleanup on unmount to prevent audio/video reference leaks or stuck playback
   useEffect(() => {
@@ -602,9 +622,24 @@ export const Reels: React.FC<ReelsProps> = ({ user, onOpenAuth, onSelectUser, in
                         </div>
                       )}
                     </div>
-                    <div className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 bg-konecta-gold text-konecta-navy rounded-full p-0.5">
-                      <Plus size={10} strokeWidth={4} />
-                    </div>
+                    {user?.id !== reel.author_id && !followingSet.has(reel.author_id) && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (!user) {
+                            onOpenAuth();
+                            return;
+                          }
+                          d1Client.profiles.toggleFollow(reel.author_id, true);
+                          setFollowingSet(prev => new Set(prev).add(reel.author_id));
+                          showToast('A seguir criador!', 'success');
+                        }}
+                        className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 bg-konecta-gold text-konecta-navy rounded-full p-0.5 hover:scale-110 transition-transform cursor-pointer shadow-md"
+                        title="Seguir criador"
+                      >
+                        <Plus size={10} strokeWidth={4} />
+                      </button>
+                    )}
                   </div>
 
                   <LikeButton

@@ -7,6 +7,7 @@ import { KonectaRealtimeService } from '../lib/realtime';
 import { uploadMediaToCloudinary } from '../lib/cloudinary';
 import { ModernAudioPlayer } from '../components/ModernAudioPlayer';
 import { useT } from '../context/LanguageContext';
+import { GoogleDrivePickerModal, SelectedDocumentResult } from '../components/GoogleDrivePickerModal';
 
 interface MessagesProps {
   user: any;
@@ -40,6 +41,8 @@ export const Messages: React.FC<MessagesProps> = ({
   // Media Attachment State
   const [attachedFile, setAttachedFile] = useState<File | null>(null);
   const [attachedPreview, setAttachedPreview] = useState<string | null>(null);
+  const [attachedDoc, setAttachedDoc] = useState<SelectedDocumentResult | null>(null);
+  const [showDriveModal, setShowDriveModal] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Voice Note State
@@ -246,23 +249,33 @@ export const Messages: React.FC<MessagesProps> = ({
 
     const contentText = newMessage.trim();
     const currentFile = attachedFile;
+    const currentDoc = attachedDoc;
     const previewUrl = attachedPreview;
+
+    if (!contentText && !currentFile && !currentDoc) return;
 
     // Reset input fields immediately (optimistic UI)
     setNewMessage('');
     setAttachedFile(null);
+    setAttachedDoc(null);
     setAttachedPreview(null);
 
     const tempId = `temp-${Date.now()}`;
+    const defaultBody = currentDoc 
+      ? `📄 Documento: ${currentDoc.name}`
+      : currentFile 
+        ? 'Mídia enviada' 
+        : 'Mensagem';
+
     const optimisticMsg: Message = {
       id: tempId,
       conversation_id: selectedConv.id,
       sender_id: user.id,
-      content: contentText || (currentFile ? 'Mídia enviada' : 'Mensagem'),
-      body: contentText || (currentFile ? 'Mídia enviada' : 'Mensagem'),
-      attachment_url: previewUrl || undefined,
-      media_url: previewUrl || undefined,
-      message_type: currentFile ? (currentFile.type.startsWith('video/') ? 'video' : 'image') : 'text',
+      content: contentText || defaultBody,
+      body: contentText || defaultBody,
+      attachment_url: currentDoc ? (currentDoc.cloudinaryUrl || currentDoc.driveUrl) : previewUrl || undefined,
+      media_url: currentDoc ? (currentDoc.cloudinaryUrl || currentDoc.driveUrl) : previewUrl || undefined,
+      message_type: currentDoc ? 'document' : currentFile ? (currentFile.type.startsWith('video/') ? 'video' : 'image') : 'text',
       status: 'sending',
       created_at: new Date().toISOString()
     };
@@ -273,13 +286,21 @@ export const Messages: React.FC<MessagesProps> = ({
     try {
       let mediaUrl: string | undefined = undefined;
 
-      if (currentFile) {
+      if (currentDoc) {
+        mediaUrl = currentDoc.cloudinaryUrl || currentDoc.driveUrl;
+      } else if (currentFile) {
         const uploadRes = await uploadMediaToCloudinary(currentFile);
         mediaUrl = uploadRes.secure_url;
       }
 
-      const bodyText = contentText || (currentFile ? 'Mídia enviada' : 'Mensagem');
-      const res = await d1Client.messages.sendMessage(selectedConv.id, bodyText, mediaUrl, disappearingHours || undefined);
+      const bodyText = contentText || defaultBody;
+      const res = await d1Client.messages.sendMessage(
+        selectedConv.id, 
+        bodyText, 
+        mediaUrl, 
+        disappearingHours || undefined,
+        currentDoc ? 'document' : undefined
+      );
       
       if (res.error || !res.data?.data) {
         throw new Error(res.error?.message || 'Falha ao gravar a mensagem no Supabase.');
@@ -748,18 +769,33 @@ export const Messages: React.FC<MessagesProps> = ({
                 <div ref={messagesEndRef} />
               </div>
 
-              {/* Media File Preview Banner */}
-              {attachedPreview && (
-                <div className="px-4 py-2 bg-gray-100 border-t border-gray-200 flex items-center justify-between">
+              {/* Media & Document Preview Banner */}
+              {(attachedPreview || attachedDoc) && (
+                <div className="px-4 py-2.5 bg-gray-100 border-t border-gray-200 flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    {attachedFile?.type.startsWith('video/') ? (
-                      <video src={attachedPreview} className="w-12 h-12 object-cover rounded-xl" />
+                    {attachedDoc ? (
+                      <div className="w-10 h-10 rounded-xl bg-white border border-gray-200 flex items-center justify-center shrink-0 shadow-xs">
+                        <span className="material-symbols-outlined text-2xl text-konecta-navy">description</span>
+                      </div>
+                    ) : attachedFile?.type.startsWith('video/') ? (
+                      <video src={attachedPreview!} className="w-12 h-12 object-cover rounded-xl" />
                     ) : (
-                      <img src={attachedPreview} alt="" className="w-12 h-12 object-cover rounded-xl" />
+                      <img src={attachedPreview!} alt="" className="w-12 h-12 object-cover rounded-xl" />
                     )}
-                    <div>
-                      <p className="text-xs font-bold text-konecta-navy truncate max-w-[180px]">{attachedFile?.name}</p>
-                      <p className="text-xs text-gray-500">{attachedFile ? (attachedFile.size / (1024 * 1024)).toFixed(1) + ' MB' : ''}</p>
+                    <div className="truncate">
+                      <p className="text-xs font-bold text-konecta-navy truncate max-w-[200px] sm:max-w-xs">
+                        {attachedDoc ? attachedDoc.name : attachedFile?.name}
+                      </p>
+                      <p className="text-[11px] text-gray-500 flex items-center gap-1.5">
+                        {attachedDoc ? (
+                          <>
+                            <span className="inline-block px-1.5 py-0.5 rounded-sm bg-blue-100 text-blue-700 font-semibold text-[10px]">Google Drive</span>
+                            <span>{attachedDoc.sizeFormatted || 'Documento'}</span>
+                          </>
+                        ) : (
+                          <span>{attachedFile ? (attachedFile.size / (1024 * 1024)).toFixed(1) + ' MB' : ''}</span>
+                        )}
+                      </p>
                     </div>
                   </div>
                   <button
@@ -767,6 +803,7 @@ export const Messages: React.FC<MessagesProps> = ({
                       setAttachedFile(null);
                       if (attachedPreview) URL.revokeObjectURL(attachedPreview);
                       setAttachedPreview(null);
+                      setAttachedDoc(null);
                     }}
                     className="w-11 h-11 rounded-full text-gray-500 hover:text-red-600 flex items-center justify-center focus-visible:ring-2 focus-visible:ring-konecta-navy"
                     aria-label={t('messages.remove_attachment')}
@@ -821,11 +858,30 @@ export const Messages: React.FC<MessagesProps> = ({
                       onChange={(e) => {
                         const file = e.target.files?.[0];
                         if (file) {
+                          setAttachedDoc(null);
                           setAttachedFile(file);
                           setAttachedPreview(URL.createObjectURL(file));
                         }
                       }}
                     />
+
+                    {/* Google Drive Document Attach Button */}
+                    <button
+                      type="button"
+                      onClick={() => setShowDriveModal(true)}
+                      className="w-11 h-11 rounded-full bg-gray-100 hover:bg-blue-50 text-gray-700 hover:text-blue-600 flex items-center justify-center shrink-0 focus-visible:ring-2 focus-visible:ring-konecta-navy transition-colors"
+                      title="Enviar documento do Google Drive"
+                      aria-label="Google Drive Documento"
+                    >
+                      <svg className="w-5 h-5" viewBox="0 0 87.3 78" xmlns="http://www.w3.org/2000/svg">
+                        <path d="m6.6 66.85 3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8h-27.5c0 1.55.4 3.1 1.2 4.5z" fill="#0066da"/>
+                        <path d="m43.65 25-13.75-23.8c-1.35.8-2.5 1.9-3.3 3.3l-25.4 44c-.8 1.4-1.2 2.95-1.2 4.5h27.5z" fill="#00ac47"/>
+                        <path d="m73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5h-27.502l5.852 11.5z" fill="#ea4335"/>
+                        <path d="m43.65 25 13.75-23.8c-1.35-.8-2.9-1.2-4.5-1.2h-18.5c-1.6 0-3.15.45-4.5 1.2z" fill="#00832d"/>
+                        <path d="m59.8 53h-32.3l-13.75 23.8c1.35.8 2.9 1.2 4.5 1.2h50.8c1.6 0 3.15-.45 4.5-1.2z" fill="#2684fc"/>
+                        <path d="m73.4 26.5-12.7-22c-.8-1.4-1.95-2.5-3.3-3.3l-13.75 23.8 16.15 28h27.45c0-1.55-.4-3.1-1.2-4.5z" fill="#ffba00"/>
+                      </svg>
+                    </button>
 
                     {/* Microphone Voice Note Button */}
                     <button
@@ -851,7 +907,7 @@ export const Messages: React.FC<MessagesProps> = ({
                     {/* Send Button */}
                     <button
                       type="submit"
-                      disabled={(!newMessage.trim() && !attachedFile) || sending}
+                      disabled={(!newMessage.trim() && !attachedFile && !attachedDoc) || sending}
                       className="w-11 h-11 rounded-full bg-konecta-navy text-white hover:bg-slate-800 disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center shrink-0 focus-visible:ring-2 focus-visible:ring-konecta-navy"
                       title={t('messages.send')}
                       aria-label={t('messages.send')}
@@ -861,6 +917,19 @@ export const Messages: React.FC<MessagesProps> = ({
                   </form>
                 )}
               </div>
+
+              {/* Google Drive Document Picker Modal */}
+              <GoogleDrivePickerModal
+                isOpen={showDriveModal}
+                onClose={() => setShowDriveModal(false)}
+                title="Enviar Documento do Google Drive"
+                onSelectDocument={(doc) => {
+                  setAttachedFile(null);
+                  if (attachedPreview) URL.revokeObjectURL(attachedPreview);
+                  setAttachedPreview(null);
+                  setAttachedDoc(doc);
+                }}
+              />
             </>
           ) : (
             <div className="flex-1 flex flex-col items-center justify-center p-8 text-center bg-gray-50/30">
@@ -1089,6 +1158,12 @@ function renderGroupedMessages(
         // Voice note detection
         const isVoiceNote = (m.content || m.body || '').toLowerCase().includes('nota de voz');
         const mediaUrl = (m as any).media_url || m.attachment_url;
+        const isDocument = (m as any).message_type === 'document' || 
+          Boolean(mediaUrl && (
+            mediaUrl.match(/\.(pdf|docx?|xlsx?|pptx?|txt|csv|odt|epub)(\?.*)?$/i) ||
+            mediaUrl.includes('drive.google.com') ||
+            mediaUrl.includes('konecta/documents')
+          ));
         const isSending = m.status === 'sending';
         const isFailed = m.status === 'failed';
 
@@ -1104,17 +1179,47 @@ function renderGroupedMessages(
                   ? `${isSending ? 'bg-konecta-navy/70' : 'bg-konecta-navy'} text-white rounded-br-xs` 
                   : 'bg-white border border-gray-200 text-gray-900 rounded-bl-xs'
             }`}>
-              {/* Media Render */}
+              {/* Media & Document Render */}
               {mediaUrl && (
-                <div className="mb-2 rounded-xl overflow-hidden bg-black/10">
+                <div className="mb-2 rounded-xl overflow-hidden">
                   {isVoiceNote || mediaUrl.match(/\.(mp3|wav|ogg|m4a|webm)$/i) ? (
-                    <div className="p-1">
+                    <div className="p-1 bg-black/10 rounded-xl">
                       <ModernAudioPlayer src={mediaUrl} variant={isMe ? 'dark' : 'light'} />
                     </div>
+                  ) : isDocument ? (
+                    <a
+                      href={mediaUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className={`flex items-center gap-3 p-3 rounded-xl border transition-colors ${
+                        isMe
+                          ? 'bg-white/10 hover:bg-white/20 border-white/20 text-white'
+                          : 'bg-gray-50 hover:bg-gray-100 border-gray-200 text-konecta-navy'
+                      }`}
+                    >
+                      <div className="w-10 h-10 rounded-lg bg-blue-500/10 flex items-center justify-center shrink-0">
+                        <span className="material-symbols-outlined text-2xl text-blue-500">description</span>
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs font-bold truncate">
+                          {m.body && m.body.startsWith('📄 Documento: ')
+                            ? m.body.replace('📄 Documento: ', '')
+                            : m.body || m.content || 'Documento Google Drive'}
+                        </p>
+                        <div className="flex items-center gap-1.5 text-[10px] opacity-80 mt-0.5">
+                          <span className="font-semibold uppercase tracking-wider text-[9px] bg-blue-500/20 px-1 rounded">Google Drive</span>
+                          <span>•</span>
+                          <span className="flex items-center gap-0.5 underline">
+                            Abrir Documento
+                            <span className="material-symbols-outlined text-xs">open_in_new</span>
+                          </span>
+                        </div>
+                      </div>
+                    </a>
                   ) : mediaUrl.match(/\.(mp4|mov)$/i) ? (
-                    <video src={mediaUrl} controls className="w-full max-h-60 object-cover rounded-xl" />
+                    <video src={mediaUrl} controls className="w-full max-h-60 object-cover rounded-xl bg-black/10" />
                   ) : (
-                    <img src={mediaUrl} alt="" className="w-full max-h-60 object-cover rounded-xl" />
+                    <img src={mediaUrl} alt="" className="w-full max-h-60 object-cover rounded-xl bg-black/10" />
                   )}
                 </div>
               )}
@@ -1125,7 +1230,7 @@ function renderGroupedMessages(
                   <span className="material-symbols-outlined text-lg">mic</span>
                   <span>{t('messages.voice_note')}</span>
                 </div>
-              ) : (
+              ) : isDocument && (m.body?.startsWith('📄 Documento: ') || m.content?.startsWith('📄 Documento: ')) ? null : (
                 <p className="whitespace-pre-wrap break-words">{m.content === 'Midia enviada' || m.content === 'Mídia enviada' ? t('messages.media_sent') : (m.body || m.content)}</p>
               )}
             </div>

@@ -4,7 +4,8 @@ import { Community, Post, CommunityMember, CommunityAnnouncement, CommunityRule,
 import { d1Client } from '../lib/d1Client';
 import { uploadToCloudinary } from '../lib/cloudinary';
 import { KonectaRealtimeService } from '../lib/realtime';
-import { useToast } from '../context/UIContext';
+import { useToast, useUI } from '../context/UIContext';
+import { ContentMenu } from '../components/ContentMenu';
 
 interface CommunityDetailProps {
   communityId: string;
@@ -26,6 +27,7 @@ export const CommunityDetail: React.FC<CommunityDetailProps> = ({
   onOpenFullscreenPost,
 }) => {
   const { showToast } = useToast();
+  const { openShareSheet } = useUI();
   const [community, setCommunity] = useState<Community | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<string>('inicio');
@@ -296,6 +298,36 @@ export const CommunityDetail: React.FC<CommunityDetailProps> = ({
     setPosts(prev => prev.map(p => p.id === postId ? { ...p, comments_count: (p.comments_count || 0) + 1 } : p));
 
     await d1Client.posts.addComment(postId, text);
+  };
+
+  const handleDeletePost = async (postId: string) => {
+    if (!window.confirm('Tens a certeza que pretendes eliminar esta publicação?')) return;
+    try {
+      const res = await d1Client.posts.delete(postId);
+      if (res.error) throw new Error(typeof res.error === 'string' ? res.error : res.error.message || 'Erro ao eliminar');
+      setPosts(prev => prev.filter(p => p.id !== postId));
+      showToast('Publicação eliminada com sucesso.', 'info');
+    } catch (err: any) {
+      console.error('Erro ao eliminar publicação:', err);
+      showToast(err?.message || 'Não foi possível eliminar a publicação.', 'error');
+    }
+  };
+
+  const handleReportPost = async (postId: string) => {
+    const reason = window.prompt('Motivo da denúncia (ex: Conteúdo impróprio, spam, assédio):');
+    if (!reason || !reason.trim()) return;
+    try {
+      const res = await d1Client.reports.create({
+        target_id: postId,
+        target_type: 'post',
+        reason: reason.trim()
+      });
+      if (res.error) throw new Error(res.error);
+      showToast('Denúncia enviada. Obrigado.', 'success');
+    } catch (err: any) {
+      console.error('Erro ao submeter denúncia:', err);
+      showToast('Erro ao submeter denúncia.', 'error');
+    }
   };
 
   const handleCreateAnnouncement = async (e: React.FormEvent) => {
@@ -771,52 +803,122 @@ export const CommunityDetail: React.FC<CommunityDetailProps> = ({
             )}
 
             <div className="space-y-4">
-              {posts.map(post => (
-                <div key={post.id} className="card-konecta p-6 shadow-sm border border-gray-100 space-y-3 overflow-hidden">
-                  <div 
-                    onClick={() => (post.user_id || (post as any).author_id) && onSelectUser?.(post.user_id || (post as any).author_id)}
-                    className="flex items-center gap-3 cursor-pointer group/author"
-                  >
-                    <div className="w-10 h-10 rounded-full bg-gray-100 overflow-hidden shrink-0 border border-gray-100">
-                      {post.profiles?.avatar_url ? (
-                        <img src={post.profiles.avatar_url} alt="" className="w-full h-full object-cover" />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center text-xs font-bold text-gray-400">
-                          {post.profiles?.full_name?.charAt(0) || 'U'}
+              {posts.map(post => {
+                const isPostOwner = user?.id === post.user_id || user?.id === (post as any).author_id;
+                const commentsList = postComments[post.id] || [];
+
+                return (
+                  <div key={post.id} className="card-konecta p-6 shadow-sm border border-gray-100 space-y-3 overflow-hidden">
+                    <div className="flex items-center justify-between">
+                      <div 
+                        onClick={() => (post.user_id || (post as any).author_id) && onSelectUser?.(post.user_id || (post as any).author_id)}
+                        className="flex items-center gap-3 cursor-pointer group/author"
+                      >
+                        <div className="w-10 h-10 rounded-full bg-gray-100 overflow-hidden shrink-0 border border-gray-100">
+                          {post.profiles?.avatar_url ? (
+                            <img src={post.profiles.avatar_url} alt="" className="w-full h-full object-cover" />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center text-xs font-bold text-gray-400">
+                              {post.profiles?.full_name?.charAt(0) || 'U'}
+                            </div>
+                          )}
                         </div>
+                        <div>
+                          <h4 className="text-xs font-bold text-konecta-navy group-hover/author:text-konecta-gold transition-colors">{post.profiles?.full_name || 'Membro'}</h4>
+                          <span className="text-[10px] text-gray-400">{new Date(post.created_at).toLocaleDateString('pt-AO')}</span>
+                        </div>
+                      </div>
+
+                      <ContentMenu
+                        targetId={post.id}
+                        targetType="post"
+                        isOwner={isPostOwner}
+                        onDelete={() => handleDeletePost(post.id)}
+                        onReport={() => handleReportPost(post.id)}
+                        onShare={() => openShareSheet({
+                          targetId: post.id,
+                          targetType: 'post',
+                          title: post.content ? post.content.substring(0, 50) : 'Publicação Konecta',
+                          authorName: post.profiles?.full_name || 'Membro Konecta',
+                          thumbnail: post.image_url || undefined
+                        })}
+                      />
+                    </div>
+
+                    <div 
+                      onClick={() => onOpenFullscreenPost?.(post)}
+                      className="cursor-pointer space-y-3"
+                    >
+                      <p className="text-xs text-gray-700 leading-relaxed whitespace-pre-wrap">{post.content}</p>
+                      {post.image_url && (
+                        <img
+                          src={post.image_url}
+                          alt=""
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onImageClick(post.image_url!);
+                          }}
+                          className="rounded-xl max-h-96 w-full object-cover hover:opacity-95 transition-opacity"
+                        />
                       )}
                     </div>
-                    <div>
-                      <h4 className="text-xs font-bold text-konecta-navy group-hover/author:text-konecta-gold transition-colors">{post.profiles?.full_name || 'Membro'}</h4>
-                      <span className="text-[10px] text-gray-400">{new Date(post.created_at).toLocaleDateString('pt-AO')}</span>
+
+                    <div className="flex items-center gap-4 pt-2 border-t border-gray-100 text-xs">
+                      <button 
+                        onClick={() => handleLikePost(post.id)} 
+                        className={`flex items-center gap-1.5 font-bold transition-colors ${
+                          userLikes[post.id] ? 'text-red-500' : 'text-gray-500 hover:text-red-500'
+                        }`}
+                      >
+                        <span className={`material-symbols-outlined text-[16px] ${userLikes[post.id] ? 'fill-1 text-red-500' : ''}`}>favorite</span>
+                        {post.likes_count || 0}
+                      </button>
+                      <button onClick={() => toggleComments(post.id)} className="flex items-center gap-1.5 text-gray-500 hover:text-konecta-navy font-bold">
+                        <span className="material-symbols-outlined text-[16px]">chat_bubble_outline</span>
+                        {post.comments_count || 0}
+                      </button>
                     </div>
+
+                    {/* Accordion Comments Section */}
+                    {expandedComments[post.id] && (
+                      <div className="pt-3 border-t border-gray-100 space-y-3">
+                        <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+                          {commentsList.length === 0 ? (
+                            <p className="text-[11px] text-gray-400 italic py-1">Ainda sem comentários. Sê o primeiro a comentar!</p>
+                          ) : (
+                            commentsList.map(c => (
+                              <div key={c.id} className="bg-gray-50 p-2.5 rounded-xl text-xs space-y-1">
+                                <div className="flex items-center justify-between">
+                                  <span className="font-bold text-konecta-navy text-[11px]">{c.profiles?.full_name || 'Membro'}</span>
+                                  <span className="text-[9px] text-gray-400">{new Date(c.created_at).toLocaleDateString('pt-AO')}</span>
+                                </div>
+                                <p className="text-gray-600 text-[11px] leading-relaxed">{c.content}</p>
+                              </div>
+                            ))
+                          )}
+                        </div>
+
+                        <form onSubmit={(e) => handleAddComment(post.id, e)} className="flex items-center gap-2 pt-1">
+                          <input
+                            type="text"
+                            value={commentInputs[post.id] || ''}
+                            onChange={(e) => setCommentInputs(prev => ({ ...prev, [post.id]: e.target.value }))}
+                            placeholder="Escreve um comentário..."
+                            className="flex-1 bg-gray-50 border border-gray-200 rounded-xl px-3 py-1.5 text-xs text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-konecta-navy"
+                          />
+                          <button
+                            type="submit"
+                            disabled={!commentInputs[post.id]?.trim()}
+                            className="bg-konecta-navy text-white px-3 py-1.5 rounded-xl text-xs font-bold hover:bg-konecta-gold hover:text-konecta-navy transition-colors disabled:opacity-40"
+                          >
+                            Enviar
+                          </button>
+                        </form>
+                      </div>
+                    )}
                   </div>
-                  <p className="text-xs text-gray-700 leading-relaxed whitespace-pre-wrap">{post.content}</p>
-                  {post.image_url && (
-                    <img
-                      src={post.image_url}
-                      alt=""
-                      onClick={() => onImageClick(post.image_url!)}
-                      className="rounded-xl max-h-96 w-full object-cover cursor-pointer"
-                    />
-                  )}
-                  <div className="flex items-center gap-4 pt-2 border-t border-gray-100 text-xs">
-                    <button 
-                      onClick={() => handleLikePost(post.id)} 
-                      className={`flex items-center gap-1.5 font-bold transition-colors ${
-                        userLikes[post.id] ? 'text-red-500' : 'text-gray-500 hover:text-red-500'
-                      }`}
-                    >
-                      <span className={`material-symbols-outlined text-[16px] ${userLikes[post.id] ? 'fill-1 text-red-500' : ''}`}>favorite</span>
-                      {post.likes_count || 0}
-                    </button>
-                    <button onClick={() => toggleComments(post.id)} className="flex items-center gap-1.5 text-gray-500 hover:text-konecta-navy font-bold">
-                      <span className="material-symbols-outlined text-[16px]">chat_bubble_outline</span>
-                      {post.comments_count || 0}
-                    </button>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}

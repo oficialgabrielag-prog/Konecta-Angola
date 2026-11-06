@@ -39,9 +39,11 @@ export const PostDetail: React.FC<PostDetailProps> = ({
     if (!window.confirm('Tens a certeza que desejas eliminar este item?')) return;
     try {
       if (currentPost.title !== undefined) {
-        await d1Client.ideas.delete(currentPost.id);
+        const res = await d1Client.ideas.delete(currentPost.id);
+        if (res?.error) throw new Error(typeof res.error === 'string' ? res.error : res.error.message || 'Erro ao eliminar');
       } else {
-        await d1Client.posts.delete(currentPost.id);
+        const res = await d1Client.posts.delete(currentPost.id);
+        if (res?.error) throw new Error(typeof res.error === 'string' ? res.error : res.error.message || 'Erro ao eliminar');
       }
       showToast('Item eliminado com sucesso!', 'success');
       onBack();

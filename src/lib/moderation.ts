@@ -5,6 +5,7 @@ export interface ModerateContentOptions {
   text?: string;
   imageUrls?: string[];
   videoFrameUrls?: string[];
+  contentId?: string;
 }
 
 export interface ModerationResult {
@@ -17,11 +18,13 @@ export interface ModerationResult {
 }
 
 export async function moderateContent(options: ModerateContentOptions): Promise<ModerationResult> {
-  const { contentType, text = '', imageUrls = [], videoFrameUrls = [] } = options;
+  const { contentType, text = '', imageUrls = [], videoFrameUrls = [], contentId } = options;
+  const targetContentId = contentId || crypto.randomUUID();
 
   try {
     const { data, error } = await supabase.functions.invoke('moderate-content', {
       body: {
+        content_id: targetContentId,
         content_type: contentType,
         text,
         image_urls: imageUrls,
@@ -33,14 +36,14 @@ export async function moderateContent(options: ModerateContentOptions): Promise<
       console.error('Falha na invocação da moderação:', error || 'Sem resposta');
       return {
         decision: 'review',
-        contentId: crypto.randomUUID(),
+        contentId: targetContentId,
         message: 'A moderação está indisponível de momento. O teu conteúdo será revisto antes de aparecer.',
         unavailable: true,
       };
     }
 
     const decision: 'allow' | 'review' | 'block' = data.decision || data.action || 'allow';
-    const contentId: string = data.content_id || crypto.randomUUID();
+    const finalContentId: string = data.content_id || targetContentId;
     const message: string = data.message || (
       decision === 'block'
         ? 'Este conteúdo parece violar as regras da comunidade e não pode ser publicado.'
@@ -51,7 +54,7 @@ export async function moderateContent(options: ModerateContentOptions): Promise<
 
     return {
       decision,
-      contentId,
+      contentId: finalContentId,
       message,
       unavailable: false,
       flaggedCategories: data.flagged_categories || [],
@@ -61,7 +64,7 @@ export async function moderateContent(options: ModerateContentOptions): Promise<
     console.error('Erro na moderação no frontend:', err);
     return {
       decision: 'review',
-      contentId: crypto.randomUUID(),
+      contentId: targetContentId,
       message: 'A moderação está indisponível de momento. O teu conteúdo será revisto antes de aparecer.',
       unavailable: true,
     };

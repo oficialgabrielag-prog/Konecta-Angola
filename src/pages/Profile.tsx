@@ -215,7 +215,8 @@ export const Profile: React.FC<ProfileProps> = ({
     if (!window.confirm(t('profile.delete_post_confirm'))) return;
     
     try {
-      await d1Client.posts.delete(id);
+      const res = await d1Client.posts.delete(id);
+      if (res?.error) throw new Error(typeof res.error === 'string' ? res.error : res.error.message || t('profile.delete_post_err'));
       setUserPosts(prev => prev.filter(p => p.id !== id));
       showToast(t('profile.delete_post_success'), 'success');
     } catch (err: any) {

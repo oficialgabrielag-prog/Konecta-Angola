@@ -3,23 +3,29 @@ import { d1Client } from '../lib/d1Client';
 import { supabase } from '../lib/supabaseClient';
 import { useToast } from '../context/UIContext';
 import { useT } from '../i18n/LanguageContext';
+import { UserBadge, OrgBadge } from '../components/UserBadges';
 import { 
   CheckCircle, 
-  Upload, 
   Building, 
   User, 
   Loader2, 
   ShieldCheck, 
   AlertCircle, 
-  FileText, 
   Clock, 
   Check, 
   XCircle,
-  Copy,
-  ChevronRight,
+  ExternalLink,
   CreditCard,
-  Smartphone
+  Smartphone,
+  Sparkles,
+  RefreshCw,
+  Ban,
+  ArrowRight,
+  Shield,
+  FileCheck,
+  Building2
 } from 'lucide-react';
+import { GoogleDrivePickerModal, SelectedDocumentResult } from '../components/GoogleDrivePickerModal';
 
 interface VerificationProps {
   user?: any;
@@ -31,57 +37,42 @@ export const Verification: React.FC<VerificationProps> = ({ user, onOpenAuth, on
   const { showToast } = useToast();
   const { t } = useT();
 
-  const [activeTab, setActiveTab] = useState<'request' | 'my_requests'>('request');
-  const [selectedTarget, setSelectedTarget] = useState<'profile' | 'organization' | null>(null);
+  const [activeTab, setActiveTab] = useState<'benefits' | 'plans' | 'my_verifications'>('plans');
+  const [selectedTarget, setSelectedTarget] = useState<'profile' | 'organization'>('profile');
   
-  // Real data from Supabase
-  const [pricing, setPricing] = useState<any[]>([]);
-  const [paymentMethods, setPaymentMethods] = useState<any[]>([]);
-  const [selectedPaymentMethodId, setSelectedPaymentMethodId] = useState<string>('');
-  
-  const [loadingData, setLoadingData] = useState(true);
-  const [myRequests, setMyRequests] = useState<{ profiles: any[]; organizations: any[] }>({ profiles: [], organizations: [] });
-  const [loadingRequests, setLoadingRequests] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [hasPendingPersonal, setHasPendingPersonal] = useState(false);
-  const [hasPendingOrg, setHasPendingOrg] = useState(false);
+  // Real user data & verification requests
+  const [profile, setProfile] = useState<any>(null);
   const [userOrganizations, setUserOrganizations] = useState<any[]>([]);
+  const [selectedOrgId, setSelectedOrgId] = useState<string>('');
 
-  // Personal form fields
-  const [personalFullName, setPersonalFullName] = useState('');
-  const [personalHandle, setPersonalHandle] = useState('');
-  const [personalIdType, setPersonalIdType] = useState('Bilhete de Identidade');
-  const [personalIdNumber, setPersonalIdNumber] = useState('');
-  const [personalCountry, setPersonalCountry] = useState('Angola');
-  const [personalReason, setPersonalReason] = useState('');
-  const [personalProofFile, setPersonalProofFile] = useState<File | null>(null);
+  const [myRequests, setMyRequests] = useState<{ profiles: any[]; organizations: any[] }>({ profiles: [], organizations: [] });
+  const [loading, setLoading] = useState(true);
 
-  // Organization form fields
-  const [orgSelectedId, setOrgSelectedId] = useState('');
-  const [orgOfficialName, setOrgOfficialName] = useState('');
-  const [orgCommercialName, setOrgCommercialName] = useState('');
-  const [orgNif, setOrgNif] = useState('');
-  const [orgCountry, setOrgCountry] = useState('Angola');
-  const [orgMunicipality, setOrgMunicipality] = useState('Luanda');
-  const [orgDescription, setOrgDescription] = useState('');
-  const [orgProofFile, setOrgProofFile] = useState<File | null>(null);
+  // Form inputs
+  const [fullName, setFullName] = useState('');
+  const [nifOrBi, setNifOrBi] = useState('');
+  const [showDriveModal, setShowDriveModal] = useState(false);
+  const [driveProofDoc, setDriveProofDoc] = useState<SelectedDocumentResult | null>(null);
 
-  useEffect(() => {
-    loadInitialData();
-  }, []);
+  // Payment Modal State
+  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState<'mc_express' | 'referencia'>('mc_express');
+  const [paymentPhone, setPaymentPhone] = useState('976848444');
+  const [currentSessionData, setCurrentSessionData] = useState<any>(null);
+  const [processingPayment, setProcessingPayment] = useState(false);
+  const [creatingSession, setCreatingSession] = useState(false);
+
+  const diditConfig = d1Client.verification.getDiditConfig();
 
   useEffect(() => {
-    if (user?.id) {
-      loadUserData();
-    }
+    loadUserData();
   }, [user?.id]);
 
-  // Realtime subscription for requests
   useEffect(() => {
     if (!user?.id) return;
 
     const channel = supabase
-      .channel('public:verification_requests_changes')
+      .channel('public:didit_verifications_changes')
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'profile_verification_requests', filter: `user_id=eq.${user.id}` },
@@ -92,6 +83,11 @@ export const Verification: React.FC<VerificationProps> = ({ user, onOpenAuth, on
         { event: '*', schema: 'public', table: 'organization_verification_requests', filter: `requested_by=eq.${user.id}` },
         () => loadUserData()
       )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'profiles', filter: `user_id=eq.${user.id}` },
+        () => loadUserData()
+      )
       .subscribe();
 
     return () => {
@@ -99,1042 +95,783 @@ export const Verification: React.FC<VerificationProps> = ({ user, onOpenAuth, on
     };
   }, [user?.id]);
 
-  const loadInitialData = async () => {
-    setLoadingData(true);
+  const loadUserData = async () => {
+    if (!user?.id) {
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
     try {
-      const [pricingRes, pmRes] = await Promise.all([
-        d1Client.verification.getPricing(),
-        d1Client.paymentMethods.getActiveMethods()
+      const [profRes, orgsRes, reqsRes] = await Promise.all([
+        d1Client.profiles.get(user.id),
+        d1Client.organizations.list({ owner_id: user.id }),
+        d1Client.verification.getMyRequests(user.id)
       ]);
 
-      setPricing(pricingRes.data || []);
-      const activeMethods = pmRes.data || [];
-      setPaymentMethods(activeMethods);
-      if (activeMethods.length > 0) {
-        setSelectedPaymentMethodId(activeMethods[0].id);
-      }
-    } catch (err: any) {
-      console.warn('Erro ao carregar dados do servidor:', err);
-    } finally {
-      setLoadingData(false);
-    }
-  };
-
-  const loadUserData = async () => {
-    if (!user?.id) return;
-    setLoadingRequests(true);
-    try {
-      const { data: profile } = await d1Client.profiles.get(user.id);
-      if (profile) {
-        setPersonalFullName(profile.full_name || profile.display_name || '');
-        setPersonalHandle(profile.username ? `@${profile.username.replace('@', '')}` : `@${(profile.display_name || 'user').toLowerCase().replace(/\s+/g, '')}`);
-        if (profile.province) setOrgMunicipality(profile.municipality || profile.province);
+      if (profRes.data) {
+        const p = profRes.data?.data || profRes.data;
+        setProfile(p);
+        setFullName(p.display_name || p.full_name || '');
       }
 
-      const { data: orgs } = await d1Client.organizations.list({ owner_id: user.id });
-      if (orgs && orgs.length > 0) {
-        setUserOrganizations(orgs);
-        setOrgSelectedId(orgs[0].id);
-        setOrgOfficialName(orgs[0].name || '');
-        setOrgCommercialName(orgs[0].name || '');
-        if (orgs[0].municipality) setOrgMunicipality(orgs[0].municipality);
-        if (orgs[0].description) setOrgDescription(orgs[0].description);
+      const orgs = orgsRes.data?.data || orgsRes.data || [];
+      setUserOrganizations(orgs);
+      if (orgs.length > 0 && !selectedOrgId) {
+        setSelectedOrgId(orgs[0].id);
       }
 
-      const reqsRes = await d1Client.verification.getMyRequests(user.id);
       if (reqsRes.data) {
         setMyRequests(reqsRes.data);
-        const pendingP = reqsRes.data.profiles.some((r: any) => r.status === 'pending');
-        const pendingO = reqsRes.data.organizations.some((r: any) => r.status === 'pending');
-        setHasPendingPersonal(pendingP);
-        setHasPendingOrg(pendingO);
       }
     } catch (err) {
-      console.warn('Aviso ao carregar dados do utilizador:', err);
+      console.warn('Erro ao carregar dados de verificação:', err);
     } finally {
-      setLoadingRequests(false);
+      setLoading(false);
     }
   };
 
-  const getPriceFor = (type: 'profile' | 'organization') => {
-    const item = pricing.find(p => p.target_type === type || p.account_type === type);
-    return item ? item.price_amount : (type === 'profile' ? 5000 : 10000);
+  // Helper to determine current status for Individual User or Selected Organization
+  const getCurrentStatus = () => {
+    if (selectedTarget === 'profile') {
+      const isVerified = Boolean(profile?.is_verified);
+      const isExpired = profile?.verified_until && new Date(profile.verified_until).getTime() <= Date.now();
+      
+      const latestReq = myRequests.profiles?.[0];
+      if (latestReq) {
+        if (latestReq.status === 'badge_suspended') return 'badge_suspended';
+        if (latestReq.status === 'rejected') return 'rejected';
+        if (latestReq.status === 'in_review') return 'in_review';
+        if (latestReq.status === 'verification_pending') return 'verification_pending';
+        if (latestReq.status === 'payment_pending') return 'payment_pending';
+      }
+
+      if (isVerified && isExpired) return 'subscription_expired';
+      if (isVerified) return 'approved';
+      return 'not_verified';
+    } else {
+      const selectedOrg = userOrganizations.find(o => o.id === selectedOrgId);
+      const isVerified = selectedOrg?.verification_status === 'verified';
+      const isExpired = selectedOrg?.verified_until && new Date(selectedOrg.verified_until).getTime() <= Date.now();
+
+      const latestReq = myRequests.organizations?.find(r => r.organization_id === selectedOrgId) || myRequests.organizations?.[0];
+      if (latestReq) {
+        if (latestReq.status === 'badge_suspended') return 'badge_suspended';
+        if (latestReq.status === 'rejected') return 'rejected';
+        if (latestReq.status === 'in_review') return 'in_review';
+        if (latestReq.status === 'verification_pending') return 'verification_pending';
+        if (latestReq.status === 'payment_pending') return 'payment_pending';
+      }
+
+      if (isVerified && isExpired) return 'subscription_expired';
+      if (isVerified) return 'approved';
+      return 'not_verified';
+    }
   };
 
-  const getCurrencyFor = (type: 'profile' | 'organization') => {
-    const item = pricing.find(p => p.target_type === type || p.account_type === type);
-    return item?.currency || 'Kz';
-  };
+  const currentStatus = getCurrentStatus();
 
-  const getDurationFor = (type: 'profile' | 'organization') => {
-    const item = pricing.find(p => p.target_type === type || p.account_type === type);
-    return item?.duration_days || 30;
-  };
-
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text);
-    showToast('Coordenadas copiadas para a área de transferência!', 'success');
-  };
-
-  const handlePersonalSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  // Initiate Didit Verification & Open Payment Modal
+  const handleInitiateVerification = async () => {
     if (!user) {
       onOpenAuth?.();
       return;
     }
 
-    if (hasPendingPersonal) {
-      showToast('Já possui um pedido de verificação pessoal pendente sob análise.', 'error');
+    if (!nifOrBi.trim()) {
+      showToast(selectedTarget === 'profile' ? 'Por favor insere o número do teu BI.' : 'Por favor insere o NIF da empresa.', 'info');
       return;
     }
 
-    if (!personalFullName.trim() || !personalHandle.trim() || !personalIdNumber.trim()) {
-      showToast('Por favor preencha todos os campos obrigatórios de identificação.', 'error');
-      return;
-    }
-
-    if (!personalProofFile) {
-      showToast('Por favor anexe o comprovativo de pagamento (PDF, JPG, PNG ou WEBP).', 'error');
-      return;
-    }
-
-    setSubmitting(true);
+    setCreatingSession(true);
     try {
-      const selectedPm = paymentMethods.find(m => m.id === selectedPaymentMethodId);
-      const priceAmount = getPriceFor('profile');
-      const currency = getCurrencyFor('profile');
-      const durationDays = getDurationFor('profile');
-
-      // 1. Upload proof file to private bucket "konecta-payment-proofs"
-      // Path structure starts strictly with user.id: ${user.id}/verifications/...
-      const proofPath = await d1Client.storage.uploadPrivateProof(
-        user.id,
-        'verifications',
-        personalProofFile
-      );
-
-      // 2. Prepare evidence metadata
-      const evidenceMeta = {
-        full_name: personalFullName.trim(),
-        account_handle: personalHandle.trim(),
-        id_type: personalIdType,
-        id_number: personalIdNumber.trim(),
-        country: personalCountry.trim(),
-        reason: personalReason.trim(),
-        payment_method_id: selectedPm?.id,
-        payment_provider: selectedPm?.provider,
-        payment_display_name: selectedPm?.display_name,
-        proof_path: proofPath,
-        submitted_at: new Date().toISOString()
-      };
-
-      // 3. Insert real record into profile_verification_requests
-      const { data, error } = await supabase
-        .from('profile_verification_requests')
-        .insert({
-          user_id: user.id,
-          status: 'pending',
-          proof_path: proofPath,
-          price_amount: priceAmount,
-          currency: currency,
-          duration_days: durationDays,
-          explanation: personalReason.trim() || `Verificação solicitada por ${personalFullName.trim()}`,
-          evidence_url: JSON.stringify(evidenceMeta)
-        })
-        .select()
-        .single();
-
-      if (error) {
-        throw error;
+      const targetId = selectedTarget === 'profile' ? user.id : selectedOrgId;
+      if (selectedTarget === 'organization' && !targetId) {
+        showToast('Tens de selecionar uma empresa ou criar uma primeiro.', 'error');
+        setCreatingSession(false);
+        return;
       }
 
-      showToast('Pedido de verificação gravado com sucesso! Está sob análise.', 'success');
-      setSelectedTarget(null);
-      setPersonalProofFile(null);
-      setPersonalReason('');
-      await loadUserData();
-      setActiveTab('my_requests');
+      const res = await d1Client.verification.createDiditSession({
+        targetType: selectedTarget,
+        targetId,
+        fullName: fullName.trim(),
+        nifOrBi: nifOrBi.trim()
+      });
+
+      if (res.error || !res.data) {
+        throw new Error(res.error || 'Erro ao iniciar o processo de verificação');
+      }
+
+      setCurrentSessionData(res.data);
+      setIsPaymentModalOpen(true);
+      showToast('Processo de verificação iniciado! Procede ao pagamento da subscrição.', 'success');
     } catch (err: any) {
-      console.error('Erro ao submeter verificação pessoal:', err);
-      showToast(err.message || 'Falha ao gravar pedido de verificação no banco.', 'error');
+      console.error('Erro ao iniciar verificação:', err);
+      showToast(err?.message || 'Falha ao iniciar o processo de verificação.', 'error');
     } finally {
-      setSubmitting(false);
+      setCreatingSession(false);
     }
   };
 
-  const handleOrgSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!user) {
-      onOpenAuth?.();
-      return;
-    }
-
-    if (hasPendingOrg) {
-      showToast('Já possui um pedido de verificação de organização pendente sob análise.', 'error');
-      return;
-    }
-
-    if (!orgOfficialName.trim() || !orgCommercialName.trim()) {
-      showToast('Por favor preencha o nome oficial e comercial da organização.', 'error');
-      return;
-    }
-
-    if (!orgProofFile) {
-      showToast('Por favor anexe o comprovativo de pagamento (PDF, JPG, PNG ou WEBP).', 'error');
-      return;
-    }
-
-    setSubmitting(true);
+  // Complete Payment Step
+  const handleConfirmPayment = async () => {
+    if (!currentSessionData) return;
+    setProcessingPayment(true);
     try {
-      const selectedPm = paymentMethods.find(m => m.id === selectedPaymentMethodId);
-      const priceAmount = getPriceFor('organization');
-      const currency = getCurrencyFor('organization');
-      const durationDays = getDurationFor('organization');
+      const res = await d1Client.verification.confirmPayment({
+        requestId: currentSessionData.requestId,
+        targetType: selectedTarget,
+        paymentMethod,
+        phoneNumber: paymentPhone
+      });
 
-      // 1. Upload proof file to private bucket "konecta-payment-proofs"
-      const proofPath = await d1Client.storage.uploadPrivateProof(
-        user.id,
-        'verifications_org',
-        orgProofFile
-      );
+      if (res.error) throw new Error(res.error.message || 'Erro no pagamento');
 
-      // 2. Prepare evidence metadata
-      const evidenceMeta = {
-        organization_name: orgOfficialName.trim(),
-        commercial_name: orgCommercialName.trim(),
-        nif: orgNif.trim() || '',
-        country: orgCountry.trim(),
-        municipality: orgMunicipality.trim(),
-        description: orgDescription.trim(),
-        payment_method_id: selectedPm?.id,
-        payment_provider: selectedPm?.provider,
-        payment_display_name: selectedPm?.display_name,
-        proof_path: proofPath,
-        submitted_at: new Date().toISOString()
-      };
-
-      // 3. Insert real record into organization_verification_requests
-      const { data, error } = await supabase
-        .from('organization_verification_requests')
-        .insert({
-          organization_id: orgSelectedId || null,
-          requested_by: user.id,
-          status: 'pending',
-          proof_path: proofPath,
-          price_amount: priceAmount,
-          currency: currency,
-          duration_days: durationDays,
-          evidence_url: JSON.stringify(evidenceMeta)
-        })
-        .select()
-        .single();
-
-      if (error) {
-        throw error;
-      }
-
-      showToast('Pedido de verificação institucional gravado com sucesso!', 'success');
-      setSelectedTarget(null);
-      setOrgProofFile(null);
+      setIsPaymentModalOpen(false);
       await loadUserData();
-      setActiveTab('my_requests');
+      showToast('Pagamento confirmado com sucesso! Procede agora com a validação dos documentos.', 'success');
     } catch (err: any) {
-      console.error('Erro ao submeter verificação institucional:', err);
-      showToast(err.message || 'Falha ao gravar pedido de verificação institucional.', 'error');
+      console.error('Erro no pagamento:', err);
+      showToast(err?.message || 'Falha ao confirmar pagamento.', 'error');
     } finally {
-      setSubmitting(false);
+      setProcessingPayment(false);
     }
   };
 
-  // Dynamic Payment Methods block from Supabase
-  const renderPaymentMethodsSection = (amount: number, currency: string) => {
-    const selectedMethod = paymentMethods.find(m => m.id === selectedPaymentMethodId) || paymentMethods[0];
+  // Renew Monthly Subscription
+  const handleRenewSubscription = async () => {
+    if (!user) return;
+    try {
+      const targetId = selectedTarget === 'profile' ? user.id : (selectedOrgId || userOrganizations[0]?.id || user.id);
+      const res = await d1Client.verification.createDiditSession({
+        targetType: selectedTarget,
+        targetId,
+        fullName: fullName.trim() || profile?.full_name || '',
+        nifOrBi: nifOrBi.trim() || profile?.bi_number || ''
+      });
+
+      if (res.error || !res.data) {
+        throw new Error(res.error || 'Erro ao iniciar renovação');
+      }
+
+      setCurrentSessionData(res.data);
+      setIsPaymentModalOpen(true);
+      showToast('Por favor, confirma o pagamento para renovar a tua subscrição mensal.', 'info');
+    } catch (err: any) {
+      showToast(err?.message || 'Erro ao iniciar renovação.', 'error');
+    }
+  };
+
+  const getStatusBadge = (status: string) => {
+    const config: Record<string, { label: string; color: string; icon: any }> = {
+      not_verified: { label: 'Não Verificado', color: 'bg-gray-100 text-gray-600', icon: AlertCircle },
+      payment_pending: { label: 'Pagamento Pendente', color: 'bg-amber-100 text-amber-800 border-amber-200', icon: Clock },
+      verification_pending: { label: 'Aguardando Validação', color: 'bg-blue-100 text-blue-800 border-blue-200', icon: Loader2 },
+      in_review: { label: 'Em Análise', color: 'bg-indigo-100 text-indigo-800 border-indigo-200', icon: Clock },
+      approved: { label: 'Aprovado & Ativo', color: 'bg-emerald-100 text-emerald-800 border-emerald-200', icon: CheckCircle },
+      rejected: { label: 'Rejeitado', color: 'bg-rose-100 text-rose-800 border-rose-200', icon: XCircle },
+      subscription_expired: { label: 'Subscrição Expirada', color: 'bg-orange-100 text-orange-800 border-orange-200', icon: RefreshCw },
+      badge_suspended: { label: 'Selo Suspenso', color: 'bg-red-100 text-red-900 border-red-200', icon: Ban },
+    };
+
+    const current = config[status] || config.not_verified;
+    const Icon = current.icon;
 
     return (
-      <div className="bg-amber-50/70 border border-amber-200/80 rounded-2xl p-5 space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-          <span className="text-[11px] font-black uppercase tracking-wider text-amber-900 flex items-center gap-1.5">
-            <ShieldCheck size={16} className="text-amber-600" /> Métodos de Pagamento Oficiais
-          </span>
-          <span className="text-xs font-black text-amber-950 bg-amber-100/90 px-3 py-1 rounded-full self-start sm:self-auto">
-            Valor a Pagar: {amount.toLocaleString('pt-AO')} {currency}
-          </span>
-        </div>
-
-        {paymentMethods.length === 0 ? (
-          <div className="bg-white p-4 rounded-xl border border-amber-200 text-xs text-amber-800">
-            A carregar métodos de pagamento ativos...
-          </div>
-        ) : (
-          <>
-            {/* Method Selection Tabs */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-              {paymentMethods.map((pm) => {
-                const isSelected = pm.id === (selectedMethod?.id);
-                return (
-                  <button
-                    key={pm.id}
-                    type="button"
-                    onClick={() => setSelectedPaymentMethodId(pm.id)}
-                    className={`p-3 rounded-xl border text-left transition-all ${
-                      isSelected
-                        ? 'bg-white border-amber-500 shadow-sm ring-1 ring-amber-500'
-                        : 'bg-white/60 border-amber-200/70 hover:bg-white'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2 mb-1">
-                      {pm.provider === 'bank_transfer' && <CreditCard size={15} className="text-amber-700" />}
-                      {pm.provider === 'express' && <Smartphone size={15} className="text-amber-700" />}
-                      {pm.provider === 'unitel_money' && <Smartphone size={15} className="text-red-600" />}
-                      <span className="text-xs font-bold text-gray-900 leading-tight">
-                        {pm.display_name}
-                      </span>
-                    </div>
-                    <span className="text-[10px] text-gray-500 block truncate">
-                      {pm.account_number}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* Active Selected Method Details */}
-            {selectedMethod && (
-              <div className="bg-white p-4 rounded-xl border border-amber-200/80 space-y-2 text-xs">
-                <div className="flex justify-between items-start">
-                  <div>
-                    <span className="text-[10px] uppercase font-bold text-gray-400 block">
-                      {selectedMethod.display_name}
-                    </span>
-                    <span className="font-mono text-sm font-bold text-gray-900 select-all block mt-0.5">
-                      {selectedMethod.account_number}
-                    </span>
-                    <span className="text-[11px] text-gray-600 block mt-0.5">
-                      Titular / Beneficiário: <strong>{selectedMethod.account_name}</strong>
-                    </span>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() => copyToClipboard(selectedMethod.account_number)}
-                    className="btn-secondary py-1.5 px-3 text-[11px] font-bold flex items-center gap-1 shrink-0"
-                  >
-                    <Copy size={12} /> Copiar
-                  </button>
-                </div>
-
-                {selectedMethod.instructions && (
-                  <p className="text-[11px] text-amber-900/90 pt-2 border-t border-gray-100 flex items-center gap-1.5">
-                    <AlertCircle size={13} className="text-amber-600 shrink-0" />
-                    {selectedMethod.instructions}
-                  </p>
-                )}
-              </div>
-            )}
-          </>
-        )}
-      </div>
+      <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border ${current.color}`}>
+        <Icon size={14} />
+        <span>{current.label}</span>
+      </span>
     );
   };
 
   return (
-    <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8 lg:py-12 space-y-8">
-      {/* Header */}
-      <div className="border-b border-gray-100 pb-6 flex flex-col md:flex-row md:items-end justify-between gap-4">
-        <div>
-          <span className="text-[10px] font-extrabold text-konecta-gold uppercase tracking-[0.2em] block mb-1">
-            Autenticidade e Confiança
-          </span>
-          <h1 className="text-3xl sm:text-4xl font-black text-konecta-navy tracking-tight">
-            Verificação de Conta
+    <div className="max-w-6xl mx-auto px-4 py-8 space-y-8 pb-24">
+      {/* Header Banner */}
+      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-konecta-navy via-[#0d2342] to-slate-900 text-white p-6 sm:p-10 shadow-xl border border-white/10">
+        <div className="absolute -right-10 -bottom-10 w-72 h-72 bg-konecta-gold/10 rounded-full blur-3xl pointer-events-none" />
+        <div className="relative z-10 max-w-3xl space-y-4">
+          <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-white/10 backdrop-blur-md border border-white/15 text-xs text-konecta-gold font-bold">
+            <ShieldCheck size={16} />
+            <span>Verificação Oficial de Identidade & Empresas</span>
+          </div>
+          <h1 className="text-2xl sm:text-4xl font-extrabold tracking-tight leading-tight">
+            Obtém o Selo de Autenticidade <span className="text-konecta-gold">KONECTA</span>
           </h1>
-          <p className="text-gray-500 text-sm mt-1.5 max-w-2xl leading-relaxed">
-            Obtenha o selo oficial de verificação do KONECTA Angola com consulta aos dados reais do sistema.
+          <p className="text-sm sm:text-base text-gray-300 leading-relaxed">
+            Aumenta a tua credibilidade profissional e institucional na maior rede de inovação em Angola. Verificação biométrica de BI e NIF empresarial com validação automatizada.
           </p>
-        </div>
 
-        {/* Tab switches */}
-        <div className="flex bg-gray-100 p-1 rounded-2xl self-start md:self-auto shrink-0">
-          <button
-            onClick={() => { setActiveTab('request'); setSelectedTarget(null); }}
-            className={`px-4 py-2 rounded-xl text-xs font-black transition-all ${
-              activeTab === 'request' ? 'bg-white text-konecta-navy shadow-sm' : 'text-gray-500 hover:text-gray-900'
-            }`}
-          >
-            Solicitar Selo
-          </button>
-          <button
-            onClick={() => setActiveTab('my_requests')}
-            className={`px-4 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 ${
-              activeTab === 'my_requests' ? 'bg-white text-konecta-navy shadow-sm' : 'text-gray-500 hover:text-gray-900'
-            }`}
-          >
-            Meus Pedidos
-            {(myRequests.profiles.length + myRequests.organizations.length > 0) && (
-              <span className="w-5 h-5 bg-konecta-gold/20 text-konecta-gold rounded-full flex items-center justify-center text-[10px] font-black">
-                {myRequests.profiles.length + myRequests.organizations.length}
-              </span>
-            )}
-          </button>
+          <div className="flex flex-wrap gap-3 pt-2">
+            <button
+              onClick={() => setActiveTab('plans')}
+              className={`px-5 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
+                activeTab === 'plans' ? 'bg-konecta-gold text-konecta-navy shadow-lg' : 'bg-white/10 hover:bg-white/20 text-white'
+              }`}
+            >
+              <CreditCard size={15} />
+              <span>Planos e Verificação</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('benefits')}
+              className={`px-5 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
+                activeTab === 'benefits' ? 'bg-konecta-gold text-konecta-navy shadow-lg' : 'bg-white/10 hover:bg-white/20 text-white'
+              }`}
+            >
+              <Sparkles size={15} />
+              <span>Benefícios do Selo</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('my_verifications')}
+              className={`px-5 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
+                activeTab === 'my_verifications' ? 'bg-konecta-gold text-konecta-navy shadow-lg' : 'bg-white/10 hover:bg-white/20 text-white'
+              }`}
+            >
+              <FileCheck size={15} />
+              <span>Histórico de Pedidos</span>
+            </button>
+          </div>
         </div>
       </div>
 
-      {loadingData ? (
-        <div className="py-20 text-center">
-          <Loader2 className="animate-spin mx-auto text-konecta-navy" size={32} />
-          <p className="text-xs text-gray-400 mt-2">A carregar dados do servidor...</p>
-        </div>
-      ) : activeTab === 'request' ? (
-        <>
-          {!selectedTarget ? (
-            /* Modalidades selection cards */
-            <div className="space-y-6">
-              <div className="text-center max-w-xl mx-auto space-y-2 mb-8">
-                <h2 className="text-xl font-bold text-konecta-navy">Escolha a sua modalidade de verificação</h2>
-                <p className="text-xs text-gray-500">
-                  Preços e métodos de pagamento reais carregados do sistema.
-                </p>
-              </div>
-
-              <div className="grid md:grid-cols-2 gap-6 max-w-4xl mx-auto">
-                {/* Conta Pessoal Card */}
-                <div className="bg-white rounded-3xl p-6 sm:p-8 border border-gray-200/80 shadow-sm hover:shadow-md transition-all flex flex-col justify-between space-y-6 relative overflow-hidden group">
-                  <div className="space-y-4">
-                    <div className="w-12 h-12 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center border border-blue-100">
-                      <User size={24} />
-                    </div>
-
-                    <div>
-                      <div className="flex items-center gap-2 mb-1">
-                        <h3 className="text-xl font-bold text-konecta-navy">Conta Pessoal</h3>
-                        <span className="inline-flex items-center gap-1 bg-blue-50 text-blue-700 text-[10px] font-black uppercase px-2 py-0.5 rounded-full border border-blue-200">
-                          <CheckCircle size={12} className="text-blue-600" /> Selo Azul
-                        </span>
-                      </div>
-                      <p className="text-xs text-gray-500 leading-relaxed">
-                        Para inovadores, criadores e figuras públicas com presença ativa na comunidade.
-                      </p>
-                    </div>
-
-                    <div className="pt-2 border-t border-gray-100">
-                      <div className="flex items-baseline gap-1">
-                        <span className="text-3xl font-black text-konecta-navy">
-                          {getPriceFor('profile').toLocaleString('pt-AO')}
-                        </span>
-                        <span className="text-sm font-bold text-gray-500">{getCurrencyFor('profile')}</span>
-                        <span className="text-xs text-gray-400 font-medium">/ {getDurationFor('profile')} dias</span>
-                      </div>
-                    </div>
-
-                    <ul className="space-y-2 text-xs text-gray-600">
-                      <li className="flex items-center gap-2">
-                        <Check size={14} className="text-emerald-500 shrink-0" />
-                        <span>Selo azul de perfil verificado junto ao nome</span>
-                      </li>
-                      <li className="flex items-center gap-2">
-                        <Check size={14} className="text-emerald-500 shrink-0" />
-                        <span>Maior destaque em publicações e comentários</span>
-                      </li>
-                      <li className="flex items-center gap-2">
-                        <Check size={14} className="text-emerald-500 shrink-0" />
-                        <span>Proteção e validação oficial de identidade</span>
-                      </li>
-                    </ul>
-                  </div>
-
-                  <div>
-                    {hasPendingPersonal ? (
-                      <div className="w-full py-3 px-4 rounded-xl bg-amber-50 text-amber-800 text-xs font-bold text-center border border-amber-200 flex items-center justify-center gap-2">
-                        <Clock size={14} /> Pedido pessoal em análise
-                      </div>
-                    ) : (
-                      <button
-                        onClick={() => {
-                          if (!user) onOpenAuth?.();
-                          else setSelectedTarget('profile');
-                        }}
-                        className="btn-primary w-full py-3.5 text-xs font-bold flex items-center justify-center gap-2"
-                      >
-                        Solicitar Selo Azul <ChevronRight size={14} />
-                      </button>
-                    )}
-                  </div>
-                </div>
-
-                {/* Organização Card */}
-                <div className="bg-white rounded-3xl p-6 sm:p-8 border border-gray-200/80 shadow-sm hover:shadow-md transition-all flex flex-col justify-between space-y-6 relative overflow-hidden group">
-                  <div className="space-y-4">
-                    <div className="w-12 h-12 rounded-2xl bg-amber-50 text-konecta-gold flex items-center justify-center border border-amber-200">
-                      <Building size={24} />
-                    </div>
-
-                    <div>
-                      <div className="flex items-center gap-2 mb-1">
-                        <h3 className="text-xl font-bold text-konecta-navy">Organização</h3>
-                        <span className="inline-flex items-center gap-1 bg-amber-50 text-amber-800 text-[10px] font-black uppercase px-2 py-0.5 rounded-full border border-amber-200">
-                          <ShieldCheck size={12} className="text-konecta-gold" /> Selo Institucional
-                        </span>
-                      </div>
-                      <p className="text-xs text-gray-500 leading-relaxed">
-                        Para empresas, ONGs e instituições que realizam projetos e desafios em Angola.
-                      </p>
-                    </div>
-
-                    <div className="pt-2 border-t border-gray-100">
-                      <div className="flex items-baseline gap-1">
-                        <span className="text-3xl font-black text-konecta-navy">
-                          {getPriceFor('organization').toLocaleString('pt-AO')}
-                        </span>
-                        <span className="text-sm font-bold text-gray-500">{getCurrencyFor('organization')}</span>
-                        <span className="text-xs text-gray-400 font-medium">/ {getDurationFor('organization')} dias</span>
-                      </div>
-                    </div>
-
-                    <ul className="space-y-2 text-xs text-gray-600">
-                      <li className="flex items-center gap-2">
-                        <Check size={14} className="text-emerald-500 shrink-0" />
-                        <span>Selo dourado institucional verificado</span>
-                      </li>
-                      <li className="flex items-center gap-2">
-                        <Check size={14} className="text-emerald-500 shrink-0" />
-                        <span>Abertura e gestão de desafios com prémios</span>
-                      </li>
-                      <li className="flex items-center gap-2">
-                        <Check size={14} className="text-emerald-500 shrink-0" />
-                        <span>Autenticidade perante parceiros e investidores</span>
-                      </li>
-                    </ul>
-                  </div>
-
-                  <div>
-                    {hasPendingOrg ? (
-                      <div className="w-full py-3 px-4 rounded-xl bg-amber-50 text-amber-800 text-xs font-bold text-center border border-amber-200 flex items-center justify-center gap-2">
-                        <Clock size={14} /> Pedido institucional em análise
-                      </div>
-                    ) : (
-                      <button
-                        onClick={() => {
-                          if (!user) onOpenAuth?.();
-                          else setSelectedTarget('organization');
-                        }}
-                        className="btn-gold w-full py-3.5 text-xs font-bold flex items-center justify-center gap-2"
-                      >
-                        Solicitar Selo Institucional <ChevronRight size={14} />
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
-          ) : selectedTarget === 'profile' ? (
-            /* Formulário Real: Verificação Pessoal */
-            <form onSubmit={handlePersonalSubmit} className="bg-white rounded-3xl p-6 sm:p-10 border border-gray-200 shadow-sm max-w-3xl mx-auto space-y-6">
-              <div className="flex items-center justify-between border-b border-gray-100 pb-4">
-                <div>
-                  <span className="text-[10px] font-black uppercase text-blue-600 tracking-wider">Verificação de Conta</span>
-                  <h2 className="text-2xl font-bold text-konecta-navy">Selo Azul de Conta Pessoal</h2>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setSelectedTarget(null)}
-                  className="text-xs font-bold text-gray-400 hover:text-gray-700 transition-colors"
-                >
-                  Voltar
-                </button>
-              </div>
-
-              {/* Métodos de pagamento reais carregados do Supabase */}
-              {renderPaymentMethodsSection(getPriceFor('profile'), getCurrencyFor('profile'))}
-
-              <div className="space-y-4">
-                <h3 className="text-sm font-bold text-konecta-navy uppercase tracking-wider text-xs border-b pb-2">
-                  1. Dados de Identificação
-                </h3>
-                
-                <div className="grid sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-bold text-gray-700 mb-1.5">
-                      Nome Completo <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      value={personalFullName}
-                      onChange={(e) => setPersonalFullName(e.target.value)}
-                      placeholder="Ex: Manuel António Domingos"
-                      className="input-konecta w-full text-xs"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-bold text-gray-700 mb-1.5">
-                      Nome Público da Conta (Handle) <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      value={personalHandle}
-                      onChange={(e) => setPersonalHandle(e.target.value)}
-                      placeholder="Ex: @manuelantonio"
-                      className="input-konecta w-full text-xs"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid sm:grid-cols-3 gap-4">
-                  <div>
-                    <label className="block text-xs font-bold text-gray-700 mb-1.5">
-                      Tipo de Documento <span className="text-red-500">*</span>
-                    </label>
-                    <select
-                      value={personalIdType}
-                      onChange={(e) => setPersonalIdType(e.target.value)}
-                      className="input-konecta w-full text-xs"
-                    >
-                      <option value="Bilhete de Identidade">Bilhete de Identidade (BI)</option>
-                      <option value="Passaporte">Passaporte</option>
-                      <option value="Carta de Condução">Carta de Condução</option>
-                      <option value="Outro Documento Oficial">Outro Documento Oficial</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-bold text-gray-700 mb-1.5">
-                      Número do Documento <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      value={personalIdNumber}
-                      onChange={(e) => setPersonalIdNumber(e.target.value)}
-                      placeholder="Ex: 004123456LA042"
-                      className="input-konecta w-full text-xs"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-bold text-gray-700 mb-1.5">
-                      País de Emissão <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      value={personalCountry}
-                      onChange={(e) => setPersonalCountry(e.target.value)}
-                      className="input-konecta w-full text-xs"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-gray-700 mb-1.5">
-                    Justificação ou Descrição do Pedido
-                  </label>
-                  <textarea
-                    rows={3}
-                    value={personalReason}
-                    onChange={(e) => setPersonalReason(e.target.value)}
-                    placeholder="Explique a relevância do seu perfil ou a motivação da verificação..."
-                    className="input-konecta w-full text-xs resize-none"
-                  />
-                </div>
-              </div>
-
-              {/* Upload do comprovativo */}
-              <div className="space-y-4 pt-2">
-                <h3 className="text-sm font-bold text-konecta-navy uppercase tracking-wider text-xs border-b pb-2">
-                  2. Comprovativo de Pagamento
-                </h3>
-
-                <div className="border-2 border-dashed border-amber-300 rounded-2xl p-5 text-center hover:border-amber-500 transition-colors bg-amber-50/30">
-                  <label className="cursor-pointer block space-y-2">
-                    <div className="w-10 h-10 rounded-full bg-amber-100 shadow-xs mx-auto flex items-center justify-center text-amber-800">
-                      <FileText size={18} />
-                    </div>
-                    <span className="block text-xs font-bold text-amber-900">
-                      Anexar Comprovativo Bancário (PDF, JPG, PNG ou WEBP) <span className="text-red-500">*</span>
-                    </span>
-                    <span className="block text-[11px] text-gray-600">
-                      {personalProofFile ? personalProofFile.name : 'Clique para selecionar o talão de transferência ou pagamento'}
-                    </span>
-                    <input
-                      type="file"
-                      accept="image/jpeg,image/png,image/webp,application/pdf"
-                      required
-                      className="hidden"
-                      onChange={(e) => setPersonalProofFile(e.target.files?.[0] || null)}
-                    />
-                  </label>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between pt-4 border-t border-gray-100">
-                <button
-                  type="button"
-                  onClick={() => setSelectedTarget(null)}
-                  className="px-5 py-3 text-xs font-bold text-gray-500 hover:text-gray-800 transition-colors"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  disabled={submitting || !personalProofFile}
-                  className="btn-primary py-3.5 px-8 text-xs font-bold flex items-center gap-2"
-                >
-                  {submitting ? <Loader2 size={16} className="animate-spin" /> : <ShieldCheck size={16} />}
-                  {submitting ? 'A gravar no sistema...' : 'Enviar Pedido de Verificação'}
-                </button>
-              </div>
-            </form>
-          ) : (
-            /* Formulário Real: Verificação de Organização */
-            <form onSubmit={handleOrgSubmit} className="bg-white rounded-3xl p-6 sm:p-10 border border-gray-200 shadow-sm max-w-3xl mx-auto space-y-6">
-              <div className="flex items-center justify-between border-b border-gray-100 pb-4">
-                <div>
-                  <span className="text-[10px] font-black uppercase text-amber-700 tracking-wider">Verificação de Entidade</span>
-                  <h2 className="text-2xl font-bold text-konecta-navy">Selo Institucional de Organização</h2>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setSelectedTarget(null)}
-                  className="text-xs font-bold text-gray-400 hover:text-gray-700 transition-colors"
-                >
-                  Voltar
-                </button>
-              </div>
-
-              {/* Métodos de pagamento reais carregados do Supabase */}
-              {renderPaymentMethodsSection(getPriceFor('organization'), getCurrencyFor('organization'))}
-
-              <div className="space-y-4">
-                <h3 className="text-sm font-bold text-konecta-navy uppercase tracking-wider text-xs border-b pb-2">
-                  1. Dados da Organização
-                </h3>
-
-                {userOrganizations.length > 0 && (
-                  <div>
-                    <label className="block text-xs font-bold text-gray-700 mb-1.5">
-                      Vincular a uma organização existente no KONECTA
-                    </label>
-                    <select
-                      value={orgSelectedId}
-                      onChange={(e) => {
-                        const id = e.target.value;
-                        setOrgSelectedId(id);
-                        const found = userOrganizations.find(o => o.id === id);
-                        if (found) {
-                          setOrgOfficialName(found.name || '');
-                          setOrgCommercialName(found.name || '');
-                          if (found.municipality) setOrgMunicipality(found.municipality);
-                          if (found.description) setOrgDescription(found.description);
-                        }
-                      }}
-                      className="input-konecta w-full text-xs"
-                    >
-                      <option value="">-- Nova / Não listada ainda --</option>
-                      {userOrganizations.map(o => (
-                        <option key={o.id} value={o.id}>{o.name}</option>
-                      ))}
-                    </select>
-                  </div>
-                )}
-
-                <div className="grid sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-bold text-gray-700 mb-1.5">
-                      Nome Oficial da Organização <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      value={orgOfficialName}
-                      onChange={(e) => setOrgOfficialName(e.target.value)}
-                      placeholder="Ex: Empresa de Tecnologias de Angola, Lda"
-                      className="input-konecta w-full text-xs"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-bold text-gray-700 mb-1.5">
-                      Nome Comercial / Designação <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      value={orgCommercialName}
-                      onChange={(e) => setOrgCommercialName(e.target.value)}
-                      placeholder="Ex: KONECTA Labs"
-                      className="input-konecta w-full text-xs"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid sm:grid-cols-3 gap-4">
-                  <div>
-                    <label className="block text-xs font-bold text-gray-700 mb-1.5">
-                      NIF (Número de Identificação Fiscal)
-                    </label>
-                    <input
-                      type="text"
-                      value={orgNif}
-                      onChange={(e) => setOrgNif(e.target.value)}
-                      placeholder="Ex: 5418123456"
-                      className="input-konecta w-full text-xs"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-bold text-gray-700 mb-1.5">
-                      País <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      value={orgCountry}
-                      onChange={(e) => setOrgCountry(e.target.value)}
-                      className="input-konecta w-full text-xs"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-bold text-gray-700 mb-1.5">
-                      Município / Província <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      value={orgMunicipality}
-                      onChange={(e) => setOrgMunicipality(e.target.value)}
-                      placeholder="Ex: Luanda, Talatona"
-                      className="input-konecta w-full text-xs"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-gray-700 mb-1.5">
-                    Descrição da Atividade
-                  </label>
-                  <textarea
-                    rows={3}
-                    value={orgDescription}
-                    onChange={(e) => setOrgDescription(e.target.value)}
-                    placeholder="Descreva a atividade da organização em Angola..."
-                    className="input-konecta w-full text-xs resize-none"
-                  />
-                </div>
-              </div>
-
-              {/* Upload do comprovativo */}
-              <div className="space-y-4 pt-2">
-                <h3 className="text-sm font-bold text-konecta-navy uppercase tracking-wider text-xs border-b pb-2">
-                  2. Comprovativo de Pagamento
-                </h3>
-
-                <div className="border-2 border-dashed border-amber-300 rounded-2xl p-5 text-center hover:border-amber-500 transition-colors bg-amber-50/30">
-                  <label className="cursor-pointer block space-y-2">
-                    <div className="w-10 h-10 rounded-full bg-amber-100 shadow-xs mx-auto flex items-center justify-center text-amber-800">
-                      <FileText size={18} />
-                    </div>
-                    <span className="block text-xs font-bold text-amber-900">
-                      Comprovativo Bancário (PDF, JPG, PNG ou WEBP) <span className="text-red-500">*</span>
-                    </span>
-                    <span className="block text-[11px] text-gray-600">
-                      {orgProofFile ? orgProofFile.name : 'Clique para selecionar o talão de transferência ou pagamento'}
-                    </span>
-                    <input
-                      type="file"
-                      accept="image/jpeg,image/png,image/webp,application/pdf"
-                      required
-                      className="hidden"
-                      onChange={(e) => setOrgProofFile(e.target.files?.[0] || null)}
-                    />
-                  </label>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between pt-4 border-t border-gray-100">
-                <button
-                  type="button"
-                  onClick={() => setSelectedTarget(null)}
-                  className="px-5 py-3 text-xs font-bold text-gray-500 hover:text-gray-800 transition-colors"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  disabled={submitting || !orgProofFile}
-                  className="btn-gold py-3.5 px-8 text-xs font-bold flex items-center gap-2"
-                >
-                  {submitting ? <Loader2 size={16} className="animate-spin" /> : <ShieldCheck size={16} />}
-                  {submitting ? 'A gravar no sistema...' : 'Enviar Pedido Institucional'}
-                </button>
-              </div>
-            </form>
-          )}
-        </>
-      ) : (
-        /* Aba Meus Pedidos */
-        <div className="space-y-6 max-w-4xl mx-auto">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-bold text-konecta-navy flex items-center gap-2">
-              <Clock size={18} className="text-konecta-gold" />
-              Histórico de Pedidos de Verificação
-            </h2>
-            <button
-              onClick={loadUserData}
-              className="text-xs font-bold text-konecta-navy hover:underline"
-            >
-              Atualizar
-            </button>
+      {/* Target Selector: User BI vs Company NIF */}
+      <div className="bg-white rounded-3xl p-6 shadow-sm border border-gray-100 space-y-6">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-gray-100 pb-4">
+          <div>
+            <h2 className="text-lg font-bold text-konecta-navy">Seleciona o Tipo de Verificação</h2>
+            <p className="text-xs text-gray-500">Escolhe entre selo pessoal individual (BI) ou selo institucional para empresa (NIF).</p>
           </div>
 
-          {loadingRequests ? (
-            <div className="py-16 text-center">
-              <Loader2 className="animate-spin mx-auto text-konecta-navy" size={24} />
-              <p className="text-xs text-gray-400 mt-2">A carregar pedidos do Supabase...</p>
+          <div className="flex bg-gray-100 p-1 rounded-2xl w-full sm:w-auto">
+            <button
+              onClick={() => setSelectedTarget('profile')}
+              className={`flex-1 sm:flex-initial px-5 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 ${
+                selectedTarget === 'profile' ? 'bg-konecta-navy text-white shadow-sm' : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              <User size={15} />
+              <span>Pessoa Física (BI)</span>
+            </button>
+
+            <button
+              onClick={() => setSelectedTarget('organization')}
+              className={`flex-1 sm:flex-initial px-5 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 ${
+                selectedTarget === 'organization' ? 'bg-konecta-navy text-white shadow-sm' : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              <Building2 size={15} />
+              <span>Empresa (NIF)</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Current State Indicator Card */}
+        <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 rounded-2xl bg-white shadow-sm border border-gray-200 flex items-center justify-center text-konecta-navy">
+              {selectedTarget === 'profile' ? <User size={22} /> : <Building size={22} />}
             </div>
-          ) : (myRequests.profiles.length === 0 && myRequests.organizations.length === 0) ? (
-            <div className="bg-white rounded-3xl p-12 text-center border border-dashed border-gray-200 space-y-3">
-              <div className="w-12 h-12 rounded-full bg-gray-100 text-gray-400 flex items-center justify-center mx-auto">
-                <FileText size={24} />
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-sm font-extrabold text-konecta-navy">
+                  {selectedTarget === 'profile' ? (profile?.display_name || user?.email || 'A tua conta') : 'A tua organização'}
+                </h3>
+                {selectedTarget === 'profile' ? <UserBadge profile={profile} /> : <OrgBadge organization={userOrganizations.find(o => o.id === selectedOrgId)} />}
               </div>
-              <h3 className="font-bold text-sm text-konecta-navy">Nenhum pedido de verificação registado</h3>
-              <p className="text-xs text-gray-400 max-w-sm mx-auto">
-                Ainda não submeteu nenhum pedido de selo de verificação para a sua conta ou organização.
+              <p className="text-xs text-gray-500">
+                {selectedTarget === 'profile' ? 'Verificação de Bilhete de Identidade Angolano' : 'Verificação Empresarial de NIF & Documentação'}
               </p>
-              <button
-                onClick={() => setActiveTab('request')}
-                className="btn-primary py-2.5 px-5 text-xs font-bold mt-2"
-              >
-                Solicitar Verificação Agora
-              </button>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-end">
+            <span className="text-xs text-gray-400 font-semibold">Estado Atual:</span>
+            {getStatusBadge(currentStatus)}
+          </div>
+        </div>
+      </div>
+
+      {/* TAB 1: PLANS AND VERIFICATION FLOW */}
+      {activeTab === 'plans' && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          {/* Plan Pricing Cards */}
+          <div className="lg:col-span-1 space-y-6">
+            <div className={`card-konecta p-6 rounded-3xl border-2 transition-all relative overflow-hidden ${
+              selectedTarget === 'profile' ? 'border-konecta-gold bg-gradient-to-b from-white to-amber-50/30' : 'border-gray-200 bg-white'
+            }`}>
+              <div className="flex items-center justify-between mb-4">
+                <span className="px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-blue-100 text-blue-800">
+                  Individual
+                </span>
+                <span className="text-xs font-bold text-gray-400">Subscrição Mensal</span>
+              </div>
+              <h3 className="text-lg font-black text-konecta-navy mb-1">Selo Azul de Utilizador</h3>
+              <p className="text-xs text-gray-500 mb-4 leading-relaxed">Destinado a inovadores, profissionais e criadores com Bilhete de Identidade validado.</p>
+              
+              <div className="flex items-baseline gap-1 my-4">
+                <span className="text-3xl font-extrabold text-konecta-navy">5.000</span>
+                <span className="text-xs font-bold text-gray-500">Kz / mês</span>
+              </div>
+
+              <ul className="space-y-2 text-xs text-gray-600 mb-6">
+                <li className="flex items-center gap-2">
+                  <Check size={14} className="text-emerald-500 shrink-0" />
+                  <span>Selo Azul Verificado no Feed e Perfil</span>
+                </li>
+                <li className="flex items-center gap-2">
+                  <Check size={14} className="text-emerald-500 shrink-0" />
+                  <span>Validação biométrica de Bilhete de Identidade</span>
+                </li>
+                <li className="flex items-center gap-2">
+                  <Check size={14} className="text-emerald-500 shrink-0" />
+                  <span>Maior alcance e visibilidade na rede</span>
+                </li>
+              </ul>
+            </div>
+
+            <div className={`card-konecta p-6 rounded-3xl border-2 transition-all relative overflow-hidden ${
+              selectedTarget === 'organization' ? 'border-konecta-gold bg-gradient-to-b from-white to-amber-50/30' : 'border-gray-200 bg-white'
+            }`}>
+              <div className="flex items-center justify-between mb-4">
+                <span className="px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-100 text-amber-800">
+                  Empresarial
+                </span>
+                <span className="text-xs font-bold text-gray-400">Subscrição Mensal</span>
+              </div>
+              <h3 className="text-lg font-black text-konecta-navy mb-1">Selo Institucional NIF</h3>
+              <p className="text-xs text-gray-500 mb-4 leading-relaxed">Destinado a empresas, startups e instituições com registo oficial em Angola.</p>
+              
+              <div className="flex items-baseline gap-1 my-4">
+                <span className="text-3xl font-extrabold text-konecta-navy">10.000</span>
+                <span className="text-xs font-bold text-gray-500">Kz / mês</span>
+              </div>
+
+              <ul className="space-y-2 text-xs text-gray-600 mb-6">
+                <li className="flex items-center gap-2">
+                  <Check size={14} className="text-emerald-500 shrink-0" />
+                  <span>Selo Institucional Oficial com NIF</span>
+                </li>
+                <li className="flex items-center gap-2">
+                  <Check size={14} className="text-emerald-500 shrink-0" />
+                  <span>Validação de NIF e Registo Comercial</span>
+                </li>
+                <li className="flex items-center gap-2">
+                  <Check size={14} className="text-emerald-500 shrink-0" />
+                  <span>Publicação privilegiada de ofertas e eventos</span>
+                </li>
+              </ul>
+            </div>
+          </div>
+
+          {/* Form & Verification Controls */}
+          <div className="lg:col-span-2 bg-white rounded-3xl p-6 sm:p-8 shadow-sm border border-gray-100 space-y-6">
+            <div className="border-b border-gray-100 pb-4">
+              <h3 className="text-base font-bold text-konecta-navy">
+                {selectedTarget === 'profile' ? 'Formulário de Verificação de BI' : 'Formulário de Verificação Empresarial (NIF)'}
+              </h3>
+              <p className="text-xs text-gray-500">Preenche os teus dados oficiais para iniciar o processo de validação de identidade.</p>
+            </div>
+
+            {selectedTarget === 'organization' && userOrganizations.length > 0 && (
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-gray-700 uppercase tracking-wider block">Selecionar Empresa</label>
+                <select
+                  value={selectedOrgId}
+                  onChange={(e) => setSelectedOrgId(e.target.value)}
+                  className="w-full p-3.5 rounded-xl border border-gray-200 text-xs text-gray-800 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-konecta-navy"
+                >
+                  {userOrganizations.map((o) => (
+                    <option key={o.id} value={o.id}>{o.name} ({o.slug})</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-gray-700 uppercase tracking-wider block">
+                  {selectedTarget === 'profile' ? 'Nome Completo (como no BI)' : 'Denominação Social Oficial'}
+                </label>
+                <input
+                  type="text"
+                  value={fullName}
+                  onChange={(e) => setFullName(e.target.value)}
+                  placeholder={selectedTarget === 'profile' ? 'Ex: Manuel António da Silva' : 'Ex: Konecta Angola Lda'}
+                  className="w-full p-3.5 rounded-xl border border-gray-200 text-xs text-gray-800 focus:outline-none focus:ring-2 focus:ring-konecta-navy"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-gray-700 uppercase tracking-wider block">
+                  {selectedTarget === 'profile' ? 'Número do Bilhete de Identidade (BI)' : 'Número de Identificação Fiscal (NIF)'}
+                </label>
+                <input
+                  type="text"
+                  value={nifOrBi}
+                  onChange={(e) => setNifOrBi(e.target.value)}
+                  placeholder={selectedTarget === 'profile' ? 'Ex: 004892014LA042' : 'Ex: 5417089201'}
+                  className="w-full p-3.5 rounded-xl border border-gray-200 text-xs text-gray-800 focus:outline-none focus:ring-2 focus:ring-konecta-navy font-mono"
+                />
+              </div>
+            </div>
+
+            {/* Google Drive Document Option for Identity Proof */}
+            <div className="p-4 rounded-2xl bg-gray-50 border border-gray-200/80 space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <h4 className="text-xs font-bold text-konecta-navy flex items-center gap-2">
+                    <svg className="w-4 h-4 shrink-0" viewBox="0 0 87.3 78" xmlns="http://www.w3.org/2000/svg">
+                      <path d="m6.6 66.85 3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8h-27.5c0 1.55.4 3.1 1.2 4.5z" fill="#0066da"/>
+                      <path d="m43.65 25-13.75-23.8c-1.35.8-2.5 1.9-3.3 3.3l-25.4 44c-.8 1.4-1.2 2.95-1.2 4.5h27.5z" fill="#00ac47"/>
+                      <path d="m73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5h-27.502l5.852 11.5z" fill="#ea4335"/>
+                      <path d="m43.65 25 13.75-23.8c-1.35-.8-2.9-1.2-4.5-1.2h-18.5c-1.6 0-3.15.45-4.5 1.2z" fill="#00832d"/>
+                      <path d="m59.8 53h-32.3l-13.75 23.8c1.35.8 2.9 1.2 4.5 1.2h50.8c1.6 0 3.15-.45 4.5-1.2z" fill="#2684fc"/>
+                      <path d="m73.4 26.5-12.7-22c-.8-1.4-1.95-2.5-3.3-3.3l-13.75 23.8 16.15 28h27.45c0-1.55-.4-3.1-1.2-4.5z" fill="#ffba00"/>
+                    </svg>
+                    <span>{selectedTarget === 'profile' ? 'Cópia de BI / Passaporte via Google Drive' : 'Certidão / Alvará via Google Drive'}</span>
+                  </h4>
+                  <p className="text-[11px] text-gray-500">
+                    Podes importar o teu documento oficial diretamente do Google Drive com encriptação segura.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowDriveModal(true)}
+                  className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-white border border-gray-300 text-xs font-semibold text-gray-700 hover:border-blue-500 hover:text-blue-600 transition-colors shadow-xs shrink-0"
+                >
+                  <span className="material-symbols-outlined text-base">cloud_download</span>
+                  <span>{driveProofDoc ? 'Substituir Ficheiro' : 'Selecionar do Drive'}</span>
+                </button>
+              </div>
+
+              {driveProofDoc && (
+                <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl flex items-center justify-between text-xs">
+                  <div className="flex items-center gap-2 truncate">
+                    <span className="material-symbols-outlined text-blue-600 text-lg">description</span>
+                    <div className="truncate">
+                      <p className="font-bold text-blue-900 truncate">{driveProofDoc.name}</p>
+                      <p className="text-[10px] text-blue-700">{driveProofDoc.sizeFormatted || 'Documento Google Drive Conectado'}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    {driveProofDoc.cloudinaryUrl && (
+                      <a
+                        href={driveProofDoc.cloudinaryUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-blue-700 underline font-bold"
+                      >
+                        Visualizar
+                      </a>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setDriveProofDoc(null)}
+                      className="text-gray-400 hover:text-red-600 p-1"
+                    >
+                      <XCircle size={16} />
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Trust & Security Info Card */}
+            <div className="p-4 rounded-2xl bg-gradient-to-r from-blue-50 to-indigo-50/50 border border-blue-100 text-xs text-blue-950 space-y-1.5 shadow-sm">
+              <div className="flex items-center gap-2 font-bold text-konecta-navy">
+                <Shield size={16} className="text-blue-600" />
+                <span>Verificação de Identidade Segura & Encriptada</span>
+              </div>
+              <p className="text-[11px] text-blue-900/80 leading-relaxed">
+                Os teus documentos são validados com segurança máxima, confidencialidade e certificação oficial de identidade para atribuição do selo verificado na KONECTA.
+              </p>
+            </div>
+
+            {/* Actions based on current status */}
+            {currentStatus === 'approved' ? (
+              <div className="p-6 rounded-2xl bg-emerald-50 border border-emerald-200 text-center space-y-3">
+                <CheckCircle size={32} className="text-emerald-600 mx-auto" />
+                <h4 className="text-sm font-extrabold text-emerald-900">Parabéns! A tua verificação está ativa.</h4>
+                <p className="text-xs text-emerald-700">
+                  O selo já se encontra visível em toda a plataforma. Subscrição renovada automaticamente ou com validade de 30 dias.
+                </p>
+                <button
+                  onClick={handleRenewSubscription}
+                  className="px-5 py-2 rounded-xl bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-700 transition-colors"
+                >
+                  Renovar Subscrição Mensal
+                </button>
+              </div>
+            ) : currentStatus === 'subscription_expired' ? (
+              <div className="p-6 rounded-2xl bg-orange-50 border border-orange-200 text-center space-y-3">
+                <RefreshCw size={32} className="text-orange-600 mx-auto" />
+                <h4 className="text-sm font-extrabold text-orange-900">A tua subscrição expirou.</h4>
+                <p className="text-xs text-orange-700">
+                  Para reativar o selo azul no teu perfil, renova a subscrição mensal de {selectedTarget === 'profile' ? '5.000 Kz' : '10.000 Kz'}.
+                </p>
+                <button
+                  onClick={handleRenewSubscription}
+                  className="px-6 py-2.5 rounded-xl bg-orange-600 text-white text-xs font-bold hover:bg-orange-700 transition-colors"
+                >
+                  Renovar Agora
+                </button>
+              </div>
+            ) : currentStatus === 'badge_suspended' ? (
+              <div className="p-6 rounded-2xl bg-red-50 border border-red-200 text-center space-y-3">
+                <Ban size={32} className="text-red-600 mx-auto" />
+                <h4 className="text-sm font-extrabold text-red-900">Selo Suspenso Temporariamente.</h4>
+                <p className="text-xs text-red-700">
+                  O teu selo foi suspenso pela administração por revisão de dados. Contacta o suporte se considerares um erro.
+                </p>
+              </div>
+            ) : (
+              <div className="pt-4 border-t border-gray-100 flex flex-col sm:flex-row items-center justify-between gap-4">
+                <div className="text-xs text-gray-500">
+                  Subscrição: <strong className="text-konecta-navy">{selectedTarget === 'profile' ? '5.000 Kz/mês' : '10.000 Kz/mês'}</strong>
+                </div>
+
+                <div className="flex items-center gap-3 w-full sm:w-auto">
+                  <button
+                    onClick={handleInitiateVerification}
+                    disabled={creatingSession || !nifOrBi.trim()}
+                    className="w-full sm:w-auto px-6 py-3 rounded-xl bg-konecta-navy text-white text-xs font-bold uppercase tracking-wider hover:bg-konecta-gold hover:text-konecta-navy transition-all disabled:opacity-50 flex items-center justify-center gap-2 shadow-md"
+                  >
+                    {creatingSession ? (
+                      <>
+                        <Loader2 size={16} className="animate-spin" />
+                        <span>A preparar verificação...</span>
+                      </>
+                    ) : (
+                      <>
+                        <span>Obter Selo de Verificação</span>
+                        <ArrowRight size={16} />
+                      </>
+                    )}
+                  </button>
+
+                  {/* Direct Link to Verification Portal */}
+                  <a
+                    href={selectedTarget === 'profile' ? diditConfig.individual.link : diditConfig.organization.link}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="p-3 rounded-xl border border-gray-200 hover:bg-gray-50 text-gray-600 transition-colors"
+                    title="Abrir portal de verificação"
+                  >
+                    <ExternalLink size={16} />
+                  </a>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* TAB 2: BENEFITS */}
+      {activeTab === 'benefits' && (
+        <div className="bg-white rounded-3xl p-8 shadow-sm border border-gray-100 space-y-6">
+          <h2 className="text-lg font-bold text-konecta-navy">Vantagens da Verificação no KONECTA</h2>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="p-5 rounded-2xl bg-blue-50/50 border border-blue-100 space-y-3">
+              <div className="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center">
+                <ShieldCheck size={20} />
+              </div>
+              <h3 className="text-sm font-bold text-konecta-navy">Selo Azul & Institucional</h3>
+              <p className="text-xs text-gray-600 leading-relaxed">
+                Mostra um selo de autenticidade ao lado do teu nome ou empresa em todo o ecossistema KONECTA (feed, mensagens e comunidades).
+              </p>
+            </div>
+
+            <div className="p-5 rounded-2xl bg-amber-50/50 border border-amber-100 space-y-3">
+              <div className="w-10 h-10 rounded-xl bg-amber-500 text-white flex items-center justify-center">
+                <Sparkles size={20} />
+              </div>
+              <h3 className="text-sm font-bold text-konecta-navy">Prioridade Algorítmica</h3>
+              <p className="text-xs text-gray-600 leading-relaxed">
+                Publicações e propostas de perfis verificados ganham destaque superior no feed principal e nos resultados de pesquisa.
+              </p>
+            </div>
+
+            <div className="p-5 rounded-2xl bg-emerald-50/50 border border-emerald-100 space-y-3">
+              <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center">
+                <CheckCircle size={20} />
+              </div>
+              <h3 className="text-sm font-bold text-konecta-navy">Confiança Anti-Fraude</h3>
+              <p className="text-xs text-gray-600 leading-relaxed">
+                Validação oficial em tempo real com tecnologia avançada de leitura biométrica de BI e verificação de NIF empresarial.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* TAB 3: REQUESTS HISTORY */}
+      {activeTab === 'my_verifications' && (
+        <div className="bg-white rounded-3xl p-8 shadow-sm border border-gray-100 space-y-6">
+          <h2 className="text-lg font-bold text-konecta-navy">Histórico dos Meus Pedidos</h2>
+          
+          {myRequests.profiles.length === 0 && myRequests.organizations.length === 0 ? (
+            <div className="p-12 text-center border border-dashed border-gray-200 rounded-2xl">
+              <AlertCircle size={36} className="text-gray-300 mx-auto mb-2" />
+              <p className="text-xs text-gray-500">Ainda não submeteste nenhum pedido de verificação.</p>
             </div>
           ) : (
             <div className="space-y-4">
-              {/* Pedidos Pessoais */}
               {myRequests.profiles.map((req) => (
-                <div key={req.id} className="bg-white rounded-2xl p-5 border border-gray-200 shadow-xs space-y-3">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-gray-100 pb-3">
+                <div key={req.id} className="p-4 rounded-2xl border border-gray-200 flex items-center justify-between gap-4 bg-gray-50">
+                  <div>
                     <div className="flex items-center gap-2">
-                      <span className="w-8 h-8 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center font-bold text-xs">
-                        <User size={16} />
-                      </span>
-                      <div>
-                        <h4 className="font-bold text-xs text-konecta-navy">Selo Azul de Conta Pessoal</h4>
-                        <span className="text-[10px] text-gray-400">
-                          Submetido em {new Date(req.created_at).toLocaleDateString('pt-AO')}
-                        </span>
-                      </div>
+                      <span className="text-xs font-bold text-konecta-navy">Verificação Pessoal (BI)</span>
+                      {getStatusBadge(req.status)}
                     </div>
-
-                    <div>
-                      {req.status === 'pending' && (
-                        <span className="inline-flex items-center gap-1 bg-amber-50 text-amber-800 text-[10px] font-black uppercase px-2.5 py-1 rounded-full border border-amber-200">
-                          <Clock size={12} /> Em Análise
-                        </span>
-                      )}
-                      {req.status === 'approved' && (
-                        <span className="inline-flex items-center gap-1 bg-emerald-50 text-emerald-800 text-[10px] font-black uppercase px-2.5 py-1 rounded-full border border-emerald-200">
-                          <CheckCircle size={12} className="text-emerald-600" /> Aprovado (Ativo)
-                        </span>
-                      )}
-                      {req.status === 'rejected' && (
-                        <span className="inline-flex items-center gap-1 bg-red-50 text-red-800 text-[10px] font-black uppercase px-2.5 py-1 rounded-full border border-red-200">
-                          <XCircle size={12} className="text-red-600" /> Rejeitado
-                        </span>
-                      )}
-                    </div>
+                    <p className="text-[11px] text-gray-500 mt-1">Data: {new Date(req.created_at).toLocaleDateString('pt-AO')}</p>
                   </div>
-
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
-                    <div>
-                      <span className="text-[10px] text-gray-400 block font-bold uppercase">Taxa Paga</span>
-                      <span className="font-bold text-gray-800">{req.price_amount} {req.currency}</span>
-                    </div>
-                    <div>
-                      <span className="text-[10px] text-gray-400 block font-bold uppercase">Validade</span>
-                      <span className="font-bold text-gray-800">{req.duration_days} dias</span>
-                    </div>
-                    <div>
-                      <span className="text-[10px] text-gray-400 block font-bold uppercase">Comprovativo</span>
-                      <span className="text-emerald-700 font-medium">Gravado no bucket privado</span>
-                    </div>
-                  </div>
-
-                  {req.status === 'approved' && (
-                    <div className="bg-emerald-50/60 border border-emerald-100 p-3 rounded-xl text-xs text-emerald-800 flex items-center gap-2">
-                      <CheckCircle size={16} className="text-emerald-600 shrink-0" />
-                      <span>Parabéns! O seu perfil pessoal está verificado com o selo azul oficial no KONECTA Angola.</span>
-                    </div>
-                  )}
+                  <span className="text-xs font-extrabold text-konecta-navy">5.000 Kz/mês</span>
                 </div>
               ))}
 
-              {/* Pedidos de Organização */}
               {myRequests.organizations.map((req) => (
-                <div key={req.id} className="bg-white rounded-2xl p-5 border border-gray-200 shadow-xs space-y-3">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-gray-100 pb-3">
+                <div key={req.id} className="p-4 rounded-2xl border border-gray-200 flex items-center justify-between gap-4 bg-gray-50">
+                  <div>
                     <div className="flex items-center gap-2">
-                      <span className="w-8 h-8 rounded-full bg-amber-50 text-konecta-gold flex items-center justify-center font-bold text-xs">
-                        <Building size={16} />
-                      </span>
-                      <div>
-                        <h4 className="font-bold text-xs text-konecta-navy">
-                          Selo Institucional: {req.organizations?.name || 'Organização'}
-                        </h4>
-                        <span className="text-[10px] text-gray-400">
-                          Submetido em {new Date(req.created_at).toLocaleDateString('pt-AO')}
-                        </span>
-                      </div>
+                      <span className="text-xs font-bold text-konecta-navy">Verificação Empresarial (NIF)</span>
+                      {getStatusBadge(req.status)}
                     </div>
-
-                    <div>
-                      {req.status === 'pending' && (
-                        <span className="inline-flex items-center gap-1 bg-amber-50 text-amber-800 text-[10px] font-black uppercase px-2.5 py-1 rounded-full border border-amber-200">
-                          <Clock size={12} /> Em Análise
-                        </span>
-                      )}
-                      {req.status === 'approved' && (
-                        <span className="inline-flex items-center gap-1 bg-emerald-50 text-emerald-800 text-[10px] font-black uppercase px-2.5 py-1 rounded-full border border-emerald-200">
-                          <CheckCircle size={12} className="text-emerald-600" /> Aprovado (Ativo)
-                        </span>
-                      )}
-                      {req.status === 'rejected' && (
-                        <span className="inline-flex items-center gap-1 bg-red-50 text-red-800 text-[10px] font-black uppercase px-2.5 py-1 rounded-full border border-red-200">
-                          <XCircle size={12} className="text-red-600" /> Rejeitado
-                        </span>
-                      )}
-                    </div>
+                    <p className="text-[11px] text-gray-500 mt-1">Data: {new Date(req.created_at).toLocaleDateString('pt-AO')}</p>
                   </div>
-
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
-                    <div>
-                      <span className="text-[10px] text-gray-400 block font-bold uppercase">Taxa Paga</span>
-                      <span className="font-bold text-gray-800">{req.price_amount} {req.currency}</span>
-                    </div>
-                    <div>
-                      <span className="text-[10px] text-gray-400 block font-bold uppercase">Validade</span>
-                      <span className="font-bold text-gray-800">{req.duration_days} dias</span>
-                    </div>
-                    <div>
-                      <span className="text-[10px] text-gray-400 block font-bold uppercase">Comprovativo</span>
-                      <span className="text-amber-700 font-medium">Gravado no bucket privado</span>
-                    </div>
-                  </div>
-
-                  {req.status === 'approved' && (
-                    <div className="bg-amber-50/60 border border-amber-200/70 p-3 rounded-xl text-xs text-amber-900 flex items-center gap-2">
-                      <ShieldCheck size={16} className="text-konecta-gold shrink-0" />
-                      <span>A sua organização está autenticada com o selo institucional oficial.</span>
-                    </div>
-                  )}
+                  <span className="text-xs font-extrabold text-konecta-navy">10.000 Kz/mês</span>
                 </div>
               ))}
             </div>
           )}
         </div>
       )}
+
+      {/* PAYMENT MODAL */}
+      {isPaymentModalOpen && currentSessionData && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 space-y-6 shadow-2xl border border-gray-100 animate-in fade-in zoom-in-95">
+            <div className="flex items-center justify-between border-b border-gray-100 pb-3">
+              <h3 className="text-base font-extrabold text-konecta-navy flex items-center gap-2">
+                <CreditCard size={18} className="text-konecta-gold" />
+                <span>Pagamento da Subscrição</span>
+              </h3>
+              <button
+                onClick={() => setIsPaymentModalOpen(false)}
+                className="text-gray-400 hover:text-gray-700 text-sm font-bold p-1"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-2">
+              <div className="flex justify-between text-xs">
+                <span className="text-gray-500">Tipo:</span>
+                <span className="font-bold text-konecta-navy">{selectedTarget === 'profile' ? 'Selo Azul (BI)' : 'Selo Empresa (NIF)'}</span>
+              </div>
+              <div className="flex justify-between text-xs">
+                <span className="text-gray-500">Valor Mensal:</span>
+                <span className="font-extrabold text-emerald-600 text-sm">{currentSessionData.priceKz?.toLocaleString()} Kz</span>
+              </div>
+            </div>
+
+            {/* Payment Method Selector */}
+            <div className="space-y-3">
+              <label className="text-xs font-bold text-gray-700 uppercase tracking-wider block">Método de Pagamento</label>
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => setPaymentMethod('mc_express')}
+                  className={`p-3 rounded-2xl border text-xs font-bold flex flex-col items-center gap-2 transition-all ${
+                    paymentMethod === 'mc_express' ? 'border-konecta-navy bg-blue-50/50 text-konecta-navy' : 'border-gray-200 text-gray-600'
+                  }`}
+                >
+                  <Smartphone size={20} className="text-blue-600" />
+                  <span>Multicaixa Express</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setPaymentMethod('referencia')}
+                  className={`p-3 rounded-2xl border text-xs font-bold flex flex-col items-center gap-2 transition-all ${
+                    paymentMethod === 'referencia' ? 'border-konecta-navy bg-blue-50/50 text-konecta-navy' : 'border-gray-200 text-gray-600'
+                  }`}
+                >
+                  <CreditCard size={20} className="text-emerald-600" />
+                  <span>Pagamento por Referência</span>
+                </button>
+              </div>
+            </div>
+
+            {paymentMethod === 'mc_express' ? (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-gray-700 block">Número do Telemóvel Express</label>
+                  <span className="text-[10px] text-blue-700 font-semibold bg-blue-50 px-2 py-0.5 rounded-full border border-blue-200">
+                    Multicaixa Express Angola
+                  </span>
+                </div>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-gray-400">
+                    +244
+                  </span>
+                  <input
+                    type="tel"
+                    value={paymentPhone}
+                    onChange={(e) => setPaymentPhone(e.target.value)}
+                    placeholder="976 848 444"
+                    className="w-full pl-14 pr-3 py-3 rounded-xl border border-gray-200 text-xs font-mono font-bold text-konecta-navy focus:ring-2 focus:ring-konecta-navy outline-none"
+                  />
+                </div>
+                <p className="text-[11px] text-gray-500 leading-relaxed">
+                  Introduz o número associado à tua conta Multicaixa Express (ex: <strong>976 848 444</strong>) para receber a notificação de confirmação no teu telemóvel.
+                </p>
+              </div>
+            ) : (
+              <div className="p-3 bg-gray-50 rounded-xl text-xs space-y-1 font-mono">
+                <p>Entidade: <strong>00842</strong></p>
+                <p>Referência: <strong>923 481 029</strong></p>
+              </div>
+            )}
+
+            <div className="space-y-2 pt-2">
+              <button
+                onClick={handleConfirmPayment}
+                disabled={processingPayment}
+                className="w-full py-3 rounded-xl bg-emerald-600 text-white font-bold text-xs uppercase tracking-wider hover:bg-emerald-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2 shadow-md"
+              >
+                {processingPayment ? (
+                  <>
+                    <Loader2 size={16} className="animate-spin" />
+                    <span>A confirmar pagamento...</span>
+                  </>
+                ) : (
+                  <span>Confirmar Pagamento e Prosseguir</span>
+                )}
+              </button>
+
+              <a
+                href={currentSessionData.verificationUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="block text-center w-full py-2.5 rounded-xl border border-gray-200 text-xs font-bold text-gray-700 hover:bg-gray-50 transition-colors"
+              >
+                Abrir Portal de Validação de Documentos
+              </a>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Google Drive Document Picker Modal */}
+      <GoogleDrivePickerModal
+        isOpen={showDriveModal}
+        onClose={() => setShowDriveModal(false)}
+        title={selectedTarget === 'profile' ? 'Selecionar BI do Google Drive' : 'Selecionar Documento Empresarial do Drive'}
+        allowedMimeTypes="identity_only"
+        onSelectDocument={(doc) => {
+          setDriveProofDoc(doc);
+        }}
+      />
     </div>
   );
 };

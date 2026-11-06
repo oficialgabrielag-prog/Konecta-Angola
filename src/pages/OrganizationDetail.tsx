@@ -5,6 +5,7 @@ import { d1Client } from '../lib/d1Client';
 import { uploadMediaToCloudinary } from '../lib/cloudinary';
 import { useToast } from '../context/UIContext';
 import { OrgBadge } from '../components/UserBadges';
+import { GoogleDrivePickerModal, SelectedDocumentResult } from '../components/GoogleDrivePickerModal';
 
 interface OrganizationDetailProps {
   slug: string;
@@ -39,6 +40,8 @@ export const OrganizationDetail: React.FC<OrganizationDetailProps> = ({ slug, us
   const [docCategory, setDocCategory] = useState('Relatórios');
   const [docFileUrl, setDocFileUrl] = useState('');
   const [uploadingDoc, setUploadingDoc] = useState(false);
+  const [showDriveModalForOrg, setShowDriveModalForOrg] = useState(false);
+  const [driveDocName, setDriveDocName] = useState('');
 
   // Verification request modal
   const [showVerifyModal, setShowVerifyModal] = useState(false);
@@ -648,22 +651,82 @@ export const OrganizationDetail: React.FC<OrganizationDetailProps> = ({ slug, us
                   <option value="Atas">Atas</option>
                   <option value="Geral">Documentos Gerais</option>
                 </select>
-                <input
-                  type="file"
-                  onChange={async (e) => {
-                    const f = e.target.files?.[0];
-                    if (f) {
-                      const res = await uploadMediaToCloudinary(f);
-                      setDocFileUrl(res.secure_url);
-                    }
-                  }}
-                  className="text-xs text-gray-500"
-                />
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowDriveModalForOrg(true)}
+                      className="flex-1 flex items-center justify-center gap-2 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 py-2.5 px-3 rounded-xl text-xs font-semibold transition-colors"
+                    >
+                      <svg className="w-4 h-4" viewBox="0 0 87.3 78" xmlns="http://www.w3.org/2000/svg">
+                        <path d="m6.6 66.85 3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8h-27.5c0 1.55.4 3.1 1.2 4.5z" fill="#0066da"/>
+                        <path d="m43.65 25-13.75-23.8c-1.35.8-2.5 1.9-3.3 3.3l-25.4 44c-.8 1.4-1.2 2.95-1.2 4.5h27.5z" fill="#00ac47"/>
+                        <path d="m73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5h-27.502l5.852 11.5z" fill="#ea4335"/>
+                        <path d="m43.65 25 13.75-23.8c-1.35-.8-2.9-1.2-4.5-1.2h-18.5c-1.6 0-3.15.45-4.5 1.2z" fill="#00832d"/>
+                        <path d="m59.8 53h-32.3l-13.75 23.8c1.35.8 2.9 1.2 4.5 1.2h50.8c1.6 0 3.15-.45 4.5-1.2z" fill="#2684fc"/>
+                        <path d="m73.4 26.5-12.7-22c-.8-1.4-1.95-2.5-3.3-3.3l-13.75 23.8 16.15 28h27.45c0-1.55-.4-3.1-1.2-4.5z" fill="#ffba00"/>
+                      </svg>
+                      <span>Importar do Google Drive</span>
+                    </button>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] text-gray-400 font-medium">Ou carregar ficheiro local:</span>
+                    <input
+                      type="file"
+                      onChange={async (e) => {
+                        const f = e.target.files?.[0];
+                        if (f) {
+                          setUploadingDoc(true);
+                          try {
+                            const res = await uploadMediaToCloudinary(f, undefined, { kind: 'document' });
+                            setDocFileUrl(res.secure_url);
+                            setDriveDocName('');
+                            if (!docTitle.trim()) setDocTitle(f.name.replace(/\.[^/.]+$/, ''));
+                          } finally {
+                            setUploadingDoc(false);
+                          }
+                        }
+                      }}
+                      className="text-xs text-gray-500 flex-1"
+                    />
+                  </div>
+
+                  {docFileUrl && (
+                    <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center justify-between text-xs text-emerald-800">
+                      <div className="flex items-center gap-2 truncate">
+                        <span className="material-symbols-outlined text-emerald-600 text-lg">check_circle</span>
+                        <span className="font-semibold truncate">
+                          {driveDocName ? `Ficheiro Google Drive: ${driveDocName}` : 'Documento pronto para envio'}
+                        </span>
+                      </div>
+                      <a href={docFileUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-emerald-700 underline font-bold shrink-0">
+                        Ver
+                      </a>
+                    </div>
+                  )}
+                </div>
+
                 <div className="flex justify-end gap-3 pt-2">
-                  <button type="button" onClick={() => setShowDocModal(false)} className="text-xs text-gray-500">Cancelar</button>
-                  <button type="submit" disabled={uploadingDoc || !docTitle.trim() || !docFileUrl} className="btn-primary py-2 px-5 text-xs">Guardar</button>
+                  <button type="button" onClick={() => { setShowDocModal(false); setDriveDocName(''); setDocFileUrl(''); }} className="text-xs text-gray-500">Cancelar</button>
+                  <button type="submit" disabled={uploadingDoc || !docTitle.trim() || !docFileUrl} className="btn-primary py-2 px-5 text-xs">
+                    {uploadingDoc ? 'A enviar...' : 'Guardar Documento'}
+                  </button>
                 </div>
               </form>
+
+              <GoogleDrivePickerModal
+                isOpen={showDriveModalForOrg}
+                onClose={() => setShowDriveModalForOrg(false)}
+                title="Selecionar Documento Institucional do Google Drive"
+                onSelectDocument={(doc) => {
+                  setDocFileUrl(doc.cloudinaryUrl || doc.driveUrl || '');
+                  setDriveDocName(doc.name);
+                  if (!docTitle.trim()) {
+                    setDocTitle(doc.name.replace(/\.[^/.]+$/, ''));
+                  }
+                }}
+              />
             </motion.div>
           </div>
         )}

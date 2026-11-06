@@ -25,7 +25,8 @@ import {
   Edit2,
   Star,
   Check,
-  RefreshCw
+  RefreshCw,
+  Ban
 } from 'lucide-react';
 
 interface AdminProps {
@@ -311,7 +312,7 @@ export const Admin: React.FC<AdminProps> = ({ user, onOpenAuth, onNavigateTab })
     }
   };
 
-  const handleReviewVerification = async (decision: 'approved' | 'rejected') => {
+  const handleReviewVerification = async (decision: 'approved' | 'rejected' | 'badge_suspended' | 'reactivated') => {
     if (!inspectItem) return;
     setProcessingReview(true);
     try {
@@ -319,19 +320,28 @@ export const Admin: React.FC<AdminProps> = ({ user, onOpenAuth, onNavigateTab })
       const requestId = inspectItem.data.id;
       const targetId = inspectItem.data.user_id || inspectItem.data.organization_id;
 
-      const res = await d1Client.verification.reviewVerification(
-        requestId,
-        targetType,
-        decision,
-        reviewNote,
-        targetId
-      );
+      if (decision === 'badge_suspended') {
+        await d1Client.verification.suspendBadge(targetType, targetId, requestId, reviewNote);
+        showToast('Selo de verificação suspenso com sucesso.', 'info');
+      } else if (decision === 'reactivated') {
+        await d1Client.verification.reactivateBadge(targetType, targetId, requestId);
+        showToast('Selo de verificação reativado com sucesso!', 'success');
+      } else {
+        const res = await d1Client.verification.reviewVerification(
+          requestId,
+          targetType,
+          decision,
+          reviewNote,
+          targetId
+        );
 
-      if (res.error) {
-        throw new Error(typeof res.error === 'string' ? res.error : res.error.message || 'Erro ao processar revisão.');
+        if (res.error) {
+          throw new Error(typeof res.error === 'string' ? res.error : res.error.message || 'Erro ao processar revisão.');
+        }
+
+        showToast(`Pedido ${decision === 'approved' ? 'aprovado' : 'rejeitado'} com sucesso!`, 'success');
       }
 
-      showToast(`Pedido ${decision === 'approved' ? 'aprovado' : 'rejeitado'} com sucesso!`, 'success');
       setInspectItem(null);
       setReviewNote('');
       fetchAllAdminData();
@@ -1409,7 +1419,7 @@ export const Admin: React.FC<AdminProps> = ({ user, onOpenAuth, onNavigateTab })
             </div>
 
             {/* Ações de Decisão */}
-            <div className="flex items-center justify-end gap-3 pt-4 border-t border-gray-100">
+            <div className="flex flex-wrap items-center justify-end gap-2.5 pt-4 border-t border-gray-100">
               <button
                 type="button"
                 onClick={() => setInspectItem(null)}
@@ -1418,6 +1428,28 @@ export const Admin: React.FC<AdminProps> = ({ user, onOpenAuth, onNavigateTab })
                 Voltar
               </button>
 
+              {inspectItem.type !== 'subscription' && inspectItem.data.status === 'approved' && (
+                <button
+                  type="button"
+                  disabled={processingReview}
+                  onClick={() => handleReviewVerification('badge_suspended')}
+                  className="py-2.5 px-4 text-xs font-bold text-orange-700 bg-orange-50 hover:bg-orange-100 rounded-xl transition-colors border border-orange-200 flex items-center gap-1.5"
+                >
+                  <Ban size={14} /> Suspender Selo
+                </button>
+              )}
+
+              {inspectItem.type !== 'subscription' && inspectItem.data.status === 'badge_suspended' && (
+                <button
+                  type="button"
+                  disabled={processingReview}
+                  onClick={() => handleReviewVerification('reactivated')}
+                  className="py-2.5 px-4 text-xs font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-xl transition-colors border border-emerald-200 flex items-center gap-1.5"
+                >
+                  <CheckCircle size={14} /> Reativar Selo
+                </button>
+              )}
+
               <button
                 type="button"
                 disabled={processingReview}
@@ -1425,7 +1457,7 @@ export const Admin: React.FC<AdminProps> = ({ user, onOpenAuth, onNavigateTab })
                   if (inspectItem.type === 'subscription') handleReviewSubscription('rejected');
                   else handleReviewVerification('rejected');
                 }}
-                className="py-2.5 px-5 text-xs font-bold text-red-600 bg-red-50 hover:bg-red-100 rounded-xl transition-colors border border-red-200 flex items-center gap-1.5"
+                className="py-2.5 px-4 text-xs font-bold text-red-600 bg-red-50 hover:bg-red-100 rounded-xl transition-colors border border-red-200 flex items-center gap-1.5"
               >
                 <XCircle size={14} /> Rejeitar Pedido
               </button>

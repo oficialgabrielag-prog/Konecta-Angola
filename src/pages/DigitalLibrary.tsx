@@ -5,6 +5,7 @@ import { uploadMediaToCloudinary } from '../lib/cloudinary';
 import { useUI } from '../context/UIContext';
 
 import { useT } from '../context/LanguageContext';
+import { GoogleDrivePickerModal, SelectedDocumentResult } from '../components/GoogleDrivePickerModal';
 
 interface DigitalLibraryProps {
   user: any;
@@ -51,6 +52,8 @@ export const DigitalLibrary: React.FC<DigitalLibraryProps> = ({ user, onOpenAuth
   const [language, setLanguage] = useState('Português');
   const [coverUrl, setCoverUrl] = useState('');
   const [creating, setCreating] = useState(false);
+  const [showDriveModal, setShowDriveModal] = useState(false);
+  const [driveBookDoc, setDriveBookDoc] = useState<SelectedDocumentResult | null>(null);
 
   // Add Chapter Modal
   const [showChapterModal, setShowChapterModal] = useState(false);
@@ -493,17 +496,49 @@ export const DigitalLibrary: React.FC<DigitalLibraryProps> = ({ user, onOpenAuth
                 >
                   {genres.map(g => <option key={g} value={g}>{g}</option>)}
                 </select>
-                <input
-                  type="file"
-                  onChange={async (e) => {
-                    const f = e.target.files?.[0];
-                    if (f) {
-                      const res = await uploadMediaToCloudinary(f);
-                      setCoverUrl(res.secure_url);
-                    }
-                  }}
-                  className="text-xs text-gray-500"
-                />
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowDriveModal(true)}
+                      className="flex-1 flex items-center justify-center gap-2 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 py-2.5 px-3 rounded-xl text-xs font-semibold transition-colors"
+                    >
+                      <svg className="w-4 h-4" viewBox="0 0 87.3 78" xmlns="http://www.w3.org/2000/svg">
+                        <path d="m6.6 66.85 3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8h-27.5c0 1.55.4 3.1 1.2 4.5z" fill="#0066da"/>
+                        <path d="m43.65 25-13.75-23.8c-1.35.8-2.5 1.9-3.3 3.3l-25.4 44c-.8 1.4-1.2 2.95-1.2 4.5h27.5z" fill="#00ac47"/>
+                        <path d="m73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5h-27.502l5.852 11.5z" fill="#ea4335"/>
+                        <path d="m43.65 25 13.75-23.8c-1.35-.8-2.9-1.2-4.5-1.2h-18.5c-1.6 0-3.15.45-4.5 1.2z" fill="#00832d"/>
+                        <path d="m59.8 53h-32.3l-13.75 23.8c1.35.8 2.9 1.2 4.5 1.2h50.8c1.6 0 3.15-.45 4.5-1.2z" fill="#2684fc"/>
+                        <path d="m73.4 26.5-12.7-22c-.8-1.4-1.95-2.5-3.3-3.3l-13.75 23.8 16.15 28h27.45c0-1.55-.4-3.1-1.2-4.5z" fill="#ffba00"/>
+                      </svg>
+                      <span>Importar do Google Drive</span>
+                    </button>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] text-gray-400 font-medium">Ou carregar capa local:</span>
+                    <input
+                      type="file"
+                      onChange={async (e) => {
+                        const f = e.target.files?.[0];
+                        if (f) {
+                          const res = await uploadMediaToCloudinary(f);
+                          setCoverUrl(res.secure_url);
+                        }
+                      }}
+                      className="text-xs text-gray-500 flex-1"
+                    />
+                  </div>
+
+                  {driveBookDoc && (
+                    <div className="p-2.5 bg-blue-50 border border-blue-200 rounded-xl flex items-center justify-between text-xs text-blue-900">
+                      <div className="truncate">
+                        <span className="font-bold">Drive Anexado:</span> {driveBookDoc.name}
+                      </div>
+                      <span className="text-[10px] text-blue-700 shrink-0 font-medium">{driveBookDoc.sizeFormatted}</span>
+                    </div>
+                  )}
+                </div>
                 <div className="flex justify-end gap-3 pt-2">
                   <button type="button" onClick={() => setShowCreateBookModal(false)} className="text-xs text-gray-500">{t('common.cancel')}</button>
                   <button type="submit" disabled={creating || !title.trim()} className="btn-primary py-2 px-5 text-xs">{t('common.publish')}</button>
@@ -556,6 +591,21 @@ export const DigitalLibrary: React.FC<DigitalLibraryProps> = ({ user, onOpenAuth
         )}
       </AnimatePresence>
 
+      {/* Google Drive Document Picker Modal */}
+      <GoogleDrivePickerModal
+        isOpen={showDriveModal}
+        onClose={() => setShowDriveModal(false)}
+        title="Selecionar Documento / Livro do Google Drive"
+        onSelectDocument={(doc) => {
+          setDriveBookDoc(doc);
+          if (!title.trim()) {
+            setTitle(doc.name.replace(/\.[^/.]+$/, ''));
+          }
+          if (doc.cloudinaryUrl) {
+            setCoverUrl(doc.cloudinaryUrl);
+          }
+        }}
+      />
     </div>
   );
 };

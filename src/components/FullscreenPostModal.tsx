@@ -37,6 +37,7 @@ export const FullscreenPostModal: React.FC<FullscreenPostModalProps> = ({
   const [loadingComments, setLoadingComments] = useState(false);
   const [newComment, setNewComment] = useState('');
   const [submittingComment, setSubmittingComment] = useState(false);
+  const [replyTo, setReplyTo] = useState<{ id: string; name: string } | null>(null);
   const [isNativeFullscreen, setIsNativeFullscreen] = useState(false);
 
   useEffect(() => {
@@ -162,8 +163,9 @@ export const FullscreenPostModal: React.FC<FullscreenPostModalProps> = ({
       if (post.title !== undefined) {
         await d1Client.ideas.addComment(post.id, commentText);
       } else {
-        await d1Client.posts.addComment(post.id, commentText);
+        await d1Client.posts.addComment(post.id, commentText, replyTo?.id);
       }
+      setReplyTo(null);
     } catch (err) {
       console.warn('Erro ao adicionar comentário:', err);
     } finally {
@@ -367,6 +369,18 @@ export const FullscreenPostModal: React.FC<FullscreenPostModalProps> = ({
                             </span>
                           </div>
                           <p className="text-gray-300 leading-relaxed break-words">{c.content}</p>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const authorDisp = c.profiles?.full_name || 'Membro';
+                              setReplyTo({ id: c.id, name: authorDisp });
+                              const input = document.getElementById('fullscreen-comment-input');
+                              input?.focus();
+                            }}
+                            className="text-[10px] font-bold text-konecta-gold hover:underline mt-1 inline-block"
+                          >
+                            Responder
+                          </button>
                         </div>
                       </div>
                     ))}
@@ -375,8 +389,8 @@ export const FullscreenPostModal: React.FC<FullscreenPostModalProps> = ({
               </div>
             </div>
 
-            {/* Bottom Actions & Input */}
-            <div className="p-4 border-t border-white/10 bg-slate-900/95 shrink-0 space-y-3">
+            {/* Bottom Actions & Input with Safe Mobile Padding */}
+            <div className="p-4 pb-8 sm:pb-4 border-t border-white/10 bg-slate-900/95 shrink-0 space-y-3">
               {/* Interaction Buttons */}
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
@@ -429,6 +443,20 @@ export const FullscreenPostModal: React.FC<FullscreenPostModalProps> = ({
                 </button>
               </div>
 
+              {/* Replying indicator tag */}
+              {replyTo && (
+                <div className="flex items-center justify-between bg-white/10 px-3 py-1 rounded-lg text-[11px] text-konecta-gold">
+                  <span>A responder a <strong>@{replyTo.name}</strong></span>
+                  <button
+                    type="button"
+                    onClick={() => setReplyTo(null)}
+                    className="text-white hover:text-red-400 p-0.5 ml-2"
+                  >
+                    <X size={12} />
+                  </button>
+                </div>
+              )}
+
               {/* Add Comment Input */}
               <form onSubmit={handleAddComment} className="flex items-center gap-2">
                 <input
@@ -436,7 +464,7 @@ export const FullscreenPostModal: React.FC<FullscreenPostModalProps> = ({
                   type="text"
                   value={newComment}
                   onChange={(e) => setNewComment(e.target.value)}
-                  placeholder="Escreve um comentário..."
+                  placeholder={replyTo ? `Responder a @${replyTo.name}...` : "Escreve um comentário..."}
                   className="flex-1 bg-white/5 border border-white/10 focus:border-konecta-gold focus:outline-none rounded-full px-4 py-2 text-xs text-white placeholder-gray-500"
                 />
                 <button

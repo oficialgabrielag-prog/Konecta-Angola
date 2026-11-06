@@ -135,7 +135,7 @@ Deno.serve(async (req: Request) => {
 
   if (!text && mediaUrls.length === 0) {
     // Nada para analisar: não é um erro, mas também não há risco.
-    const emptyId = contentType === "profile" ? userId : crypto.randomUUID();
+    const emptyId = contentType === "profile" ? userId : (typeof body?.content_id === "string" && body.content_id.trim().length === 36 ? body.content_id.trim() : crypto.randomUUID());
     return json({ ok: true, decision: "allow", action: "allow", flagged: false, content_id: emptyId });
   }
 
@@ -174,11 +174,32 @@ Deno.serve(async (req: Request) => {
 
   // 4) Decisão
   const { decision, priority, flagged } = decide(moderation);
-  const contentId = contentType === "profile" ? userId : crypto.randomUUID();
+  const contentId = contentType === "profile" ? userId : (typeof body?.content_id === "string" && body.content_id.trim().length === 36 ? body.content_id.trim() : crypto.randomUUID());
 
-  // 5) Revisão humana: grava na fila (só a função, com a chave de serviço)
+  // 5) Ação baseada na decisão:
   let queueId: string | null = null;
-  if (decision === "review" && QUEUE_TYPES.has(contentType)) {
+  const tableMap: Record<string, string> = {
+    post: "posts",
+    comment: "post_comments",
+    organization_post: "organization_posts",
+    reel: "reels",
+  };
+  const targetTable = tableMap[contentType];
+
+  if (decision === "allow" && targetTable && contentId) {
+    // Publica o conteúdo no banco de forma autoritativa
+    const { error: pubErr } = await admin.from(targetTable).update({ status: "published" }).eq("id", contentId);
+    if (pubErr) {
+      console.warn(`Aviso ao atualizar ${targetTable} para published:`, pubErr.message);
+    }
+  } else if (decision === "block" && targetTable && contentId) {
+    // Bloqueia e limpa o registo do rascunho
+    if (contentType === "post") {
+      await admin.from("post_media").delete().eq("post_id", contentId);
+    }
+    await admin.from(targetTable).delete().eq("id", contentId);
+  } else if (decision === "review" && QUEUE_TYPES.has(contentType)) {
+    // Revisão humana: grava na fila (com a chave de serviço)
     const flaggedMap: Record<string, boolean> = {};
     for (const key of flagged) flaggedMap[key] = true;
     const { data, error } = await admin.rpc("enqueue_moderation", {
@@ -194,7 +215,6 @@ Deno.serve(async (req: Request) => {
       p_report: null,
     });
     if (error) {
-      // Se falhar, o app cria o conteúdo em "review" e o gatilho da base de dados enfileira-o.
       console.error("Falha ao gravar na fila de moderação", error.message);
     } else {
       queueId = data as string;
