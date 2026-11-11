@@ -10,6 +10,7 @@ interface HeaderProps {
   unreadCount?: number;
   unreadMessagesCount?: number;
   variant?: 'default' | 'overlay';
+  onReplayIntro?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({ 
@@ -20,7 +21,8 @@ export const Header: React.FC<HeaderProps> = ({
   onSignOut, 
   unreadCount = 0,
   unreadMessagesCount = 0,
-  variant = 'default'
+  variant = 'default',
+  onReplayIntro
 }) => {
   const { t } = useT();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -57,18 +59,36 @@ export const Header: React.FC<HeaderProps> = ({
       }`}>
         <div className="flex items-center gap-8 lg:gap-10">
           <button
-            onClick={() => handleNavClick('home')}
-            className="flex flex-col items-start group"
+            onClick={() => {
+              if (currentTab === 'home' && onReplayIntro) {
+                onReplayIntro();
+              } else {
+                handleNavClick('home');
+              }
+            }}
+            className="flex items-center gap-2.5 group cursor-pointer"
             aria-label="Página inicial Konecta"
+            title="Konecta Angola - Clique para rever abertura"
           >
-            <span className={`text-xl font-extrabold tracking-tighter transition-colors ${
-              isOverlay ? 'text-white group-hover:text-konecta-gold' : 'text-konecta-navy group-hover:text-konecta-gold'
-            }`}>
-              KONECTA
-            </span>
-            <span className="text-[8px] font-bold uppercase tracking-[0.2em] text-konecta-gold -mt-1">
-              Angola
-            </span>
+            {/* Modern stylized K logo mark */}
+            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-konecta-navy to-[#0A1830] flex items-center justify-center p-1.5 shadow-xs border border-white/10 group-hover:border-konecta-gold group-hover:scale-105 transition-all">
+              <svg viewBox="0 0 100 100" className="w-full h-full" fill="none">
+                <rect x="22" y="15" width="16" height="70" rx="3.5" fill="#F5BD35" />
+                <path d="M 34 52 L 72 16 C 74 14, 78 14, 80 16 L 82 18 C 84 20, 84 24, 81 27 L 48 59 Z" fill="#FFFFFF" />
+                <path d="M 44 48 L 74 78 C 76 80, 76 84, 74 86 L 71 89 C 69 91, 65 91, 63 88 L 36 61 Z" fill="#F5BD35" />
+              </svg>
+            </div>
+
+            <div className="flex flex-col items-start">
+              <span className={`text-xl font-extrabold tracking-tighter transition-colors ${
+                isOverlay ? 'text-white group-hover:text-konecta-gold' : 'text-konecta-navy group-hover:text-konecta-gold'
+              }`}>
+                KONECTA
+              </span>
+              <span className="text-[8px] font-bold uppercase tracking-[0.2em] text-konecta-gold -mt-1">
+                Angola
+              </span>
+            </div>
           </button>
 
           <nav className="hidden xl:flex items-center gap-6">

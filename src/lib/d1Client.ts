@@ -3966,7 +3966,7 @@ export const d1Client: any = {
     async getBookById(id: string): Promise<any> {
       const { data, error } = await supabase
         .from('author_books')
-        .select('*, book_chapters(*), book_reviews(*)')
+        .select('*, book_chapters(*)')
         .eq('id', id)
         .maybeSingle();
 
@@ -3975,15 +3975,25 @@ export const d1Client: any = {
       let profile = null;
       if (data.author_id) {
         const { data: p } = await supabase.from('profiles').select('*').eq('user_id', data.author_id).maybeSingle();
-        if (p) profile = { ...p, id: p.user_id, full_name: p.display_name };
+        if (p) profile = { ...p, id: p.user_id, full_name: p.display_name || p.username };
       }
 
-      const reviews = data.book_reviews || [];
+      // Fetch reviews with profiles from the real database view
+      const { data: reviewsData } = await supabase
+        .from('book_reviews_with_profiles')
+        .select('*')
+        .eq('book_id', id)
+        .order('created_at', { ascending: false });
+
+      const reviews = reviewsData || [];
       const avgRating = reviews.length > 0 ? reviews.reduce((acc: number, r: any) => acc + (r.rating || 0), 0) / reviews.length : 0;
+      const chapters = (data.book_chapters || []).sort((a: any, b: any) => (a.chapter_number || 0) - (b.chapter_number || 0));
 
       const formatted = {
         ...data,
-        chapters_count: data.book_chapters?.length || 0,
+        book_chapters: chapters,
+        book_reviews: reviews,
+        chapters_count: chapters.length,
         reviews_count: reviews.length,
         average_rating: parseFloat(avgRating.toFixed(1)),
         profiles: profile || { id: data.author_id, full_name: 'Autor Konecta' }
@@ -4000,6 +4010,7 @@ export const d1Client: any = {
       language?: string;
       copyright_notice?: string;
       cover_url?: string;
+      pdf_url?: string;
     }): Promise<any> {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return { data: null, error: { message: 'Não autenticado' } };
@@ -4024,6 +4035,7 @@ export const d1Client: any = {
           language: payload.language || 'Português',
           copyright_notice: payload.copyright_notice?.trim() || 'Todos os direitos reservados',
           cover_url: payload.cover_url || null,
+          pdf_url: payload.pdf_url || null,
           publication_status: 'published',
           published_at: new Date().toISOString(),
           created_at: new Date().toISOString(),
@@ -4044,6 +4056,7 @@ export const d1Client: any = {
 
     async deleteBook(id: string): Promise<any> {
       await supabase.from('book_chapters').delete().eq('book_id', id);
+      await supabase.from('book_review_replies').delete().eq('book_id', id);
       await supabase.from('book_reviews').delete().eq('book_id', id);
       const { error } = await supabase.from('author_books').delete().eq('id', id);
       return { success: !error, error };
@@ -4099,11 +4112,129 @@ export const d1Client: any = {
           user_id: user.id,
           rating,
           review: comment.trim(),
-          created_at: new Date().toISOString()
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
         }, { onConflict: 'book_id,user_id' })
         .select()
         .single();
       return { data: wrapObject(data), error };
+    },
+
+    async addReviewReply(payload: {
+      bookId: string;
+      reviewerId: string;
+      reply: string;
+      replyId?: string;
+    }): Promise<any> {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return { data: null, error: { message: 'Não autenticado' } };
+
+      // Verify user is the author of this book
+      const { data: book } = await supabase
+        .from('author_books')
+        .select('author_id')
+        .eq('id', payload.bookId)
+        .maybeSingle();
+
+      if (!book || book.author_id !== user.id) {
+        return { data: null, error: { message: 'Apenas o autor da obra pode responder a esta avaliação.' } };
+      }
+
+      if (payload.replyId) {
+        const { data, error } = await supabase
+          .from('book_review_replies')
+          .update({
+            reply: payload.reply.trim(),
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', payload.replyId)
+          .eq('author_id', user.id)
+          .select()
+          .single();
+        return { data: wrapObject(data), error };
+      }
+
+      // Check if existing reply exists for this reviewer & book
+      const { data: existing } = await supabase
+        .from('book_review_replies')
+        .select('id')
+        .eq('book_id', payload.bookId)
+        .eq('reviewer_id', payload.reviewerId)
+        .maybeSingle();
+
+      if (existing) {
+        const { data, error } = await supabase
+          .from('book_review_replies')
+          .update({
+            reply: payload.reply.trim(),
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', existing.id)
+          .eq('author_id', user.id)
+          .select()
+          .single();
+        return { data: wrapObject(data), error };
+      } else {
+        const { data, error } = await supabase
+          .from('book_review_replies')
+          .insert({
+            book_id: payload.bookId,
+            reviewer_id: payload.reviewerId,
+            author_id: user.id,
+            reply: payload.reply.trim(),
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          })
+          .select()
+          .single();
+        return { data: wrapObject(data), error };
+      }
+    },
+
+    async deleteReviewReply(replyId: string): Promise<any> {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return { success: false, error: { message: 'Não autenticado' } };
+
+      const { error } = await supabase
+        .from('book_review_replies')
+        .delete()
+        .eq('id', replyId)
+        .eq('author_id', user.id);
+
+      return { success: !error, error };
+    },
+
+    async uploadBookAsset(
+      userId: string,
+      bookFolder: string,
+      file: File,
+      type: 'cover' | 'pdf'
+    ): Promise<{ url: string | null; error: any }> {
+      const cleanName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+      const filePath = `${userId}/${bookFolder}/${type}_${Date.now()}_${cleanName}`;
+
+      try {
+        const { data, error } = await supabase.storage
+          .from('konecta-author-books')
+          .upload(filePath, file, {
+            contentType: file.type || (type === 'pdf' ? 'application/pdf' : 'image/jpeg'),
+            upsert: true
+          });
+
+        if (error) {
+          console.error('Erro no Supabase Storage (konecta-author-books):', error);
+          return { url: null, error };
+        }
+
+        const { data: pubData } = supabase.storage
+          .from('konecta-author-books')
+          .getPublicUrl(data.path);
+
+        return { url: pubData.publicUrl, error: null };
+      } catch (err: any) {
+        console.error('Exceção no upload para konecta-author-books:', err);
+        return { url: null, error: err };
+      }
     }
   },
 
@@ -4113,10 +4244,14 @@ export const d1Client: any = {
     createBook: (payload: any) => d1Client.organizations.createBook(payload),
     updateBook: (id: string, payload: any) => d1Client.organizations.updateBook(id, payload),
     deleteBook: (id: string) => d1Client.organizations.deleteBook(id),
-    createChapter: (payload: any) => d1Client.organizations.createChapter(payload),
+    createChapter: (bookId: string, payload: any) => d1Client.organizations.createChapter(bookId, payload),
     updateChapter: (id: string, payload: any) => d1Client.organizations.updateChapter(id, payload),
     deleteChapter: (id: string) => d1Client.organizations.deleteChapter(id),
     addReview: (bookId: string, rating: number, comment: string) => d1Client.organizations.addReview(bookId, rating, comment),
+    addReviewReply: (payload: any) => d1Client.organizations.addReviewReply(payload),
+    deleteReviewReply: (replyId: string) => d1Client.organizations.deleteReviewReply(replyId),
+    uploadBookAsset: (userId: string, bookFolder: string, file: File, type: 'cover' | 'pdf') =>
+      d1Client.organizations.uploadBookAsset(userId, bookFolder, file, type),
   },
 
   paymentMethods: {

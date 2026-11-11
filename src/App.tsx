@@ -51,6 +51,7 @@ import { CANONICAL_IDEAS, CANONICAL_CHALLENGES, CANONICAL_PROJECTS } from './lib
 import { useUI } from './context/UIContext';
 import { ShareSheet } from './components/ShareSheet';
 import { PostCreationBox } from './components/PostCreationBox';
+import { KonectaLogoIntro } from './components/KonectaLogoIntro';
 
 export default function App() {
   const [currentTab, setCurrentTab] = useState<string>('home');
@@ -58,6 +59,7 @@ export default function App() {
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [showIntro, setShowIntro] = useState(true);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [fullscreenImage, setFullscreenImage] = useState<string | null>(null);
   const [fullscreenPost, setFullscreenPost] = useState<any | null>(null);
@@ -478,11 +480,13 @@ export default function App() {
 
   const unreadCount = notifications.filter(n => !n.read_at).length;
 
-  if (loading) {
+  if (showIntro || loading) {
     return (
-      <div className="min-h-screen bg-white flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-konecta-navy"></div>
-      </div>
+      <KonectaLogoIntro
+        isReady={!loading}
+        onComplete={() => setShowIntro(false)}
+        minDurationMs={2600}
+      />
     );
   }
 
@@ -529,6 +533,7 @@ export default function App() {
         unreadCount={unreadCount}
         unreadMessagesCount={unreadMessagesCount}
         variant={currentTab === 'reels' ? 'overlay' : 'default'}
+        onReplayIntro={() => setShowIntro(true)}
       />
 
       <main className="flex-1">
