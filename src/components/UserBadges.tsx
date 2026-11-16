@@ -1,5 +1,5 @@
 import React from 'react';
-import { ShieldCheck, Check, Sparkles, Building2 } from 'lucide-react';
+import { ShieldCheck, Check, Award, Building2 } from 'lucide-react';
 import { Profile, Organization } from '../types';
 
 interface UserBadgeProps {
@@ -99,7 +99,7 @@ export const UserBadge: React.FC<UserBadgeProps> = ({
           title={`Plano Ativo: ${planName}`}
           className={`inline-flex items-center gap-1 rounded-md bg-amber-500/10 text-amber-700 dark:text-amber-400 font-black border border-amber-500/25 ${sizeClasses.text} ${sizeClasses.pad}`}
         >
-          <Sparkles className="w-2.5 h-2.5" />
+          <Award className="w-2.5 h-2.5" />
           <span>{planName}</span>
         </span>
       )}

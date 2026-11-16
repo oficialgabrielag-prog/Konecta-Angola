@@ -147,7 +147,10 @@ export const PostDetail: React.FC<PostDetailProps> = ({
     setIsFollowing(nextState);
 
     try {
-      await d1Client.profiles.toggleFollow(idea.user_id, !nextState);
+      const res = await d1Client.profiles.toggleFollow(idea.user_id, nextState);
+      if (res && res.success === false) {
+        setIsFollowing(!nextState);
+      }
     } catch (err: any) {
       console.warn('Aviso ao atualizar seguidor:', err?.message || err);
     } finally {

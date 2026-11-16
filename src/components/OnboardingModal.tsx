@@ -152,7 +152,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
               <span className="material-symbols-outlined text-4xl text-konecta-gold">hub</span>
               <h3 className="text-xl font-bold text-konecta-navy">Explora o Ecossistema</h3>
               <p className="text-xs text-gray-500 leading-relaxed max-w-sm mx-auto">
-                No KONECTA encontras iniciativas reais em todas as províncias, desafios comunitários urgentes e equipas de projetos.
+                No KONECTA encontras iniciativas em todas as províncias, desafios comunitários urgentes e equipas de projetos.
               </p>
             </div>
 
@@ -163,7 +163,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
               >
                 <span className="material-symbols-outlined text-konecta-gold text-2xl block mb-1">lightbulb</span>
                 <span className="font-bold text-xs text-konecta-navy block">Explorar Ideias</span>
-                <span className="text-[10px] text-gray-400 block mt-0.5">Apoia iniciativas reais</span>
+                <span className="text-[10px] text-gray-400 block mt-0.5">Apoia projetos locais</span>
               </button>
 
               <button

@@ -68,34 +68,37 @@ export const ImageViewerModal: React.FC<ImageViewerModalProps> = ({ imageUrl, im
           onClick={(e) => e.stopPropagation()}
         >
           {/* Top Controls */}
-          <div className="absolute top-2 right-2 sm:top-4 sm:right-4 z-50 flex items-center gap-2 bg-black/60 p-1.5 rounded-full border border-white/20 backdrop-blur-md">
+          <div className="absolute top-[max(0.75rem,env(safe-area-inset-top))] right-3 sm:top-4 sm:right-4 z-50 flex items-center gap-1.5 bg-black/60 p-1.5 rounded-full border border-white/15 backdrop-blur-md">
             <button
+              type="button"
               onClick={handleZoomIn}
-              className="p-2 rounded-full hover:bg-white/20 text-white transition-colors"
-              title="Aumentar zoom (+)"
+              className="p-2 rounded-full hover:bg-white/20 text-white transition-all active:scale-90"
+              aria-label="Aumentar"
             >
               <span className="material-symbols-outlined text-xl">zoom_in</span>
             </button>
             <button
+              type="button"
               onClick={handleZoomOut}
-              className="p-2 rounded-full hover:bg-white/20 text-white transition-colors"
-              title="Diminuir zoom (-)"
+              className="p-2 rounded-full hover:bg-white/20 text-white transition-all active:scale-90"
+              aria-label="Diminuir"
             >
               <span className="material-symbols-outlined text-xl">zoom_out</span>
             </button>
             {scale !== 1 && (
               <button
+                type="button"
                 onClick={handleResetZoom}
-                className="px-2.5 py-1 text-xs font-bold text-konecta-gold rounded-full hover:bg-white/20 transition-colors"
-                title="Repor tamanho"
+                className="px-2.5 py-1 text-xs font-bold text-konecta-gold rounded-full hover:bg-white/20 transition-all active:scale-90"
               >
                 100%
               </button>
             )}
             <button
+              type="button"
               onClick={onClose}
-              className="p-2 rounded-full hover:bg-white/20 text-white transition-colors"
-              title="Fechar (ESC)"
+              className="p-2 rounded-full hover:bg-white/20 text-white transition-all active:scale-90"
+              aria-label="Fechar"
             >
               <span className="material-symbols-outlined text-xl">close</span>
             </button>

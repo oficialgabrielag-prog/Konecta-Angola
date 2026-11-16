@@ -17,7 +17,7 @@ import {
   ExternalLink,
   CreditCard,
   Smartphone,
-  Sparkles,
+  Award,
   RefreshCw,
   Ban,
   ArrowRight,
@@ -315,15 +315,15 @@ export const Verification: React.FC<VerificationProps> = ({ user, onOpenAuth, on
       <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-konecta-navy via-[#0d2342] to-slate-900 text-white p-6 sm:p-10 shadow-xl border border-white/10">
         <div className="absolute -right-10 -bottom-10 w-72 h-72 bg-konecta-gold/10 rounded-full blur-3xl pointer-events-none" />
         <div className="relative z-10 max-w-3xl space-y-4">
-          <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-white/10 backdrop-blur-md border border-white/15 text-xs text-konecta-gold font-bold">
-            <ShieldCheck size={16} />
+          <div className="inline-flex items-center gap-2 text-[11px] text-konecta-gold uppercase tracking-[0.16em] font-extrabold">
+            <ShieldCheck size={15} />
             <span>Verificação Oficial de Identidade & Empresas</span>
           </div>
           <h1 className="text-2xl sm:text-4xl font-extrabold tracking-tight leading-tight">
             Obtém o Selo de Autenticidade <span className="text-konecta-gold">KONECTA</span>
           </h1>
           <p className="text-sm sm:text-base text-gray-300 leading-relaxed">
-            Aumenta a tua credibilidade profissional e institucional na maior rede de inovação em Angola. Verificação biométrica de BI e NIF empresarial com validação automatizada.
+            Aumenta a tua credibilidade profissional e institucional na maior rede de inovação em Angola. Verificação de BI e NIF empresarial para reforçar a confiança e credibilidade na rede.
           </p>
 
           <div className="flex flex-wrap gap-3 pt-2">
@@ -342,7 +342,7 @@ export const Verification: React.FC<VerificationProps> = ({ user, onOpenAuth, on
                 activeTab === 'benefits' ? 'bg-konecta-gold text-konecta-navy shadow-lg' : 'bg-white/10 hover:bg-white/20 text-white'
               }`}
             >
-              <Sparkles size={15} />
+              <Award size={15} />
               <span>Benefícios do Selo</span>
             </button>
             <button
@@ -707,7 +707,7 @@ export const Verification: React.FC<VerificationProps> = ({ user, onOpenAuth, on
 
             <div className="p-5 rounded-2xl bg-amber-50/50 border border-amber-100 space-y-3">
               <div className="w-10 h-10 rounded-xl bg-amber-500 text-white flex items-center justify-center">
-                <Sparkles size={20} />
+                <Award size={20} />
               </div>
               <h3 className="text-sm font-bold text-konecta-navy">Prioridade Algorítmica</h3>
               <p className="text-xs text-gray-600 leading-relaxed">

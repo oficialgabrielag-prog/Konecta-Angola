@@ -32,6 +32,7 @@ export class KonectaRealtimeService {
       'project_tasks',
       'project_milestones',
       'project_comments',
+      'author_books',
       'ideas',
       'idea_votes',
       'idea_comments',

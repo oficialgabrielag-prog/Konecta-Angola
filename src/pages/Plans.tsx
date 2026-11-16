@@ -14,7 +14,7 @@ import {
   AlertCircle, 
   Copy, 
   Plus, 
-  Sparkles, 
+  Award, 
   CheckCircle,
   FileText,
   XCircle,
@@ -294,7 +294,7 @@ export const Plans: React.FC<PlansProps> = ({ user, onOpenAuth, onNavigateTab })
             Planos KONECTA
           </h1>
           <p className="text-gray-500 text-sm mt-1.5 max-w-2xl leading-relaxed">
-            Consulte planos reais, métodos de pagamento seguros e acompanhe o estado da sua subscrição.
+            Escolha o plano ideal para impulsionar a sua presença e projetos na KONECTA.
           </p>
         </div>
 
@@ -338,7 +338,7 @@ export const Plans: React.FC<PlansProps> = ({ user, onOpenAuth, onNavigateTab })
       {loading ? (
         <div className="py-20 text-center">
           <Loader2 className="animate-spin mx-auto text-konecta-navy" size={32} />
-          <p className="text-xs text-gray-400 mt-2">A carregar planos reais do servidor...</p>
+          <p className="text-xs text-gray-400 mt-2">A carregar planos...</p>
         </div>
       ) : activeTab === 'plans' ? (
         /* Planos Disponíveis Grid */
@@ -346,7 +346,7 @@ export const Plans: React.FC<PlansProps> = ({ user, onOpenAuth, onNavigateTab })
           {plans.length === 0 ? (
             <div className="bg-white rounded-3xl p-12 text-center border border-dashed border-gray-200 max-w-lg mx-auto space-y-4">
               <div className="w-14 h-14 rounded-2xl bg-amber-50 text-konecta-gold flex items-center justify-center mx-auto">
-                <Sparkles size={28} />
+                <Award size={28} />
               </div>
               <h3 className="font-bold text-lg text-konecta-navy">Nenhum plano ativo no momento</h3>
               <p className="text-xs text-gray-400 leading-relaxed">

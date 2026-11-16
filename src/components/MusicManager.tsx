@@ -554,7 +554,7 @@ export const MusicManager: React.FC<MusicManagerProps> = ({ user }) => {
                 {isUploading && (
                   <div className="space-y-2">
                     <div className="flex justify-between text-xs font-bold text-konecta-navy">
-                      <span>A carregar música para o servidor...</span>
+                      <span>A enviar áudio...</span>
                       <span>{Math.round(uploadProgress)}%</span>
                     </div>
                     <div className="w-full h-2 bg-gray-100 rounded-full overflow-hidden">

@@ -96,7 +96,11 @@ export const PublicProfile: React.FC<PublicProfileProps> = ({
     setFollowersCount(prev => (nextState ? prev + 1 : Math.max(0, prev - 1)));
 
     try {
-      await d1Client.profiles.toggleFollow(userId, !nextState);
+      const res = await d1Client.profiles.toggleFollow(userId, nextState);
+      if (res && res.success === false) {
+        setIsFollowing(!nextState);
+        setFollowersCount(prev => (nextState ? Math.max(0, prev - 1) : prev + 1));
+      }
     } catch (err: any) {
       console.warn('Aviso ao atualizar seguidor:', err?.message || err);
     } finally {

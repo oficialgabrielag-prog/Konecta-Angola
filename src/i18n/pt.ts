@@ -459,7 +459,7 @@ export const pt = {
   'reels.explore_music': 'Explorar Biblioteca Konecta',
   'reels.caption_label': 'Legenda Inspiradora',
   'reels.caption_placeholder': 'O que torna este projeto especial para Angola?',
-  'reels.syncing': 'Sincronizando com o servidor...',
+  'reels.syncing': 'A atualizar...',
   'reels.publish_btn': 'Publicar na Rede Konecta',
   'reels.select_video_err': 'Seleciona um vídeo para o Reel.',
   'reels.upload_err': 'Falha no upload do Reel.',

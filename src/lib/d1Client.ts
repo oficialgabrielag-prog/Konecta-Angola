@@ -353,12 +353,16 @@ export const d1Client: any = {
     },
 
     async getFollowers(userId: string): Promise<any> {
-      const { data: followRows } = await supabase
+      const { data: followRows, error: fErr } = await supabase
         .from('follows')
         .select('follower_id, created_at')
         .eq('following_id', userId);
 
-      const followerIds = (followRows || []).map(f => f.follower_id);
+      if (fErr) {
+        console.warn('Erro ao carregar seguidores:', fErr);
+      }
+
+      const followerIds = Array.from(new Set((followRows || []).map(f => f.follower_id).filter(Boolean)));
       if (followerIds.length === 0) return { data: wrapArray([]), error: null };
 
       const { data: profs } = await supabase
@@ -366,17 +370,27 @@ export const d1Client: any = {
         .select('*')
         .in('user_id', followerIds);
 
-      const formatted = (profs || []).map(p => ({ ...p, id: p.user_id, full_name: p.display_name }));
+      const formatted = (profs || []).map(p => ({
+        ...p,
+        id: p.user_id,
+        user_id: p.user_id,
+        full_name: p.display_name || p.username || 'Membro Konecta',
+        display_name: p.display_name || p.username || 'Membro Konecta'
+      }));
       return { data: wrapArray(formatted), error: null };
     },
 
     async getFollowing(userId: string): Promise<any> {
-      const { data: followRows } = await supabase
+      const { data: followRows, error: fErr } = await supabase
         .from('follows')
         .select('following_id, created_at')
         .eq('follower_id', userId);
 
-      const followingIds = (followRows || []).map(f => f.following_id);
+      if (fErr) {
+        console.warn('Erro ao carregar quem segue:', fErr);
+      }
+
+      const followingIds = Array.from(new Set((followRows || []).map(f => f.following_id).filter(Boolean)));
       if (followingIds.length === 0) return { data: wrapArray([]), error: null };
 
       const { data: profs } = await supabase
@@ -384,13 +398,20 @@ export const d1Client: any = {
         .select('*')
         .in('user_id', followingIds);
 
-      const formatted = (profs || []).map(p => ({ ...p, id: p.user_id, full_name: p.display_name }));
+      const formatted = (profs || []).map(p => ({
+        ...p,
+        id: p.user_id,
+        user_id: p.user_id,
+        full_name: p.display_name || p.username || 'Membro Konecta',
+        display_name: p.display_name || p.username || 'Membro Konecta'
+      }));
       return { data: wrapArray(formatted), error: null };
     },
 
     async toggleFollow(targetUserId: string, follow: boolean): Promise<any> {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return { success: false, error: 'Não autenticado' };
+      if (user.id === targetUserId) return { success: false, error: 'Não podes seguir-te a ti próprio.' };
 
       if (follow) {
         const { error } = await supabase.from('follows').insert({
@@ -398,6 +419,9 @@ export const d1Client: any = {
           following_id: targetUserId,
           created_at: new Date().toISOString()
         });
+        if (error && error.code === '23505') {
+          return { success: true, error: null };
+        }
         return { success: !error, error };
       } else {
         const { error } = await supabase.from('follows').delete().match({

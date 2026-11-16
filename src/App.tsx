@@ -1,57 +1,57 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, Suspense, lazy } from 'react';
 import { Header } from './components/Header';
 import { Footer } from './components/Footer';
 import { BottomNav } from './components/BottomNav';
 import { Home } from './pages/Home';
-import { Explore } from './pages/Explore';
-import { CreateIdea } from './pages/CreateIdea';
 import { CreateSheet } from './components/CreateSheet';
-import { Challenges } from './pages/Challenges';
-import { Projects } from './pages/Projects';
-import { Community as CommunityPage } from './pages/Community';
-import { Profile } from './pages/Profile';
-import { PublicProfile } from './pages/PublicProfile';
-import { Notifications } from './pages/Notifications';
 import { Login } from './pages/Login';
 import { Register } from './pages/Register';
-import { PostDetail } from './pages/PostDetail';
-import { Dashboard } from './pages/Dashboard';
-import { Communities } from './pages/Communities';
-import { CommunitySettings } from './pages/CommunitySettings';
-import { CommunityFeedPage } from './pages/CommunityFeedPage';
-import { Events } from './pages/Events';
 import { KonectaRealtimeService } from './lib/realtime';
-import { Messages } from './pages/Messages';
-import { Search } from './pages/Search';
-import { Pricing } from './pages/Pricing';
-import { Admin } from './pages/Admin';
-import { Reels } from './pages/Reels';
-import { CommunityDetail } from './pages/CommunityDetail';
-import { ProjectDetail } from './pages/ProjectDetail';
-import { IdeaDetail } from './pages/IdeaDetail';
-import { Organizations } from './pages/Organizations';
-import { OrganizationDetail } from './pages/OrganizationDetail';
-import { DigitalLibrary } from './pages/DigitalLibrary';
-import { Settings } from './pages/Settings';
-import { PolicyCenter } from './pages/PolicyCenter';
-import { HelpSupport } from './pages/HelpSupport';
-import { PrivacyPolicyPage } from './pages/PrivacyPolicyPage';
-import { Verification } from './pages/Verification';
-import { Plans } from './pages/Plans';
-import { OnboardingModal } from './components/OnboardingModal';
 import { d1Client } from './lib/d1Client';
 import { supabase } from './lib/supabaseClient';
 import { Idea, Challenge, Project, NotificationItem, ProfileUpdate, Profile as UserProfile, Community } from './types';
 import { OfflineIndicator } from './components/PWAComponents';
-import { ImageViewerModal } from './components/ImageViewerModal';
-import { FullscreenPostModal } from './components/FullscreenPostModal';
-import { EditPostModal } from './components/EditPostModal';
 import { motion, AnimatePresence } from 'motion/react';
-import { CANONICAL_IDEAS, CANONICAL_CHALLENGES, CANONICAL_PROJECTS } from './lib/canonicalData';
 import { useUI } from './context/UIContext';
 import { ShareSheet } from './components/ShareSheet';
 import { PostCreationBox } from './components/PostCreationBox';
 import { KonectaLogoIntro } from './components/KonectaLogoIntro';
+
+const Explore = lazy(() => import('./pages/Explore').then(m => ({ default: m.Explore })));
+const CreateIdea = lazy(() => import('./pages/CreateIdea').then(m => ({ default: m.CreateIdea })));
+const Challenges = lazy(() => import('./pages/Challenges').then(m => ({ default: m.Challenges })));
+const Projects = lazy(() => import('./pages/Projects').then(m => ({ default: m.Projects })));
+const CommunityPage = lazy(() => import('./pages/Community').then(m => ({ default: m.Community })));
+const Profile = lazy(() => import('./pages/Profile').then(m => ({ default: m.Profile })));
+const PublicProfile = lazy(() => import('./pages/PublicProfile').then(m => ({ default: m.PublicProfile })));
+const Notifications = lazy(() => import('./pages/Notifications').then(m => ({ default: m.Notifications })));
+const PostDetail = lazy(() => import('./pages/PostDetail').then(m => ({ default: m.PostDetail })));
+const Dashboard = lazy(() => import('./pages/Dashboard').then(m => ({ default: m.Dashboard })));
+const Communities = lazy(() => import('./pages/Communities').then(m => ({ default: m.Communities })));
+const CommunitySettings = lazy(() => import('./pages/CommunitySettings').then(m => ({ default: m.CommunitySettings })));
+const CommunityFeedPage = lazy(() => import('./pages/CommunityFeedPage').then(m => ({ default: m.CommunityFeedPage })));
+const Events = lazy(() => import('./pages/Events').then(m => ({ default: m.Events })));
+const Messages = lazy(() => import('./pages/Messages').then(m => ({ default: m.Messages })));
+const Search = lazy(() => import('./pages/Search').then(m => ({ default: m.Search })));
+const Pricing = lazy(() => import('./pages/Pricing').then(m => ({ default: m.Pricing })));
+const Admin = lazy(() => import('./pages/Admin').then(m => ({ default: m.Admin })));
+const Reels = lazy(() => import('./pages/Reels').then(m => ({ default: m.Reels })));
+const CommunityDetail = lazy(() => import('./pages/CommunityDetail').then(m => ({ default: m.CommunityDetail })));
+const ProjectDetail = lazy(() => import('./pages/ProjectDetail').then(m => ({ default: m.ProjectDetail })));
+const IdeaDetail = lazy(() => import('./pages/IdeaDetail').then(m => ({ default: m.IdeaDetail })));
+const Organizations = lazy(() => import('./pages/Organizations').then(m => ({ default: m.Organizations })));
+const OrganizationDetail = lazy(() => import('./pages/OrganizationDetail').then(m => ({ default: m.OrganizationDetail })));
+const DigitalLibrary = lazy(() => import('./pages/DigitalLibrary').then(m => ({ default: m.DigitalLibrary })));
+const Settings = lazy(() => import('./pages/Settings').then(m => ({ default: m.Settings })));
+const PolicyCenter = lazy(() => import('./pages/PolicyCenter').then(m => ({ default: m.PolicyCenter })));
+const HelpSupport = lazy(() => import('./pages/HelpSupport').then(m => ({ default: m.HelpSupport })));
+const PrivacyPolicyPage = lazy(() => import('./pages/PrivacyPolicyPage').then(m => ({ default: m.PrivacyPolicyPage })));
+const Verification = lazy(() => import('./pages/Verification').then(m => ({ default: m.Verification })));
+const Plans = lazy(() => import('./pages/Plans').then(m => ({ default: m.Plans })));
+const OnboardingModal = lazy(() => import('./components/OnboardingModal').then(m => ({ default: m.OnboardingModal })));
+const ImageViewerModal = lazy(() => import('./components/ImageViewerModal').then(m => ({ default: m.ImageViewerModal })));
+const FullscreenPostModal = lazy(() => import('./components/FullscreenPostModal').then(m => ({ default: m.FullscreenPostModal })));
+const EditPostModal = lazy(() => import('./components/EditPostModal').then(m => ({ default: m.EditPostModal })));
 
 export default function App() {
   const [currentTab, setCurrentTab] = useState<string>('home');
@@ -119,6 +119,54 @@ export default function App() {
     navigateTab('reels');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
+
+  // Prevent pinch-to-zoom, Safari gesture zoom, double-tap zoom, and Ctrl/Cmd +/-/scroll zoom
+  useEffect(() => {
+    const preventGesture = (e: Event) => {
+      e.preventDefault();
+    };
+    const preventMultiTouch = (e: TouchEvent) => {
+      if (e.touches.length > 1) {
+        e.preventDefault();
+      }
+    };
+    let lastTouchEnd = 0;
+    const preventDoubleTapZoom = (e: TouchEvent) => {
+      const now = Date.now();
+      if (now - lastTouchEnd <= 300) {
+        e.preventDefault();
+      }
+      lastTouchEnd = now;
+    };
+    const preventWheelZoom = (e: WheelEvent) => {
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+      }
+    };
+    const preventKeyZoom = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && ['+', '-', '=', '_', '0'].includes(e.key)) {
+        e.preventDefault();
+      }
+    };
+
+    document.addEventListener('gesturestart', preventGesture, { passive: false });
+    document.addEventListener('gesturechange', preventGesture, { passive: false });
+    document.addEventListener('gestureend', preventGesture, { passive: false });
+    document.addEventListener('touchmove', preventMultiTouch, { passive: false });
+    document.addEventListener('touchend', preventDoubleTapZoom, { passive: false });
+    window.addEventListener('wheel', preventWheelZoom, { passive: false });
+    window.addEventListener('keydown', preventKeyZoom, { passive: false });
+
+    return () => {
+      document.removeEventListener('gesturestart', preventGesture);
+      document.removeEventListener('gesturechange', preventGesture);
+      document.removeEventListener('gestureend', preventGesture);
+      document.removeEventListener('touchmove', preventMultiTouch);
+      document.removeEventListener('touchend', preventDoubleTapZoom);
+      window.removeEventListener('wheel', preventWheelZoom);
+      window.removeEventListener('keydown', preventKeyZoom);
+    };
+  }, []);
 
   // App Data State (Strictly real data; fake/sample posts and records are removed)
   const [ideas, setIdeas] = useState<Idea[]>(() => {
@@ -226,6 +274,7 @@ export default function App() {
         const slug = path.replace('/c/', '').split('/')[0];
         if (slug) {
           setActiveCommunitySlug(slug);
+          setActiveCommunityId(slug);
           setCurrentTab('community-detail');
         }
       } else if (path.startsWith('/u/')) {
@@ -248,9 +297,19 @@ export default function App() {
 
   const [activeToast, setActiveToast] = useState<{ title: string; body?: string } | null>(null);
 
+  const realtimeRefreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   // Realtime notification channel
   useEffect(() => {
     if (!user) return;
+
+    const scheduleDataRefresh = () => {
+      if (realtimeRefreshTimerRef.current) return;
+      realtimeRefreshTimerRef.current = setTimeout(() => {
+        realtimeRefreshTimerRef.current = null;
+        fetchInitialData();
+      }, 1500);
+    };
 
     fetchNotifications();
     const unsubscribeNotif = KonectaRealtimeService.subscribe('notifications', (payload: any) => {
@@ -263,27 +322,17 @@ export default function App() {
       }
     });
 
-    const unsubscribeIdeas = KonectaRealtimeService.subscribe('ideas', () => {
-      fetchInitialData();
-    });
-
-    const unsubscribeProjects = KonectaRealtimeService.subscribe('projects', () => {
-      fetchInitialData();
-    });
-
-    const unsubscribeChallenges = KonectaRealtimeService.subscribe('challenges', () => {
-      fetchInitialData();
-    });
-
-    const unsubscribeProfiles = KonectaRealtimeService.subscribe('profiles', () => {
-      fetchInitialData();
-    });
-
-    const unsubscribePosts = KonectaRealtimeService.subscribe('posts', () => {
-      fetchInitialData();
-    });
+    const unsubscribeIdeas = KonectaRealtimeService.subscribe('ideas', scheduleDataRefresh);
+    const unsubscribeProjects = KonectaRealtimeService.subscribe('projects', scheduleDataRefresh);
+    const unsubscribeChallenges = KonectaRealtimeService.subscribe('challenges', scheduleDataRefresh);
+    const unsubscribeProfiles = KonectaRealtimeService.subscribe('profiles', scheduleDataRefresh);
+    const unsubscribePosts = KonectaRealtimeService.subscribe('posts', scheduleDataRefresh);
 
     return () => {
+      if (realtimeRefreshTimerRef.current) {
+        clearTimeout(realtimeRefreshTimerRef.current);
+        realtimeRefreshTimerRef.current = null;
+      }
       unsubscribeNotif();
       unsubscribeIdeas();
       unsubscribeProjects();
@@ -475,7 +524,7 @@ export default function App() {
 
   const navigateTab = (tab: string) => {
     setCurrentTab(tab);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    window.scrollTo(0, 0);
   };
 
   const unreadCount = notifications.filter(n => !n.read_at).length;
@@ -485,7 +534,7 @@ export default function App() {
       <KonectaLogoIntro
         isReady={!loading}
         onComplete={() => setShowIntro(false)}
-        minDurationMs={2600}
+        minDurationMs={2200}
       />
     );
   }
@@ -536,14 +585,26 @@ export default function App() {
         onReplayIntro={() => setShowIntro(true)}
       />
 
-      <main className="flex-1">
-        <AnimatePresence mode="wait">
+      <main
+        className={`flex-1 ${
+          currentTab !== 'reels' && !(currentTab === 'messages' && isMobileChatOpen)
+            ? 'pb-[calc(4.5rem+env(safe-area-inset-bottom,0px))] xl:pb-0'
+            : ''
+        }`}
+      >
+        <Suspense
+          fallback={
+            <div className="min-h-[45vh] flex items-center justify-center">
+              <div className="w-7 h-7 rounded-full border-2 border-konecta-navy border-t-transparent animate-spin" />
+            </div>
+          }
+        >
+        <AnimatePresence initial={false}>
           <motion.div
             key={currentTab + (selectedPost?.id || '') + (selectedUserId || '')}
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            transition={{ duration: 0.25 }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.14, ease: 'easeOut' }}
           >
             {currentTab === 'home' && (
               <Home
@@ -555,6 +616,7 @@ export default function App() {
                 onSelectUser={openPublicProfile}
                 onSelectCommunity={openCommunityDetail}
                 onSelectReel={openReel}
+                onSelectProject={openProjectDetail}
                 onVoteIdea={handleVoteIdea}
                 onRequireAuth={() => navigateTab('login')}
                 onImageClick={setFullscreenImage}
@@ -863,7 +925,7 @@ export default function App() {
               'pricing', 'settings', 'policy-center', 'help', 'privacy-policy', 'admin', 'verification', 'plans'
             ].includes(currentTab) && (
               <div className="max-w-md mx-auto px-6 py-28 text-center space-y-4">
-                <div className="w-16 h-16 rounded-2xl bg-konecta-navy/5 text-konecta-navy flex items-center justify-center mx-auto text-xl font-bold font-mono">
+                <div className="w-16 h-16 rounded-2xl bg-konecta-navy/5 text-konecta-navy flex items-center justify-center mx-auto text-xl font-extrabold">
                   404
                 </div>
                 <h3 className="text-lg font-bold text-konecta-navy uppercase tracking-tight">Página não encontrada</h3>
@@ -880,6 +942,7 @@ export default function App() {
             )}
           </motion.div>
         </AnimatePresence>
+        </Suspense>
       </main>
 
       <BottomNav
@@ -923,7 +986,7 @@ export default function App() {
       )}
 
 
-      {currentTab !== 'reels' && currentTab !== 'messages' && (
+      {currentTab === 'home' && (
         <Footer onNavigateTab={navigateTab} />
       )}
       <OfflineIndicator />
@@ -954,46 +1017,48 @@ export default function App() {
         )}
       </AnimatePresence>
 
-      {showOnboarding && user && (
-        <OnboardingModal
-          user={user}
-          onComplete={() => setShowOnboarding(false)}
-          onNavigateTab={navigateTab}
+      <Suspense fallback={null}>
+        {showOnboarding && user && (
+          <OnboardingModal
+            user={user}
+            onComplete={() => setShowOnboarding(false)}
+            onNavigateTab={navigateTab}
+          />
+        )}
+
+        <ImageViewerModal
+          imageUrl={fullscreenImage}
+          onClose={() => setFullscreenImage(null)}
         />
-      )}
 
-      <ImageViewerModal
-        imageUrl={fullscreenImage}
-        onClose={() => setFullscreenImage(null)}
-      />
-
-      <FullscreenPostModal
-        post={fullscreenPost}
-        currentUser={user}
-        isOpen={!!fullscreenPost}
-        onClose={() => setFullscreenPost(null)}
-        onEdit={(p) => {
-          setFullscreenPost(null);
-          setEditingPost(p);
-        }}
-        onDelete={async (id) => {
-          setFullscreenPost(null);
-          fetchInitialData();
-        }}
-        onRequireAuth={() => navigateTab('login')}
-        onSelectUser={openPublicProfile}
-      />
-
-      {editingPost && (
-        <EditPostModal
-          post={editingPost}
-          isOpen={!!editingPost}
-          onClose={() => setEditingPost(null)}
-          onSaved={() => {
+        <FullscreenPostModal
+          post={fullscreenPost}
+          currentUser={user}
+          isOpen={!!fullscreenPost}
+          onClose={() => setFullscreenPost(null)}
+          onEdit={(p) => {
+            setFullscreenPost(null);
+            setEditingPost(p);
+          }}
+          onDelete={async (id) => {
+            setFullscreenPost(null);
             fetchInitialData();
           }}
+          onRequireAuth={() => navigateTab('login')}
+          onSelectUser={openPublicProfile}
         />
-      )}
+
+        {editingPost && (
+          <EditPostModal
+            post={editingPost}
+            isOpen={!!editingPost}
+            onClose={() => setEditingPost(null)}
+            onSaved={() => {
+              fetchInitialData();
+            }}
+          />
+        )}
+      </Suspense>
 
     </div>
   );

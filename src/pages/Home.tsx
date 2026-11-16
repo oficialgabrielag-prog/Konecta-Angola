@@ -9,7 +9,7 @@ import { useUI } from '../context/UIContext';
 import { ContentMenu } from '../components/ContentMenu';
 import { ReelPreviewCard } from '../components/ReelPreviewCard';
 import { useT } from '../context/LanguageContext';
-import { ChevronLeft, ChevronRight, Play } from 'lucide-react';
+import { BookOpen, FolderKanban, ChevronLeft, ChevronRight, Play } from 'lucide-react';
 
 interface HomeProps {
   setCurrentTab: (tab: string) => void;
@@ -20,11 +20,24 @@ interface HomeProps {
   onSelectUser: (userId: string) => void;
   onSelectCommunity: (communityId: string, slug?: string) => void;
   onSelectReel?: (reelId: string) => void;
+  onSelectProject?: (projectId: string) => void;
   onVoteIdea: (id: string) => void;
   onRequireAuth: () => void;
   onImageClick: (url: string) => void;
   onOpenFullscreenPost?: (post: any) => void;
   onEditPost?: (post: any) => void;
+}
+
+interface HeroShowcaseItem {
+  id: string;
+  kind: 'book' | 'project';
+  title: string;
+  subtitle?: string;
+  authorName: string;
+  category: string;
+  imageUrl: string | null;
+  createdAt: string;
+  isRecent: boolean;
 }
 
 export const Home: React.FC<HomeProps> = ({
@@ -36,6 +49,7 @@ export const Home: React.FC<HomeProps> = ({
   onSelectUser,
   onSelectCommunity,
   onSelectReel,
+  onSelectProject,
   onVoteIdea,
   onRequireAuth,
   onImageClick,
@@ -60,6 +74,18 @@ export const Home: React.FC<HomeProps> = ({
   const [loadingPosts, setLoadingPosts] = useState(false);
   const [userLikes, setUserLikes] = useState<Record<string, boolean>>({});
   const [userBookmarks, setUserBookmarks] = useState<Record<string, boolean>>({});
+  const [showcaseItems, setShowcaseItems] = useState<HeroShowcaseItem[]>(() => {
+    try {
+      const cached = localStorage.getItem('konecta_cached_hero_showcase');
+      return cached ? JSON.parse(cached) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [heroIndex, setHeroIndex] = useState(0);
+  const [isHeroPaused, setIsHeroPaused] = useState(false);
+  const heroTouchStartX = useRef<number | null>(null);
+  const knownLaunchIdsRef = useRef<Set<string>>(new Set());
   
   const { openShareSheet, showToast } = useUI();
 
@@ -163,6 +189,115 @@ export const Home: React.FC<HomeProps> = ({
       reelsRowRef.current.scrollBy({ left: scrollAmount, behavior: 'smooth' });
     }
   };
+
+  const fetchHeroShowcase = async (jumpToNew = false) => {
+    try {
+      const [booksRes, projectsRes] = await Promise.all([
+        d1Client.digitalLibrary.listBooks(),
+        d1Client.projects.list()
+      ]);
+
+      const rawBooks = booksRes?.data?.data || booksRes?.data || [];
+      const rawProjects = projectsRes?.data?.data || projectsRes?.data || [];
+
+      const nowMs = Date.now();
+      const recentThresholdMs = 14 * 24 * 60 * 60 * 1000;
+
+      const mappedBooks: HeroShowcaseItem[] = (Array.isArray(rawBooks) ? rawBooks : []).map((b: any) => ({
+        id: b.id,
+        kind: 'book',
+        title: b.title || 'Obra Literária',
+        subtitle: b.subtitle || b.synopsis || '',
+        authorName: b.profiles?.full_name || b.profiles?.display_name || 'Autor Konecta',
+        category: b.genre || 'Biblioteca Digital',
+        imageUrl: b.cover_url || null,
+        createdAt: b.created_at || new Date().toISOString(),
+        isRecent: b.created_at ? nowMs - new Date(b.created_at).getTime() <= recentThresholdMs : false
+      }));
+
+      const mappedProjects: HeroShowcaseItem[] = (Array.isArray(rawProjects) ? rawProjects : []).map((p: any) => ({
+        id: p.id,
+        kind: 'project',
+        title: p.title || 'Projeto Konecta',
+        subtitle: p.description || '',
+        authorName: p.profiles?.full_name || p.profiles?.display_name || 'Líder de Projeto',
+        category: p.category || 'Projeto',
+        imageUrl: p.cover_url || p.image_url || null,
+        createdAt: p.created_at || new Date().toISOString(),
+        isRecent: p.created_at ? nowMs - new Date(p.created_at).getTime() <= recentThresholdMs : false
+      }));
+
+      // Combine newest and older items, prioritizing items with real images
+      const sortByImageThenDate = (list: HeroShowcaseItem[]) =>
+        [...list].sort((a, b) => {
+          if (Boolean(a.imageUrl) !== Boolean(b.imageUrl)) return a.imageUrl ? -1 : 1;
+          return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+        });
+
+      const sortedAll = sortByImageThenDate([...mappedBooks, ...mappedProjects]);
+      const newestPool = sortedAll.slice(0, 6);
+      const olderPool = sortedAll.slice(6).reverse().slice(0, 6);
+
+      // Interleave new and older launches so carousel showcases both fresh and catalog works
+      const interleaved: HeroShowcaseItem[] = [];
+      const maxLen = Math.max(newestPool.length, olderPool.length);
+      for (let i = 0; i < maxLen; i++) {
+        if (newestPool[i]) interleaved.push(newestPool[i]);
+        if (olderPool[i]) interleaved.push(olderPool[i]);
+      }
+
+      const finalShowcase = interleaved.slice(0, 12);
+
+      // Detect newly launched item and snap carousel to it in real time
+      const currentTopId = finalShowcase[0]?.id;
+      const hadKnown = knownLaunchIdsRef.current.size > 0;
+      const hasNewItem = finalShowcase.some(item => !knownLaunchIdsRef.current.has(`${item.kind}:${item.id}`));
+
+      knownLaunchIdsRef.current = new Set(finalShowcase.map(item => `${item.kind}:${item.id}`));
+
+      setShowcaseItems(finalShowcase);
+      try {
+        localStorage.setItem('konecta_cached_hero_showcase', JSON.stringify(finalShowcase));
+      } catch {}
+
+      if (jumpToNew && hadKnown && hasNewItem && currentTopId) {
+        setHeroIndex(0);
+      } else {
+        setHeroIndex(prev => (finalShowcase.length > 0 ? prev % finalShowcase.length : 0));
+      }
+    } catch (err) {
+      console.warn('Aviso ao carregar destaques do cabeçalho:', err);
+    }
+  };
+
+  useEffect(() => {
+    fetchHeroShowcase(false);
+
+    let showcaseTimer: any = null;
+    const scheduleShowcaseUpdate = () => {
+      if (showcaseTimer) clearTimeout(showcaseTimer);
+      showcaseTimer = setTimeout(() => {
+        fetchHeroShowcase(true);
+      }, 450);
+    };
+
+    const unsubBooks = KonectaRealtimeService.subscribe('author_books', scheduleShowcaseUpdate);
+    const unsubProjects = KonectaRealtimeService.subscribe('projects', scheduleShowcaseUpdate);
+
+    return () => {
+      if (showcaseTimer) clearTimeout(showcaseTimer);
+      unsubBooks();
+      unsubProjects();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (showcaseItems.length <= 1 || isHeroPaused) return;
+    const timer = setInterval(() => {
+      setHeroIndex(prev => (prev + 1) % showcaseItems.length);
+    }, 4500);
+    return () => clearInterval(timer);
+  }, [showcaseItems.length, isHeroPaused]);
 
   useEffect(() => {
     fetchCommunityPosts();
@@ -492,54 +627,226 @@ export const Home: React.FC<HomeProps> = ({
   return (
     <div className="bg-konecta-bg min-h-screen">
       
-      {/* HERO SECTION - Modern Navy/Gold Hub */}
-      <motion.section 
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ duration: 0.8 }}
-        className="relative w-full h-[55vh] lg:h-[70vh] flex items-center overflow-hidden"
-      >
-        <div 
-          className="absolute inset-0 z-0 bg-cover bg-center"
-          style={{ backgroundImage: `url(${heroImage})` }}
-        >
-          <div className="absolute inset-0 bg-gradient-to-r from-konecta-navy/95 via-konecta-navy/80 to-konecta-navy/50 backdrop-blur-[2px]"></div>
-        </div>
-        
-        <div className="relative z-10 max-w-7xl mx-auto px-6 w-full">
-          <motion.div 
-            initial={{ y: 25, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            transition={{ delay: 0.2, duration: 0.7 }}
-            className="max-w-3xl"
+      {/* HERO CAROUSEL - Live Books & Projects Showcase */}
+      {(() => {
+        const activeSlide = showcaseItems.length > 0 ? showcaseItems[heroIndex % showcaseItems.length] : null;
+        const activeBg = activeSlide?.imageUrl ? (cldCover(activeSlide.imageUrl, 1280, '16:9') || activeSlide.imageUrl) : heroImage;
+
+        const handlePrevSlide = () => {
+          if (showcaseItems.length <= 1) return;
+          setHeroIndex(prev => (prev - 1 + showcaseItems.length) % showcaseItems.length);
+        };
+        const handleNextSlide = () => {
+          if (showcaseItems.length <= 1) return;
+          setHeroIndex(prev => (prev + 1) % showcaseItems.length);
+        };
+        const handleOpenSlide = () => {
+          if (!activeSlide) return;
+          if (activeSlide.kind === 'book') {
+            setCurrentTab('library');
+          } else if (onSelectProject) {
+            onSelectProject(activeSlide.id);
+          } else {
+            setCurrentTab('projects');
+          }
+        };
+
+        return (
+          <section
+            onMouseEnter={() => setIsHeroPaused(true)}
+            onMouseLeave={() => setIsHeroPaused(false)}
+            onTouchStart={(e) => {
+              setIsHeroPaused(true);
+              heroTouchStartX.current = e.touches[0]?.clientX ?? null;
+            }}
+            onTouchEnd={(e) => {
+              const startX = heroTouchStartX.current;
+              const endX = e.changedTouches[0]?.clientX ?? null;
+              if (startX !== null && endX !== null) {
+                const diff = startX - endX;
+                if (Math.abs(diff) > 40) {
+                  if (diff > 0) handleNextSlide();
+                  else handlePrevSlide();
+                }
+              }
+              heroTouchStartX.current = null;
+              setIsHeroPaused(false);
+            }}
+            className="relative w-full min-h-[46vh] sm:min-h-[54vh] lg:min-h-[64vh] py-8 sm:py-12 lg:py-16 flex items-center overflow-hidden bg-konecta-navy"
           >
-            <span className="inline-block text-[11px] font-bold uppercase tracking-[0.25em] text-konecta-gold bg-konecta-gold/10 px-3 py-1.5 rounded-full mb-4 border border-konecta-gold/20">
-              {t('home.innovation_network')}
-            </span>
-            <h1 className="text-white text-4xl sm:text-5xl lg:text-7xl font-extrabold leading-tight tracking-tight uppercase mb-6">
-              {t('home.hero_title')}<br/>
-              <span className="text-konecta-gold">{t('home.hero_subtitle')}</span>
-            </h1>
-            <p className="text-white/80 text-base sm:text-lg lg:text-xl mb-8 max-w-xl leading-relaxed">
-              {t('home.hero_desc')}
-            </p>
-            <div className="flex flex-wrap gap-4">
-              <button 
-                onClick={() => setCurrentTab('create')}
-                className="btn-gold px-8 py-3.5 text-xs sm:text-sm shadow-xl"
-              >
-                {t('create.share_idea')}
-              </button>
-              <button 
-                onClick={() => setCurrentTab('explore')}
-                className="bg-white/10 hover:bg-white/20 text-white border border-white/20 px-8 py-3.5 rounded-full font-bold text-xs sm:text-sm transition-all backdrop-blur-md"
-              >
-                {t('home.explore_btn')}
-              </button>
+            {/* Cross-fading dynamic background from active book/project */}
+            <AnimatePresence mode="sync">
+              <motion.div
+                key={activeBg}
+                initial={{ opacity: 0, scale: 1.03 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.7, ease: 'easeOut' }}
+                className="absolute inset-0 z-0 bg-cover bg-center"
+                style={{ backgroundImage: `url(${activeBg})` }}
+              />
+            </AnimatePresence>
+
+            {/* Editorial Navy Scrim */}
+            <div className="absolute inset-0 z-[1] bg-gradient-to-r from-[#081730]/96 via-[#102D57]/86 to-[#102D57]/68 backdrop-blur-[3px]" />
+
+            <div className="relative z-10 max-w-7xl mx-auto px-5 sm:px-6 w-full">
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-10 items-center">
+                {/* Left Editorial Identity */}
+                <div className="lg:col-span-7 space-y-4 sm:space-y-5">
+                  <div className="flex flex-wrap items-center gap-2 text-[11px] font-bold uppercase tracking-[0.2em] text-konecta-gold">
+                    <span>{t('home.innovation_network')}</span>
+                    {activeSlide && (
+                      <>
+                        <span className="text-white/30">·</span>
+                        <span className="text-white/85">
+                          {activeSlide.kind === 'book' ? 'Livros & Autores' : 'Projetos Nacionais'}
+                        </span>
+                      </>
+                    )}
+                  </div>
+
+                  <h1 className="text-white text-3xl sm:text-5xl lg:text-6xl font-extrabold leading-[1.06] tracking-tight uppercase">
+                    {t('home.hero_title')}<br />
+                    <span className="text-konecta-gold">{t('home.hero_subtitle')}</span>
+                  </h1>
+
+                  <p className="text-white/80 text-sm sm:text-base lg:text-lg max-w-xl leading-relaxed">
+                    {t('home.hero_desc')}
+                  </p>
+
+                  <div className="flex flex-wrap gap-3 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => setCurrentTab('create')}
+                      className="btn-gold px-6 sm:px-7 py-3 text-xs sm:text-sm shadow-lg active:scale-95"
+                    >
+                      {t('create.share_idea')}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCurrentTab('explore')}
+                      className="bg-white/10 hover:bg-white/20 text-white border border-white/20 px-6 sm:px-7 py-3 rounded-full font-bold text-xs sm:text-sm transition-all active:scale-95 backdrop-blur-md"
+                    >
+                      {t('home.explore_btn')}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Right Live Carousel Card (Books & Projects - New & Catalog) */}
+                {activeSlide && (
+                  <div className="lg:col-span-5">
+                    <AnimatePresence mode="wait">
+                      <motion.div
+                        key={`${activeSlide.kind}-${activeSlide.id}`}
+                        initial={{ opacity: 0, x: 18 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        exit={{ opacity: 0, x: -18 }}
+                        transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+                        onClick={handleOpenSlide}
+                        className="group cursor-pointer rounded-3xl bg-white/10 hover:bg-white/14 border border-white/15 backdrop-blur-xl p-4 sm:p-5 shadow-2xl transition-colors active:scale-[0.99]"
+                      >
+                        <div className="flex items-center gap-4">
+                          {/* Cover / Visual Preview */}
+                          <div
+                            className={`shrink-0 overflow-hidden rounded-2xl bg-[#0A1830] border border-white/15 shadow-lg ${
+                              activeSlide.kind === 'book'
+                                ? 'w-20 h-28 sm:w-24 sm:h-36'
+                                : 'w-24 h-24 sm:w-32 sm:h-32'
+                            }`}
+                          >
+                            {activeSlide.imageUrl ? (
+                              <img
+                                src={cldCover(activeSlide.imageUrl, 320, activeSlide.kind === 'book' ? '3:4' : '1:1') || activeSlide.imageUrl}
+                                alt={activeSlide.title}
+                                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                              />
+                            ) : (
+                              <div className="w-full h-full flex flex-col items-center justify-center text-konecta-gold/80 p-2 text-center">
+                                {activeSlide.kind === 'book' ? <BookOpen size={26} /> : <FolderKanban size={26} />}
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Metadata */}
+                          <div className="flex-1 min-w-0 space-y-1.5">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-[10px] font-extrabold uppercase tracking-wider text-konecta-gold">
+                                {activeSlide.kind === 'book' ? 'Livro' : 'Projeto'} · {activeSlide.category}
+                              </span>
+                              {activeSlide.isRecent && (
+                                <span className="text-[9px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-full bg-konecta-gold text-konecta-navy">
+                                  Novo
+                                </span>
+                              )}
+                            </div>
+
+                            <h3 className="text-white font-extrabold text-base sm:text-lg leading-snug line-clamp-2">
+                              {activeSlide.title}
+                            </h3>
+
+                            <p className="text-white/70 text-xs line-clamp-2 leading-relaxed">
+                              {activeSlide.subtitle || `Por ${activeSlide.authorName}`}
+                            </p>
+
+                            <div className="pt-1 flex items-center justify-between text-[11px] text-white/65">
+                              <span className="truncate font-semibold">{activeSlide.authorName}</span>
+                              <span className="text-konecta-gold font-bold shrink-0 ml-2 flex items-center gap-0.5">
+                                <span>{activeSlide.kind === 'book' ? 'Ler obra' : 'Ver projeto'}</span>
+                                <ChevronRight size={14} />
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      </motion.div>
+                    </AnimatePresence>
+
+                    {/* Carousel Controls & Slide Indicators */}
+                    {showcaseItems.length > 1 && (
+                      <div className="mt-3.5 flex items-center justify-between gap-3 px-1">
+                        <div className="flex items-center gap-1.5 flex-1 overflow-hidden">
+                          {showcaseItems.map((item, idx) => (
+                            <button
+                              key={`${item.kind}-${item.id}`}
+                              type="button"
+                              onClick={() => setHeroIndex(idx)}
+                              aria-label={`Slide ${idx + 1}`}
+                              className={`h-1.5 rounded-full transition-all ${
+                                idx === heroIndex % showcaseItems.length
+                                  ? 'w-7 bg-konecta-gold'
+                                  : 'w-2 bg-white/30 hover:bg-white/55'
+                              }`}
+                            />
+                          ))}
+                        </div>
+
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <button
+                            type="button"
+                            onClick={handlePrevSlide}
+                            aria-label="Anterior"
+                            className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center active:scale-90 transition-all"
+                          >
+                            <ChevronLeft size={16} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleNextSlide}
+                            aria-label="Seguinte"
+                            className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center active:scale-90 transition-all"
+                          >
+                            <ChevronRight size={16} />
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
-          </motion.div>
-        </div>
-      </motion.section>
+          </section>
+        );
+      })()}
 
       {/* FEED PRINCIPAL */}
       <main className="max-w-7xl mx-auto px-6 py-12 lg:py-20">
@@ -553,7 +860,7 @@ export const Home: React.FC<HomeProps> = ({
               <div className="space-y-3 mb-6">
                 <div className="flex items-center justify-between px-1">
                   <div className="flex items-center gap-2">
-                    <span className="w-2.5 h-2.5 rounded-full bg-konecta-gold animate-pulse"></span>
+                    <span className="w-2 h-2 rounded-full bg-konecta-gold"></span>
                     <h3 className="font-black text-konecta-navy text-base uppercase tracking-wider">
                       {t('home.reels_featured')}
                     </h3>
@@ -565,16 +872,16 @@ export const Home: React.FC<HomeProps> = ({
                       <button 
                         type="button"
                         onClick={() => scrollReels('left')}
-                        className="w-8 h-8 rounded-full bg-gray-100 hover:bg-konecta-navy hover:text-white text-konecta-navy flex items-center justify-center transition-all shadow-xs"
-                        title={t('common.previous')}
+                        className="w-8 h-8 rounded-full bg-gray-100 hover:bg-konecta-navy hover:text-white text-konecta-navy flex items-center justify-center transition-all active:scale-90 shadow-xs"
+                        aria-label={t('common.previous')}
                       >
                         <span className="material-symbols-outlined text-lg">chevron_left</span>
                       </button>
                       <button 
                         type="button"
                         onClick={() => scrollReels('right')}
-                        className="w-8 h-8 rounded-full bg-gray-100 hover:bg-konecta-navy hover:text-white text-konecta-navy flex items-center justify-center transition-all shadow-xs"
-                        title={t('common.next')}
+                        className="w-8 h-8 rounded-full bg-gray-100 hover:bg-konecta-navy hover:text-white text-konecta-navy flex items-center justify-center transition-all active:scale-90 shadow-xs"
+                        aria-label={t('common.next')}
                       >
                         <span className="material-symbols-outlined text-lg">chevron_right</span>
                       </button>
@@ -1232,7 +1539,7 @@ export const Home: React.FC<HomeProps> = ({
                                   className="flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold bg-red-600 text-white border border-red-600 hover:bg-red-700 transition-all duration-200 transform active:scale-125 scale-105 shadow-md shadow-red-200"
                                   title={t('create.share_idea_btn')}
                                 >
-                                  <span className="material-symbols-outlined text-[18px] text-white animate-pulse" style={{ fontVariationSettings: "'FILL' 1" }}>favorite</span>
+                                  <span className="material-symbols-outlined text-[18px] text-white" style={{ fontVariationSettings: "'FILL' 1" }}>favorite</span>
                                   <span className="font-extrabold">{idea.votes_count || 0}</span>
                                 </button>
                                 <span className="material-symbols-outlined text-gray-300 group-hover:text-konecta-gold transition-colors">arrow_forward_ios</span>
@@ -1254,7 +1561,7 @@ export const Home: React.FC<HomeProps> = ({
             {/* Stats Summary - Contadores Reais */}
             <section className="bg-konecta-navy rounded-[32px] p-8 text-white shadow-xl">
               <h3 className="text-xs font-bold uppercase tracking-[0.2em] text-konecta-gold mb-8 flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-konecta-gold animate-pulse"></span>
+                <span className="w-2 h-2 rounded-full bg-konecta-gold"></span>
                 {t('home.stats_title')}
               </h3>
               <div className="space-y-6">

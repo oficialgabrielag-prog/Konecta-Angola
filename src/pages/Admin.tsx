@@ -500,7 +500,7 @@ export const Admin: React.FC<AdminProps> = ({ user, onOpenAuth, onNavigateTab })
           <div className="flex items-center gap-3">
             <span className="text-[10px] font-extrabold text-konecta-gold uppercase tracking-[0.2em]">{t('admin.kicker')}</span>
             <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
               Tempo Real Ativo
             </span>
           </div>
@@ -595,7 +595,7 @@ export const Admin: React.FC<AdminProps> = ({ user, onOpenAuth, onNavigateTab })
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-gray-100 pb-4">
             <div>
               <h3 className="text-lg font-bold text-konecta-navy">Fila de Moderação em Tempo Real</h3>
-              <p className="text-xs text-gray-500">Conteúdos sinalizados pela OpenAI ou utilizadores aguardando revisão humana.</p>
+              <p className="text-xs text-gray-500">Conteúdos sinalizados para revisão da moderação.</p>
             </div>
             <div className="flex items-center gap-2">
               <span className="text-xs font-bold text-konecta-gold bg-amber-50 border border-amber-200 px-3 py-1 rounded-full">

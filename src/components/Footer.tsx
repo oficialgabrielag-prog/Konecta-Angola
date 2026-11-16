@@ -3,9 +3,9 @@ import { PWAInstallButton } from './PWAComponents';
 
 export const Footer: React.FC<{ onNavigateTab?: (tab: string) => void }> = ({ onNavigateTab }) => {
   return (
-    <footer className="bg-konecta-navy text-white pt-20 pb-12 px-6 sm:px-12">
-      <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-12 mb-16">
-        <div className="space-y-6">
+    <footer className="hidden xl:block bg-konecta-navy text-white pt-14 pb-10 px-6 sm:px-12">
+      <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-10 mb-12">
+        <div className="space-y-4">
           <div>
             <span className="text-2xl font-black uppercase tracking-tighter">KONECTA</span>
             <p className="text-konecta-gold text-[10px] font-bold uppercase tracking-[0.2em] -mt-1">
@@ -18,8 +18,8 @@ export const Footer: React.FC<{ onNavigateTab?: (tab: string) => void }> = ({ on
         </div>
         
         <div>
-          <h4 className="font-bold mb-6 uppercase text-xs tracking-widest text-konecta-gold">Plataforma & Serviços</h4>
-          <nav className="flex flex-col gap-3 text-xs opacity-75">
+          <h4 className="font-bold mb-5 uppercase text-xs tracking-widest text-konecta-gold">Plataforma & Serviços</h4>
+          <nav className="flex flex-col gap-2.5 text-xs opacity-75">
             <button onClick={() => onNavigateTab && onNavigateTab('plans')} className="text-left hover:text-konecta-gold transition-colors">
               Planos & Subscrições
             </button>
@@ -41,15 +41,15 @@ export const Footer: React.FC<{ onNavigateTab?: (tab: string) => void }> = ({ on
           </nav>
           <div className="mt-4 pt-3 border-t border-white/10 text-[11px]">
             <span className="text-gray-400 block">Suporte WhatsApp:</span>
-            <a href="https://wa.me/244976848444" target="_blank" rel="noopener noreferrer" className="font-mono font-bold text-konecta-gold hover:underline">
+            <a href="https://wa.me/244976848444" target="_blank" rel="noopener noreferrer" className="font-bold text-konecta-gold hover:underline">
               976 848 444
             </a>
           </div>
         </div>
 
         <div>
-          <h4 className="font-bold mb-6 uppercase text-xs tracking-widest text-konecta-gold">Ecossistema KONECTA</h4>
-          <nav className="flex flex-col gap-3 text-xs opacity-75">
+          <h4 className="font-bold mb-5 uppercase text-xs tracking-widest text-konecta-gold">Ecossistema KONECTA</h4>
+          <nav className="flex flex-col gap-2.5 text-xs opacity-75">
             <a href="https://cunenevagas.online" target="_blank" rel="noopener noreferrer" className="hover:text-konecta-gold transition-colors flex items-center gap-1.5">
               <span>CuneneVagas (Empregos & Lojas)</span>
               <span className="material-symbols-outlined text-[14px]">open_in_new</span>
@@ -61,18 +61,18 @@ export const Footer: React.FC<{ onNavigateTab?: (tab: string) => void }> = ({ on
           </nav>
         </div>
 
-        <div className="space-y-6">
-          <h4 className="font-bold mb-6 uppercase text-xs tracking-widest text-konecta-gold">Aplicações</h4>
+        <div className="space-y-5">
+          <h4 className="font-bold mb-5 uppercase text-xs tracking-widest text-konecta-gold">Aplicações</h4>
           <div className="flex flex-col gap-4">
             <PWAInstallButton />
           </div>
         </div>
       </div>
       
-      <div className="max-w-7xl mx-auto pt-8 border-t border-white/5 flex flex-col md:flex-row justify-between items-center gap-4 text-[10px] font-bold uppercase tracking-widest opacity-40">
+      <div className="max-w-7xl mx-auto pt-6 border-t border-white/5 flex flex-col md:flex-row justify-between items-center gap-4 text-[10px] font-bold uppercase tracking-widest opacity-40">
         <span>© 2026 Rede Konecta · Luanda, Angola</span>
         <div className="flex gap-8">
-          <span>Feito com ❤️ por angolanos</span>
+          <span>Feito em Angola</span>
         </div>
       </div>
     </footer>

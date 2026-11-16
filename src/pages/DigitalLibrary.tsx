@@ -22,7 +22,6 @@ import {
   ExternalLink,
   MessageSquare,
   CornerDownRight,
-  Sparkles,
   ShieldCheck,
   Eye,
   Pencil,
@@ -391,14 +390,14 @@ export const DigitalLibrary: React.FC<DigitalLibraryProps> = ({ user, onOpenAuth
           'cover'
         );
         if (coverRes.error) {
-          throw new Error('Falha no upload da capa para o Supabase Storage: ' + coverRes.error.message);
+          throw new Error('Não foi possível guardar a capa: ' + coverRes.error.message);
         }
         finalCoverUrl = coverRes.url || finalCoverUrl;
       } else if (driveBookDoc?.cloudinaryUrl && !finalCoverUrl) {
         finalCoverUrl = driveBookDoc.cloudinaryUrl;
       }
 
-      // 2. Upload PDF to Supabase Storage if user selected a file
+      // 2. Upload PDF to storage if user selected a file
       if (pdfFile) {
         setUploadProgress(50);
         const pdfRes = await d1Client.digitalLibrary.uploadBookAsset(
@@ -408,7 +407,7 @@ export const DigitalLibrary: React.FC<DigitalLibraryProps> = ({ user, onOpenAuth
           'pdf'
         );
         if (pdfRes.error) {
-          throw new Error('Falha no upload do PDF para o Supabase Storage: ' + pdfRes.error.message);
+          throw new Error('Não foi possível guardar o documento PDF: ' + pdfRes.error.message);
         }
         finalPdfUrl = pdfRes.url || finalPdfUrl;
       } else if (driveBookDoc?.cloudinaryUrl && !finalPdfUrl) {
@@ -567,11 +566,10 @@ export const DigitalLibrary: React.FC<DigitalLibraryProps> = ({ user, onOpenAuth
       <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-konecta-navy via-[#0d2342] to-slate-900 text-white p-6 sm:p-10 shadow-xl border border-white/10">
         <div className="absolute -right-10 -bottom-10 w-72 h-72 bg-konecta-gold/10 rounded-full blur-3xl pointer-events-none" />
         <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
-          <div className="space-y-3 max-w-2xl">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 backdrop-blur-md border border-white/15 text-xs text-konecta-gold font-bold">
-              <Sparkles size={14} />
-              <span>Espaço Literário Oficial KONECTA Angola</span>
-            </div>
+          <div className="space-y-2.5 max-w-2xl">
+            <span className="text-xs text-konecta-gold font-bold uppercase tracking-[0.2em] block">
+              Biblioteca Literária KONECTA Angola
+            </span>
             <h1 className="text-2xl sm:text-4xl font-extrabold tracking-tight">
               Biblioteca Digital para Escritores
             </h1>
@@ -598,7 +596,7 @@ export const DigitalLibrary: React.FC<DigitalLibraryProps> = ({ user, onOpenAuth
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <span className="w-2.5 h-2.5 rounded-full bg-konecta-gold animate-pulse" />
+              <span className="w-2 h-2 rounded-full bg-konecta-gold" />
               <h2 className="text-base font-extrabold text-konecta-navy uppercase tracking-wider">
                 Obras em Destaque
               </h2>
@@ -915,9 +913,9 @@ export const DigitalLibrary: React.FC<DigitalLibraryProps> = ({ user, onOpenAuth
               {user && (selectedBook.author_id === user.id || selectedBook.author_id === user.user_id) && (
                 <div className="p-4 rounded-2xl bg-gradient-to-r from-amber-50 to-amber-100/60 border border-amber-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
                   <div className="flex items-center gap-2.5 text-xs text-amber-950">
-                    <Sparkles size={16} className="text-amber-600 shrink-0" />
+                    <BookOpen size={16} className="text-amber-600 shrink-0" />
                     <div>
-                      <p className="font-extrabold text-konecta-navy">Painel do Escritor / Autor da Obra</p>
+                      <p className="font-extrabold text-konecta-navy">Painel do Autor</p>
                       <p className="text-[11px] text-amber-800">Podes carregar ou substituir a capa do livro e o ficheiro PDF a qualquer momento.</p>
                     </div>
                   </div>
@@ -1710,7 +1708,7 @@ export const DigitalLibrary: React.FC<DigitalLibraryProps> = ({ user, onOpenAuth
                   {creating && uploadProgress > 0 && (
                     <div className="space-y-1 pt-1">
                       <div className="flex justify-between text-[10px] text-gray-500 font-bold">
-                        <span>A carregar ficheiros para o Supabase Storage...</span>
+                        <span>A enviar ficheiros...</span>
                         <span>{uploadProgress}%</span>
                       </div>
                       <div className="w-full h-1.5 bg-gray-200 rounded-full overflow-hidden">

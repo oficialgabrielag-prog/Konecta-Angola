@@ -459,7 +459,7 @@ export const en = {
   'reels.explore_music': 'Explore Konecta Library',
   'reels.caption_label': 'Inspirational Caption',
   'reels.caption_placeholder': 'What makes this project special for Angola?',
-  'reels.syncing': 'Syncing with server...',
+  'reels.syncing': 'Updating...',
   'reels.publish_btn': 'Publish on Konecta Network',
   'reels.select_video_err': 'Select a video for the Reel.',
   'reels.upload_err': 'Failed to upload Reel.',

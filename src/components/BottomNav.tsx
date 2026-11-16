@@ -1,3 +1,4 @@
+import React from 'react';
 import { useT } from '../context/LanguageContext';
 import { motion } from 'motion/react';
 
@@ -27,9 +28,12 @@ export const BottomNav: React.FC<BottomNavProps> = ({
 
   const isOverlay = variant === 'overlay';
 
-  const tabs = [
+  const leftTabs = [
     { id: 'home', label: t('nav.home'), icon: 'home' },
     { id: 'explore', label: t('nav.explore'), icon: 'explore' },
+  ];
+
+  const rightTabs = [
     { id: 'reels', label: t('nav.reels'), icon: 'smart_display' },
     { id: 'profile', label: t('nav.profile'), icon: 'person', requiresAuth: true },
   ];
@@ -40,74 +44,89 @@ export const BottomNav: React.FC<BottomNavProps> = ({
       return;
     }
     setCurrentTab(tabId);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    window.scrollTo(0, 0);
+  };
+
+  const renderTab = (tab: { id: string; label: string; icon: string; requiresAuth?: boolean }) => {
+    const isActive = currentTab === tab.id;
+
+    return (
+      <button
+        key={tab.id}
+        type="button"
+        onClick={() => handleTabClick(tab.id, tab.requiresAuth)}
+        aria-label={tab.label}
+        className={`flex-1 flex flex-col items-center justify-center h-full relative transition-transform active:scale-90 ${
+          isOverlay
+            ? (isActive ? 'text-konecta-gold font-bold' : 'text-white/75')
+            : (isActive ? 'text-konecta-navy font-bold' : 'text-gray-400')
+        }`}
+      >
+        <div className="relative flex items-center justify-center">
+          <span
+            className={`material-symbols-outlined text-[23px] transition-transform ${
+              isActive
+                ? (isOverlay ? 'text-konecta-gold scale-105' : 'text-konecta-navy scale-105')
+                : ''
+            }`}
+            style={isActive ? { fontVariationSettings: "'FILL' 1, 'wght' 600" } : { fontVariationSettings: "'wght' 450" }}
+          >
+            {tab.icon}
+          </span>
+
+          {tab.id === 'home' && unreadCount > 0 && (
+            <span className="absolute -top-0.5 -right-1 w-2 h-2 bg-konecta-gold rounded-full ring-2 ring-white" />
+          )}
+        </div>
+
+        <span className={`text-[10px] mt-0.5 tracking-tight leading-none ${
+          isActive
+            ? (isOverlay ? 'text-konecta-gold font-extrabold' : 'text-konecta-navy font-extrabold')
+            : (isOverlay ? 'text-white/75 font-medium' : 'font-medium')
+        }`}>
+          {tab.label}
+        </span>
+
+        {isActive && (
+          <motion.div
+            layoutId="bottomNavIndicator"
+            className="absolute top-0 w-7 h-[2.5px] bg-konecta-gold rounded-b-full"
+            transition={{ type: 'spring', stiffness: 520, damping: 34 }}
+          />
+        )}
+      </button>
+    );
   };
 
   return (
-    <nav className={`fixed bottom-0 left-0 right-0 z-50 xl:hidden pb-safe transition-all ${
-      isOverlay 
-        ? 'bg-gradient-to-t from-black/90 via-black/40 to-transparent border-none shadow-none' 
-        : 'bg-white/95 backdrop-blur-xl border-t border-gray-100 shadow-2xl'
-    }`}>
-      <div className="flex items-center justify-around h-16 px-2 max-w-md mx-auto">
-        <button
-          onClick={onOpenCreateMenu}
-          className={`relative -top-3 w-12 h-12 rounded-full ${
-            isOverlay 
-              ? 'bg-konecta-gold text-konecta-navy shadow-lg border border-black/20' 
-              : 'bg-gradient-to-tr from-konecta-navy to-slate-800 text-konecta-gold border-2 border-white shadow-xl'
-          } flex items-center justify-center hover:scale-105 active:scale-95 transition-transform`}
-          title="Criar nova publicação ou ideia"
-        >
-          <span className="material-symbols-outlined text-2xl font-black">
-            add
-          </span>
-        </button>
+    <nav
+      className={`fixed bottom-0 left-0 right-0 z-50 xl:hidden pb-safe transition-colors ${
+        isOverlay
+          ? 'bg-gradient-to-t from-black/90 via-black/55 to-transparent border-none shadow-none'
+          : 'bg-white/92 backdrop-blur-2xl border-t border-black/[0.06] shadow-[0_-4px_24px_rgba(16,45,87,0.06)]'
+      }`}
+    >
+      <div className="flex items-center justify-around h-[58px] px-2 max-w-lg mx-auto">
+        {leftTabs.map(renderTab)}
 
-        {tabs.map((tab) => {
-          const isActive = currentTab === tab.id;
-          
-          return (
-            <button
-              key={tab.id}
-              onClick={() => handleTabClick(tab.id, tab.requiresAuth)}
-              className={`flex-1 flex flex-col items-center justify-center py-1 relative transition-all active:scale-90 ${
-                isOverlay
-                  ? (isActive ? 'text-konecta-gold font-bold' : 'text-white/70 hover:text-white')
-                  : (isActive ? 'text-konecta-navy font-bold' : 'text-gray-400 hover:text-gray-600')
-              }`}
-            >
-              <div className="relative">
-                <span 
-                  className={`material-symbols-outlined text-[24px] ${isActive ? (isOverlay ? 'text-konecta-gold scale-110' : 'text-konecta-navy font-bold scale-110') : ''}`}
-                  style={isActive ? { fontVariationSettings: "'FILL' 1" } : undefined}
-                >
-                  {tab.icon}
-                </span>
+        <div className="flex items-center justify-center px-2">
+          <button
+            type="button"
+            onClick={onOpenCreateMenu}
+            aria-label="Criar"
+            className={`w-11 h-11 rounded-2xl ${
+              isOverlay
+                ? 'bg-konecta-gold text-konecta-navy shadow-lg'
+                : 'bg-konecta-navy text-konecta-gold shadow-md'
+            } flex items-center justify-center active:scale-90 transition-transform`}
+          >
+            <span className="material-symbols-outlined text-[24px] font-bold">
+              add
+            </span>
+          </button>
+        </div>
 
-                {tab.id === 'home' && unreadCount > 0 && (
-                  <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-konecta-gold rounded-full border border-white" />
-                )}
-              </div>
-
-              <span className={`text-[10px] mt-0.5 tracking-tight ${
-                isActive 
-                  ? (isOverlay ? 'text-konecta-gold font-extrabold' : 'text-konecta-navy font-extrabold') 
-                  : (isOverlay ? 'text-white/80 font-medium' : 'font-medium')
-              }`}>
-                {tab.label}
-              </span>
-
-              {isActive && (
-                <motion.div
-                  layoutId="bottomNavIndicator"
-                  className="absolute bottom-0 w-8 h-0.5 bg-konecta-gold rounded-full"
-                  transition={{ type: 'spring', stiffness: 500, damping: 30 }}
-                />
-              )}
-            </button>
-          );
-        })}
+        {rightTabs.map(renderTab)}
       </div>
     </nav>
   );

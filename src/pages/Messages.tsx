@@ -7,6 +7,7 @@ import { KonectaRealtimeService } from '../lib/realtime';
 import { uploadMediaToCloudinary } from '../lib/cloudinary';
 import { ModernAudioPlayer } from '../components/ModernAudioPlayer';
 import { useT } from '../context/LanguageContext';
+import { useUI } from '../context/UIContext';
 import { GoogleDrivePickerModal, SelectedDocumentResult } from '../components/GoogleDrivePickerModal';
 
 interface MessagesProps {
@@ -25,6 +26,7 @@ export const Messages: React.FC<MessagesProps> = ({
   onNavigateTab
 }) => {
   const { t } = useT();
+  const { showToast } = useUI();
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [selectedConv, setSelectedConv] = useState<Conversation | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -303,7 +305,7 @@ export const Messages: React.FC<MessagesProps> = ({
       );
       
       if (res.error || !res.data?.data) {
-        throw new Error(res.error?.message || 'Falha ao gravar a mensagem no Supabase.');
+        throw new Error(res.error?.message || 'Não foi possível enviar a mensagem.');
       }
 
       const confirmedMsg: Message = {
@@ -471,7 +473,7 @@ export const Messages: React.FC<MessagesProps> = ({
       });
     } catch (err: any) {
       console.error('Erro ao iniciar conversa:', err?.message || err);
-      alert(err?.message || 'Erro ao criar conversa.');
+      showToast(err?.message || 'Não foi possível criar a conversa.', 'error');
     } finally {
       setStartingConv(false);
     }
@@ -690,8 +692,8 @@ export const Messages: React.FC<MessagesProps> = ({
                       {otherParticipant?.full_name || 'Membro Konecta'}
                     </h2>
                     <p className="text-xs text-gray-500 flex items-center gap-1.5 font-medium truncate">
-                      <span className={`w-2 h-2 rounded-full motion-reduce:animate-none ${
-                        presenceInfo.isOnline ? 'bg-green-500 animate-pulse' : 'bg-gray-300'
+                      <span className={`w-2 h-2 rounded-full ${
+                        presenceInfo.isOnline ? 'bg-green-500' : 'bg-gray-300'
                       }`} />
                       {presenceInfo.text}
                     </p>
@@ -818,7 +820,7 @@ export const Messages: React.FC<MessagesProps> = ({
                 {isRecording ? (
                   <div className="flex items-center justify-between bg-red-50 border border-red-200 rounded-2xl px-4 py-2 text-red-700">
                     <div className="flex items-center gap-2">
-                      <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-ping motion-reduce:animate-none"></span>
+                      <span className="w-2.5 h-2.5 rounded-full bg-red-500"></span>
                       <span className="text-xs font-medium">{t('messages.recording')} {recordingSeconds}s</span>
                     </div>
                     <div className="flex items-center gap-2">
@@ -1231,7 +1233,12 @@ function renderGroupedMessages(
                   <span>{t('messages.voice_note')}</span>
                 </div>
               ) : isDocument && (m.body?.startsWith('📄 Documento: ') || m.content?.startsWith('📄 Documento: ')) ? null : (
-                <p className="whitespace-pre-wrap break-words">{m.content === 'Midia enviada' || m.content === 'Mídia enviada' ? t('messages.media_sent') : (m.body || m.content)}</p>
+                <div className="whitespace-pre-wrap break-words space-y-1.5">
+                  {renderMessageTextWithInAppLinks(
+                    m.content === 'Midia enviada' || m.content === 'Mídia enviada' ? t('messages.media_sent') : (m.body || m.content),
+                    isMe
+                  )}
+                </div>
               )}
             </div>
 
@@ -1251,7 +1258,6 @@ function renderGroupedMessages(
               <div className="flex items-center gap-1 text-xs text-gray-500 mt-1 px-1">
                 {isSending ? (
                   <span className="text-[11px] text-gray-400 flex items-center gap-1">
-                    <span className="inline-block w-2 h-2 rounded-full bg-gray-400 animate-pulse"></span>
                     {t('messages.sending')}
                   </span>
                 ) : (
@@ -1273,4 +1279,70 @@ function renderGroupedMessages(
       })}
     </div>
   ));
+}
+
+function renderMessageTextWithInAppLinks(text: string | undefined, isMe: boolean) {
+  if (!text) return null;
+  const urlRegex = /(https?:\/\/[^\s]+)/g;
+  const parts = text.split(urlRegex);
+
+  return parts.map((part, i) => {
+    if (!part.match(/^https?:\/\//)) {
+      return <React.Fragment key={i}>{part}</React.Fragment>;
+    }
+
+    try {
+      const parsed = new URL(part);
+      const isKonectaLink =
+        parsed.origin === window.location.origin ||
+        parsed.pathname.match(/^\/(p|r|i|c|u|l)\//);
+
+      if (isKonectaLink && parsed.pathname.match(/^\/(p|r|i|c|u|l)\//)) {
+        const labels: Record<string, string> = {
+          p: 'Abrir publicação',
+          r: 'Ver Reel',
+          i: 'Ver ideia',
+          c: 'Abrir comunidade',
+          u: 'Ver perfil',
+          l: 'Abrir na Biblioteca'
+        };
+        const prefix = parsed.pathname.split('/')[1] || 'p';
+        const label = labels[prefix] || 'Abrir na KONECTA';
+
+        return (
+          <button
+            key={i}
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              window.history.pushState({}, '', parsed.pathname);
+              window.dispatchEvent(new PopStateEvent('popstate'));
+            }}
+            className={`mt-1 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all active:scale-95 ${
+              isMe
+                ? 'bg-white/15 hover:bg-white/25 text-konecta-gold'
+                : 'bg-konecta-navy/8 hover:bg-konecta-navy/15 text-konecta-navy'
+            }`}
+          >
+            <span className="material-symbols-outlined text-[15px]">open_in_new</span>
+            <span>{label}</span>
+          </button>
+        );
+      }
+
+      return (
+        <a
+          key={i}
+          href={part}
+          target="_blank"
+          rel="noopener noreferrer"
+          className={`underline break-all ${isMe ? 'text-konecta-gold' : 'text-konecta-navy'}`}
+        >
+          {part}
+        </a>
+      );
+    } catch {
+      return <React.Fragment key={i}>{part}</React.Fragment>;
+    }
+  });
 }

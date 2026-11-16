@@ -91,8 +91,8 @@ export const OfflineIndicator: React.FC = () => {
           exit={{ opacity: 0, y: 50 }}
           className="fixed bottom-24 left-4 right-4 z-50 flex items-center gap-3 rounded-xl bg-black px-4 py-3 text-xs font-medium text-white shadow-2xl sm:left-auto sm:right-4 sm:w-80"
         >
-          <div className="h-2 w-2 rounded-full bg-amber-400 animate-pulse" />
-          <span>Modo Offline — Estamos a usar dados em cache para poupar o teu saldo.</span>
+          <div className="h-2 w-2 rounded-full bg-amber-400" />
+          <span>Sem ligação à internet — A mostrar conteúdo guardado.</span>
         </motion.div>
       )}
     </AnimatePresence>

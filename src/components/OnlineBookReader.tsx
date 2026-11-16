@@ -24,7 +24,7 @@ import {
   Share2,
   Download,
   ExternalLink,
-  Sparkles,
+  Award,
   Sliders,
   AlignLeft,
   BookMarked
@@ -1045,7 +1045,7 @@ export const OnlineBookReader: React.FC<OnlineBookReaderProps> = ({
                         /* Book Completed Celebration Card */
                         <div className="w-full p-6 rounded-3xl bg-gradient-to-br from-konecta-navy to-slate-900 text-white text-center space-y-4 shadow-xl border border-white/10">
                           <div className="w-12 h-12 rounded-full bg-konecta-gold/20 text-konecta-gold flex items-center justify-center mx-auto">
-                            <Sparkles size={24} />
+                            <Award size={24} />
                           </div>
                           <div className="space-y-1">
                             <h3 className="text-lg sm:text-xl font-extrabold text-white">

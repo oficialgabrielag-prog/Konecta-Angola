@@ -704,7 +704,7 @@ export const Reels: React.FC<ReelsProps> = ({ user, onOpenAuth, onSelectUser, in
 
                   {getTrackAudioUrl(reel.music_info?.track) && (
                     <div className="flex items-center gap-2 mt-3 bg-black/40 backdrop-blur-md px-3 py-1.5 rounded-none border-l-2 border-konecta-gold w-fit overflow-hidden">
-                      <Music size={12} className="text-konecta-gold animate-pulse shrink-0" />
+                      <Music size={12} className="text-konecta-gold shrink-0" />
                       <div className="text-[10px] font-black uppercase tracking-[0.1em] text-white whitespace-nowrap overflow-hidden max-w-[140px]">
                         <div className="inline-block truncate">
                           {reel.music_info?.track?.title} • {reel.music_info?.track?.artist}

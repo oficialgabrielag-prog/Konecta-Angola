@@ -62,7 +62,7 @@ export const Register: React.FC<RegisterProps> = ({ onSuccess, onNavigateLogin, 
         if (d1Res.error.status === 409 || d1Res.error.message?.includes('already registered') || d1Res.error.message?.includes('já está registado')) {
           setError('Este e-mail já está registado. Por favor, tente iniciar sessão.');
         } else {
-          setError(d1Res.error.message || 'Erro ao realizar registo no servidor.');
+          setError(d1Res.error.message || 'Não foi possível concluir o registo.');
         }
       } else {
         setError('Não foi possível concluir o registo. Tente novamente.');
