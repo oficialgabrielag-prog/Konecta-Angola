@@ -456,8 +456,8 @@ export const d1Client: any = {
       const currentUserId = user?.id;
 
       const statusOrFilter = currentUserId
-        ? `status.is.null,and(status.neq.removed,status.neq.review),and(status.eq.review,author_id.eq.${currentUserId})`
-        : `status.is.null,and(status.neq.removed,status.neq.review)`;
+        ? `status.is.null,status.eq.published,and(status.eq.review,author_id.eq.${currentUserId})`
+        : `status.is.null,status.eq.published`;
 
       const applyCommonFilters = (q: any, useDbStatusFilter: boolean) => {
         let next = q

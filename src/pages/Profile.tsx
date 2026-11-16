@@ -453,14 +453,21 @@ export const Profile: React.FC<ProfileProps> = ({
                   <article key={post.id} className="bg-white rounded-3xl p-6 sm:p-8 border border-gray-100 shadow-sm group">
                     <div className="flex items-center justify-between mb-4">
                       <div className="flex items-center gap-3">
-                        {post.communities ? (
-                          <span className="text-[10px] font-extrabold text-konecta-navy uppercase tracking-[0.1em]">
-                            {t('home.in')} {post.communities.name}
-                          </span>
-                        ) : (
-                          <span className="text-[10px] font-extrabold text-konecta-gold uppercase tracking-widest">{t('profile.personal_post')}</span>
-                        )}
-                        <span className="metadata-text">{new Date(post.created_at || '').toLocaleDateString('pt-AO')}</span>
+                        <div className="w-10 h-10 rounded-full bg-gray-100 overflow-hidden shrink-0 border border-gray-100">
+                          {avatarUrl ? (
+                            <img src={cldAvatar(avatarUrl, 40)} alt="" className="w-full h-full object-cover" />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center font-bold text-xs text-gray-400">
+                              {fullName.charAt(0)}
+                            </div>
+                          )}
+                        </div>
+                        <div>
+                          <h4 className="font-bold text-sm text-konecta-navy">{fullName}</h4>
+                          <p className="text-[10px] text-gray-400 uppercase tracking-wider">
+                            {post.communities ? `${t('home.in')} ${post.communities.name} · ` : ''}{new Date(post.created_at || '').toLocaleDateString('pt-AO')}
+                          </p>
+                        </div>
                       </div>
                       <div className="flex items-center gap-1">
                         <button
