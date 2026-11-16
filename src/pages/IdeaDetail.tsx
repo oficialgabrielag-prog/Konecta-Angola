@@ -211,8 +211,9 @@ export const IdeaDetail: React.FC<IdeaDetailProps> = ({
                 authorName: idea.profiles?.full_name || 'Inovador'
               })}
               className="p-3 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-full transition-all active:scale-95"
+              aria-label="Enviar"
             >
-              <span className="material-symbols-outlined text-[20px]">share</span>
+              <span className="material-symbols-outlined text-[20px]">send</span>
             </button>
           </div>
         </div>

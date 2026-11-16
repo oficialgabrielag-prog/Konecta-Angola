@@ -4,6 +4,7 @@ import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { UserBadge } from './UserBadges';
 import { cldAvatar, cldCover, cldImage } from '../lib/cloudinary';
+import { PinchZoomImage } from './PinchZoomImage';
 
 interface PostCardProps {
   post: Post;
@@ -84,13 +85,6 @@ export const PostCard: React.FC<PostCardProps> = ({
           </div>
 
           <div className="flex items-center gap-1">
-            <button
-              onClick={() => onOpenFullscreenPost ? onOpenFullscreenPost(post) : (post.image_url && onImageClick?.(post.image_url))}
-              className="p-1.5 text-gray-400 hover:text-konecta-navy hover:bg-gray-100 rounded-lg transition-colors"
-              title="Visualizar em tela cheia"
-            >
-              <span className="material-symbols-outlined text-[18px]">fullscreen</span>
-            </button>
             {onEdit && (
               <button
                 onClick={() => onEdit(post)}
@@ -120,23 +114,16 @@ export const PostCard: React.FC<PostCardProps> = ({
         </p>
         
         {post.image_url && (
-          <div 
+          <PinchZoomImage
+            src={cldImage(post.image_url, { w: 800 }) || post.image_url}
+            fallbackSrc={post.image_url}
+            alt="Post media"
+            mode="inline"
+            loading="eager"
             onClick={() => onOpenFullscreenPost ? onOpenFullscreenPost(post) : onImageClick?.(post.image_url!)}
-            className="rounded-xl overflow-hidden mb-4 border border-gray-50 max-h-96 bg-gray-50 cursor-pointer group/img relative"
-          >
-            <img 
-              src={cldImage(post.image_url, { w: 800 })} 
-              className="w-full h-full object-cover group-hover/img:scale-[1.01] transition-transform duration-300" 
-              alt="Post media" 
-              loading="lazy"
-              decoding="async"
-            />
-            <div className="absolute inset-0 bg-black/0 group-hover/img:bg-black/10 transition-colors flex items-center justify-center">
-              <span className="material-symbols-outlined text-white opacity-0 group-hover/img:opacity-100 transition-opacity bg-black/50 p-2 rounded-full backdrop-blur-xs">
-                fullscreen
-              </span>
-            </div>
-          </div>
+            className="rounded-xl overflow-hidden mb-4 border border-gray-50 max-h-96 bg-gray-50 cursor-pointer relative block w-full"
+            imgClassName="w-full h-auto max-h-96 object-cover block"
+          />
         )}
         
         <div className="flex items-center justify-between border-t border-gray-50 pt-4">
@@ -150,14 +137,6 @@ export const PostCard: React.FC<PostCardProps> = ({
               {post.comments_count || 0}
             </button>
           </div>
-
-          <button 
-            onClick={() => onOpenFullscreenPost ? onOpenFullscreenPost(post) : (post.image_url && onImageClick?.(post.image_url))}
-            className="flex items-center gap-1 text-xs font-bold text-gray-400 hover:text-konecta-navy transition-colors"
-          >
-            <span className="material-symbols-outlined text-sm">fullscreen</span>
-            <span>Tela cheia</span>
-          </button>
         </div>
       </div>
     </div>

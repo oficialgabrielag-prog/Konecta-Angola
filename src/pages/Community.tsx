@@ -5,6 +5,7 @@ import { d1Client } from '../lib/d1Client';
 import { uploadToCloudinary } from '../lib/cloudinary';
 import { PostCardSkeleton } from '../components/Skeletons';
 import { CANONICAL_POSTS } from '../lib/canonicalData';
+import { PinchZoomImage } from '../components/PinchZoomImage';
 
 interface CommunityProps {
   user: any;
@@ -36,6 +37,8 @@ export const Community: React.FC<CommunityProps> = ({
   const [activeMembers, setActiveMembers] = useState<Profile[]>([]);
   const [content, setContent] = useState('');
   const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMorePosts, setHasMorePosts] = useState(true);
   const [publishing, setPublishing] = useState(false);
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
@@ -66,14 +69,17 @@ export const Community: React.FC<CommunityProps> = ({
   const fetchPosts = async () => {
     if (posts.length === 0) setLoading(true);
     try {
-      const d1Res = await d1Client.posts.list(30);
+      const d1Res = await d1Client.posts.list(50, undefined, undefined, 0);
 
       const d1Posts = d1Res.data?.data || [];
+      setHasMorePosts(d1Posts.length >= 50);
 
       setPosts(prev => {
         const map = new Map<string, Post>();
-        prev.forEach(p => map.set(p.id, p));
         d1Posts.forEach((p: Post) => map.set(p.id, p));
+        prev.forEach(p => {
+          if (!map.has(p.id)) map.set(p.id, p);
+        });
 
         const merged = Array.from(map.values()).sort(
           (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
@@ -85,6 +91,34 @@ export const Community: React.FC<CommunityProps> = ({
       console.warn('Aviso ao carregar posts:', err?.message || err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleLoadMore = async () => {
+    if (loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const d1Res = await d1Client.posts.list(30, undefined, undefined, posts.length);
+      const more = (d1Res.data?.data || []) as Post[];
+      if (more.length < 30) setHasMorePosts(false);
+      if (more.length > 0) {
+        setPosts(prev => {
+          const map = new Map<string, Post>();
+          prev.forEach(p => map.set(p.id, p));
+          more.forEach((p: Post) => map.set(p.id, p));
+          const merged = Array.from(map.values()).sort(
+            (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+          );
+          savePostsToCache(merged);
+          return merged;
+        });
+      } else {
+        setHasMorePosts(false);
+      }
+    } catch (err: any) {
+      console.warn('Aviso ao carregar mais publicações:', err?.message || err);
+    } finally {
+      setLoadingMore(false);
     }
   };
 
@@ -385,10 +419,8 @@ export const Community: React.FC<CommunityProps> = ({
                 const isLiked = userLikes[post.id];
 
                 return (
-                  <motion.article 
+                  <article 
                     key={post.id}
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
                     className="card-konecta p-6 sm:p-8 overflow-hidden"
                   >
                     {/* Community Context Banner */}
@@ -452,17 +484,16 @@ export const Community: React.FC<CommunityProps> = ({
                     </div>
 
                     {post.image_url && (
-                      <div 
+                      <PinchZoomImage
+                        src={post.image_url}
+                        fallbackSrc={post.image_url}
+                        alt=""
+                        mode="inline"
+                        loading="eager"
                         onClick={() => onImageClick(post.image_url!)}
-                        className="mb-6 rounded-2xl overflow-hidden bg-gray-50 border border-gray-100 max-h-[480px] cursor-pointer group relative"
-                      >
-                        <img src={post.image_url} alt="" className="w-full h-full object-cover group-hover:scale-[1.01] transition-transform duration-300" />
-                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center">
-                          <span className="material-symbols-outlined text-white opacity-0 group-hover:opacity-100 transition-opacity bg-black/50 p-2 rounded-full backdrop-blur-xs">
-                            fullscreen
-                          </span>
-                        </div>
-                      </div>
+                        className="mb-6 rounded-2xl overflow-hidden bg-gray-50 border border-gray-100 max-h-[480px] cursor-pointer relative block w-full"
+                        imgClassName="w-full h-auto object-cover max-h-[480px] block"
+                      />
                     )}
 
                     <div className="flex items-center justify-between pt-4 border-t border-gray-100 text-xs text-gray-500 font-medium">
@@ -552,9 +583,22 @@ export const Community: React.FC<CommunityProps> = ({
                         </motion.div>
                       )}
                     </AnimatePresence>
-                  </motion.article>
+                  </article>
                 );
               })
+            )}
+
+            {hasMorePosts && posts.length > 0 && (
+              <div className="pt-2 flex justify-center">
+                <button
+                  type="button"
+                  onClick={handleLoadMore}
+                  disabled={loadingMore}
+                  className="px-6 py-2.5 rounded-full bg-white border border-gray-200 hover:border-konecta-navy text-xs font-bold text-konecta-navy shadow-xs transition-all disabled:opacity-50"
+                >
+                  {loadingMore ? 'A carregar...' : 'Carregar mais publicações'}
+                </button>
+              </div>
             )}
           </div>
 

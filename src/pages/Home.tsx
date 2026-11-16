@@ -9,7 +9,9 @@ import { useUI } from '../context/UIContext';
 import { ContentMenu } from '../components/ContentMenu';
 import { ReelPreviewCard } from '../components/ReelPreviewCard';
 import { useT } from '../context/LanguageContext';
-import { BookOpen, FolderKanban, ChevronLeft, ChevronRight, Play } from 'lucide-react';
+import { BookOpen, FolderKanban, ChevronLeft, ChevronRight, Play, Send } from 'lucide-react';
+import { PinchZoomImage } from '../components/PinchZoomImage';
+import { KonectaCompanyPlatforms } from '../components/KonectaCompanyPlatforms';
 
 interface HomeProps {
   setCurrentTab: (tab: string) => void;
@@ -72,6 +74,10 @@ export const Home: React.FC<HomeProps> = ({
   const [selectedReelModal, setSelectedReelModal] = useState<Reel | null>(null);
   const [isModalMuted, setIsModalMuted] = useState(false);
   const [loadingPosts, setLoadingPosts] = useState(false);
+  const [loadingMorePosts, setLoadingMorePosts] = useState(false);
+  const [hasMorePosts, setHasMorePosts] = useState(true);
+  const postsRef = useRef<Post[]>(posts);
+  postsRef.current = posts;
   const [userLikes, setUserLikes] = useState<Record<string, boolean>>({});
   const [userBookmarks, setUserBookmarks] = useState<Record<string, boolean>>({});
   const [showcaseItems, setShowcaseItems] = useState<HeroShowcaseItem[]>(() => {
@@ -312,7 +318,7 @@ export const Home: React.FC<HomeProps> = ({
       if (document.visibilityState !== 'visible') return;
       if (debounceTimer) clearTimeout(debounceTimer);
       debounceTimer = setTimeout(() => {
-        fetchCommunityPosts();
+        fetchCommunityPosts(true);
       }, 1500);
     };
 
@@ -334,34 +340,58 @@ export const Home: React.FC<HomeProps> = ({
       debouncedFetchFeed();
     });
 
+    const unsubPostMedia = KonectaRealtimeService.subscribe('post_media', () => {
+      debouncedFetchFeed();
+    });
+
     return () => {
       if (debounceTimer) clearTimeout(debounceTimer);
       unsubPosts();
       unsubReactions();
       unsubComments();
+      unsubPostMedia();
     };
   }, [user]);
 
   const savePostsToCache = (updatedPosts: Post[]) => {
     try {
-      localStorage.setItem('konecta_cached_posts', JSON.stringify(updatedPosts.slice(0, 50)));
+      localStorage.setItem('konecta_cached_posts', JSON.stringify(updatedPosts.slice(0, 60)));
     } catch (e) {
       console.warn('Erro ao guardar posts na cache:', e);
     }
   };
 
-  const fetchCommunityPosts = async () => {
-    if (posts.length === 0) setLoadingPosts(true);
+  const mergePostsList = (existing: Post[], incoming: Post[], replaceHead = false) => {
+    const map = new Map<string, Post>();
+    if (!replaceHead) {
+      existing.forEach(p => map.set(p.id, p));
+      incoming.forEach(p => map.set(p.id, p));
+    } else {
+      incoming.forEach(p => map.set(p.id, p));
+      existing.forEach(p => {
+        if (!map.has(p.id)) map.set(p.id, p);
+      });
+    }
+    return Array.from(map.values()).sort(
+      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    );
+  };
+
+  const fetchCommunityPosts = async (preserveDepth = false) => {
+    if (postsRef.current.length === 0) setLoadingPosts(true);
     try {
-      const res = await d1Client.posts.list(30);
+      const fetchLimit = preserveDepth ? Math.max(50, postsRef.current.length) : 50;
+      const res = await d1Client.posts.list(fetchLimit, undefined, undefined, 0);
 
       if (res.data?.data && Array.isArray(res.data.data)) {
         const fetchedPosts = res.data.data as Post[];
-        const commCount = fetchedPosts.filter(p => p.community_id).length;
-        console.debug(`[Feed Home] Publicações recebidas do Supabase: ${fetchedPosts.length} (das quais ${commCount} em comunidades)`);
+        setHasMorePosts(fetchedPosts.length >= fetchLimit);
 
-        setPosts(fetchedPosts);
-        savePostsToCache(fetchedPosts);
+        setPosts(prev => {
+          const next = preserveDepth ? mergePostsList(prev, fetchedPosts, true) : fetchedPosts;
+          savePostsToCache(next);
+          return next;
+        });
       }
     } catch (err: any) {
       console.warn('Aviso ao carregar publicações:', err?.message || err);
@@ -369,6 +399,60 @@ export const Home: React.FC<HomeProps> = ({
       setLoadingPosts(false);
     }
   };
+
+  const handleLoadMorePosts = async () => {
+    if (loadingMorePosts) return;
+    setLoadingMorePosts(true);
+    try {
+      const scope =
+        feedType === 'posts'
+          ? 'network'
+          : feedType === 'communities'
+            ? 'communities'
+            : 'all';
+
+      const currentScopeCount =
+        scope === 'network'
+          ? posts.filter(p => !p.community_id).length
+          : scope === 'communities'
+            ? posts.filter(p => !!p.community_id).length
+            : posts.length;
+
+      const res = await d1Client.posts.list(30, undefined, undefined, currentScopeCount, scope);
+      const more = (res.data?.data || []) as Post[];
+      if (more.length < 30 && scope === 'all') {
+        setHasMorePosts(false);
+      }
+      if (more.length > 0) {
+        setPosts(prev => {
+          const merged = mergePostsList(prev, more, false);
+          savePostsToCache(merged);
+          return merged;
+        });
+      } else if (scope === 'all') {
+        setHasMorePosts(false);
+      }
+    } catch (err: any) {
+      console.warn('Aviso ao carregar mais publicações:', err?.message || err);
+    } finally {
+      setLoadingMorePosts(false);
+    }
+  };
+
+  useEffect(() => {
+    if (feedType !== 'posts' && feedType !== 'communities') return;
+    const scope = feedType === 'posts' ? 'network' : 'communities';
+    d1Client.posts.list(30, undefined, undefined, 0, scope).then((res: any) => {
+      const scoped = (res.data?.data || []) as Post[];
+      if (scoped.length > 0) {
+        setPosts(prev => {
+          const merged = mergePostsList(prev, scoped, false);
+          savePostsToCache(merged);
+          return merged;
+        });
+      }
+    }).catch(() => {});
+  }, [feedType]);
 
   const fetchReels = async () => {
     try {
@@ -1133,7 +1217,7 @@ export const Home: React.FC<HomeProps> = ({
                       onClick={() => setCurrentTab('reels')}
                       className="text-xs font-bold text-konecta-navy bg-konecta-gold hover:bg-yellow-400 px-3 py-1.5 rounded-full transition-all shadow"
                     >
-                      {t('home.fullscreen')}
+                      Ver Reels
                     </button>
                   </div>
                   
@@ -1206,12 +1290,9 @@ export const Home: React.FC<HomeProps> = ({
                     const isBookmarked = userBookmarks[post.id];
 
                     return (
-                      <motion.article 
+                      <article 
                         key={`post-${post.id}`}
-                        initial={{ opacity: 0, y: 15 }}
-                        whileInView={{ opacity: 1, y: 0 }}
-                        viewport={{ once: true }}
-                        className="bg-transparent pb-8 border-b border-gray-100 mb-8 overflow-hidden transition-all"
+                        className="bg-transparent pb-8 border-b border-gray-100 mb-8 transition-all"
                       >
                         {/* Community Context Banner */}
                         {post.communities && (
@@ -1220,7 +1301,7 @@ export const Home: React.FC<HomeProps> = ({
                               e.stopPropagation();
                               onSelectCommunity(post.communities!.id, post.communities!.slug);
                             }}
-                            className="mb-6 -mx-6 -mt-6 sm:-mx-8 sm:-mt-8 h-24 relative cursor-pointer group/cover"
+                            className="mb-5 rounded-2xl overflow-hidden h-24 relative cursor-pointer group/cover"
                           >
                             {post.communities.cover_url ? (
                               <img 
@@ -1323,28 +1404,25 @@ export const Home: React.FC<HomeProps> = ({
                         </p>
 
                         {post.image_url && (
-                          <div 
-                            onClick={() => onOpenFullscreenPost ? onOpenFullscreenPost(post) : onImageClick(post.image_url!)}
-                            className="rounded-2xl overflow-hidden mb-6 max-h-[450px] bg-gray-50 border border-gray-100 cursor-pointer group relative"
-                          >
-                            <div 
-                              className="absolute inset-0 bg-cover bg-center blur-xl opacity-50"
-                              style={{ backgroundImage: `url(${cldBlurPlaceholder(post.image_url)})` }}
-                            />
-                            <img 
-                              src={cldImage(post.image_url, { w: 640 })} 
+                          <div className="rounded-2xl overflow-hidden mb-6 max-h-[450px] bg-gray-50 border border-gray-100 cursor-pointer relative">
+                            {cldBlurPlaceholder(post.image_url) && (
+                              <div 
+                                className="absolute inset-0 bg-cover bg-center blur-xl opacity-40 pointer-events-none"
+                                style={{ backgroundImage: `url(${cldBlurPlaceholder(post.image_url)})` }}
+                              />
+                            )}
+                            <PinchZoomImage
+                              src={cldImage(post.image_url, { w: 640 }) || post.image_url}
+                              fallbackSrc={post.image_url}
                               srcSet={cldSrcSet(post.image_url)}
                               sizes="(max-width: 640px) 100vw, 640px"
-                              alt="" 
-                              className="w-full h-full object-cover group-hover:scale-[1.01] transition-transform duration-300 relative z-10" 
-                              loading="lazy"
-                              decoding="async"
+                              alt=""
+                              mode="inline"
+                              loading="eager"
+                              onClick={() => onOpenFullscreenPost ? onOpenFullscreenPost(post) : onImageClick(post.image_url!)}
+                              className="w-full relative z-10 block"
+                              imgClassName="w-full h-auto object-cover max-h-[450px] block"
                             />
-                            <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center z-20">
-                              <span className="material-symbols-outlined text-white opacity-0 group-hover:opacity-100 transition-opacity bg-black/50 p-2 rounded-full backdrop-blur-xs">
-                                fullscreen
-                              </span>
-                            </div>
                           </div>
                         )}
 
@@ -1382,15 +1460,6 @@ export const Home: React.FC<HomeProps> = ({
                             </button>
 
                             <button 
-                              onClick={() => onOpenFullscreenPost ? onOpenFullscreenPost(post) : onSelectPost(post as any)}
-                              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold bg-gray-100 hover:bg-konecta-navy hover:text-white text-gray-600 border border-gray-200 transition-all active:scale-95"
-                              title="Visualizar em tela cheia"
-                            >
-                              <span className="material-symbols-outlined text-[18px]">fullscreen</span>
-                              <span className="hidden sm:inline">Tela cheia</span>
-                            </button>
-
-                            <button 
                               onClick={() => openShareSheet({
                                 targetId: post.id,
                                 targetType: 'post',
@@ -1398,10 +1467,10 @@ export const Home: React.FC<HomeProps> = ({
                                 authorName: post.profiles?.full_name || 'Utilizador',
                                 thumbnail: post.image_url || undefined
                               })}
-                              className="flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold bg-gray-100 hover:bg-gray-200 text-gray-600 border border-gray-200 transition-all active:scale-95"
-                              title={t('menu.share')}
+                              className="flex items-center justify-center w-9 h-9 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-600 border border-gray-200 transition-all active:scale-95"
+                              aria-label="Enviar"
                             >
-                              <span className="material-symbols-outlined text-[18px]">share</span>
+                              <Send size={16} strokeWidth={2} />
                             </button>
                           </div>
 
@@ -1456,9 +1525,31 @@ export const Home: React.FC<HomeProps> = ({
                             </motion.div>
                           )}
                         </AnimatePresence>
-                      </motion.article>
+                      </article>
                     );
                   })}
+
+                  {(hasMorePosts || feedType === 'posts' || feedType === 'communities') && (
+                    <div className="pt-2 pb-4 flex justify-center">
+                      <button
+                        type="button"
+                        onClick={handleLoadMorePosts}
+                        disabled={loadingMorePosts}
+                        className="px-6 py-2.5 rounded-full bg-white border border-gray-200 hover:border-konecta-navy text-xs font-bold text-konecta-navy shadow-xs transition-all disabled:opacity-50"
+                      >
+                        {loadingMorePosts ? 'A carregar...' : 'Carregar mais publicações'}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ) : (feedType === 'posts' || feedType === 'communities') && !loadingPosts ? (
+                <div className="py-16 text-center bg-white rounded-3xl border border-dashed border-gray-200">
+                  <span className="material-symbols-outlined text-4xl text-gray-300 mb-3">forum</span>
+                  <p className="text-sm text-gray-500">
+                    {feedType === 'communities'
+                      ? 'Ainda não há publicações de comunidades carregadas.'
+                      : 'Ainda não há publicações na rede.'}
+                  </p>
                 </div>
               ) : (feedType === 'all' || feedType === 'ideas') && (
                 <div className="space-y-8">
@@ -1472,11 +1563,8 @@ export const Home: React.FC<HomeProps> = ({
                     </div>
                   ) : (
                     ideas.map((idea) => (
-                      <motion.article 
+                      <article 
                         key={idea.id}
-                        initial={{ opacity: 0, y: 20 }}
-                        whileInView={{ opacity: 1, y: 0 }}
-                        viewport={{ once: true }}
                         className="card-konecta group cursor-pointer"
                         onClick={() => onSelectPost(idea)}
                       >
@@ -1547,7 +1635,7 @@ export const Home: React.FC<HomeProps> = ({
                             </div>
                           </div>
                         </div>
-                      </motion.article>
+                      </article>
                     ))
                   )}
                 </div>
@@ -1643,6 +1731,8 @@ export const Home: React.FC<HomeProps> = ({
                 </button>
               </div>
             </section>
+
+            <KonectaCompanyPlatforms variant="card" />
 
           </aside>
         </div>
@@ -1741,12 +1831,18 @@ export const Home: React.FC<HomeProps> = ({
                   <button
                     type="button"
                     onClick={() => {
-                      navigator.clipboard?.writeText(window.location.href);
-                      // alert replaced with a more subtle approach or just copy
+                      openShareSheet({
+                        targetId: selectedReelModal.id,
+                        targetType: 'reel',
+                        title: selectedReelModal.caption || 'Reel Konecta',
+                        authorName: selectedReelModal.profiles?.full_name || 'Criador Konecta',
+                        videoUrl: selectedReelModal.video_url
+                      });
                     }}
-                    className="text-xs font-bold text-konecta-navy bg-konecta-gold px-3.5 py-1.5 rounded-full shadow hover:bg-yellow-400 transition-colors"
+                    className="w-9 h-9 rounded-full bg-konecta-gold text-konecta-navy flex items-center justify-center shadow hover:bg-yellow-400 transition-colors active:scale-95"
+                    aria-label="Enviar"
                   >
-                    {t('menu.share')}
+                    <Send size={16} strokeWidth={2.2} />
                   </button>
                 </div>
               </div>

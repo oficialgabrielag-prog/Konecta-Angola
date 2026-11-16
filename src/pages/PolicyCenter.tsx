@@ -287,10 +287,10 @@ export const PolicyCenter: React.FC<PolicyCenterProps> = ({ onNavigateTab, initi
               <div className="flex items-center gap-2 self-start sm:self-auto">
                 <button
                   onClick={() => handleShareDoc(activeDocData.title)}
-                  className="bg-gray-100 hover:bg-gray-200 text-konecta-navy text-xs font-bold py-2.5 px-4 rounded-xl transition-all flex items-center gap-1.5"
+                  className="bg-gray-100 hover:bg-gray-200 text-konecta-navy w-9 h-9 rounded-xl transition-all flex items-center justify-center"
+                  aria-label="Enviar"
                 >
-                  <span className="material-symbols-outlined text-sm">share</span>
-                  Partilhar
+                  <span className="material-symbols-outlined text-[18px]">send</span>
                 </button>
                 <button
                   onClick={copyLink}

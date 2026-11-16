@@ -583,6 +583,7 @@ export default function App() {
         unreadMessagesCount={unreadMessagesCount}
         variant={currentTab === 'reels' ? 'overlay' : 'default'}
         onReplayIntro={() => setShowIntro(true)}
+        hideOnMobile={currentTab === 'messages' && isMobileChatOpen}
       />
 
       <main

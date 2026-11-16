@@ -491,8 +491,9 @@ export const ProjectDetail: React.FC<ProjectDetailProps> = ({
                   thumbnail: project.cover_url || undefined
                 })}
                 className="p-2.5 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-xl transition-all active:scale-95"
+                aria-label="Enviar"
               >
-                <span className="material-symbols-outlined text-[18px]">share</span>
+                <span className="material-symbols-outlined text-[18px]">send</span>
               </button>
             </div>
           </div>

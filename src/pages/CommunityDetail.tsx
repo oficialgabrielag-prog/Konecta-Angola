@@ -6,6 +6,7 @@ import { uploadToCloudinary } from '../lib/cloudinary';
 import { KonectaRealtimeService } from '../lib/realtime';
 import { useToast, useUI } from '../context/UIContext';
 import { ContentMenu } from '../components/ContentMenu';
+import { PinchZoomImage } from '../components/PinchZoomImage';
 
 interface CommunityDetailProps {
   communityId: string;
@@ -34,6 +35,9 @@ export const CommunityDetail: React.FC<CommunityDetailProps> = ({
 
   // Sub-data states
   const [posts, setPosts] = useState<Post[]>([]);
+  const [visiblePostsCount, setVisiblePostsCount] = useState(15);
+  const [hasMorePosts, setHasMorePosts] = useState(false);
+  const [loadingMorePosts, setLoadingMorePosts] = useState(false);
   const [members, setMembers] = useState<CommunityMember[]>([]);
   const [announcements, setAnnouncements] = useState<CommunityAnnouncement[]>([]);
   const [rules, setRules] = useState<CommunityRule[]>([]);
@@ -123,9 +127,10 @@ export const CommunityDetail: React.FC<CommunityDetailProps> = ({
 
   const loadPosts = async () => {
     try {
-      const res = await d1Client.posts.list(50, undefined, communityId);
+      const res = await d1Client.posts.list(50, undefined, communityId, 0);
       const items = res.data?.data || res.data || [];
       setPosts(items);
+      setHasMorePosts(items.length >= 50);
 
       if (user) {
         const likesMap: Record<string, boolean> = {};
@@ -139,6 +144,33 @@ export const CommunityDetail: React.FC<CommunityDetailProps> = ({
         setUserLikes(prev => ({ ...prev, ...likesMap }));
       }
     } catch (e) {}
+  };
+
+  const handleLoadMoreCommunityPosts = async () => {
+    if (visiblePostsCount < posts.length) {
+      setVisiblePostsCount(prev => prev + 15);
+      return;
+    }
+    if (loadingMorePosts || !hasMorePosts) return;
+    setLoadingMorePosts(true);
+    try {
+      const res = await d1Client.posts.list(30, undefined, communityId, posts.length);
+      const more = res.data?.data || res.data || [];
+      if (more.length < 30) setHasMorePosts(false);
+      if (more.length > 0) {
+        setPosts(prev => {
+          const existingIds = new Set(prev.map(p => p.id));
+          const merged = [...prev, ...more.filter((p: Post) => !existingIds.has(p.id))];
+          return merged;
+        });
+        setVisiblePostsCount(prev => prev + 15);
+      } else {
+        setHasMorePosts(false);
+      }
+    } catch (e) {}
+    finally {
+      setLoadingMorePosts(false);
+    }
   };
 
   const loadMembers = async () => {
@@ -630,7 +662,8 @@ export const CommunityDetail: React.FC<CommunityDetailProps> = ({
                     <p className="text-xs text-gray-400">Ainda não existem publicações nesta comunidade.</p>
                   </div>
                 ) : (
-                  posts.slice(0, 5).map(post => (
+                  <>
+                    {posts.slice(0, visiblePostsCount).map(post => (
                       <div key={post.id} className="card-konecta p-6 shadow-sm border border-gray-100 space-y-3 overflow-hidden">
                         <div 
                           onClick={() => (post.user_id || (post as any).author_id) && onSelectUser?.(post.user_id || (post as any).author_id)}
@@ -652,11 +685,15 @@ export const CommunityDetail: React.FC<CommunityDetailProps> = ({
                         </div>
                       <p className="text-xs text-gray-700 leading-relaxed whitespace-pre-wrap">{post.content}</p>
                       {post.image_url && (
-                        <img
+                        <PinchZoomImage
                           src={post.image_url}
+                          fallbackSrc={post.image_url}
                           alt=""
+                          mode="inline"
+                          loading="eager"
                           onClick={() => onImageClick(post.image_url!)}
-                          className="rounded-xl max-h-80 w-full object-cover cursor-pointer hover:opacity-95"
+                          className="rounded-xl max-h-80 w-full overflow-hidden cursor-pointer relative block"
+                          imgClassName="rounded-xl max-h-80 w-full h-auto object-cover block"
                         />
                       )}
                       <div className="flex items-center gap-4 pt-2 border-t border-gray-100 text-xs">
@@ -675,14 +712,6 @@ export const CommunityDetail: React.FC<CommunityDetailProps> = ({
                         >
                           <span className="material-symbols-outlined text-[16px]">chat_bubble_outline</span>
                           {post.comments_count || 0}
-                        </button>
-                        <button
-                          onClick={() => onOpenFullscreenPost ? onOpenFullscreenPost(post) : (post.image_url && onImageClick(post.image_url))}
-                          className="flex items-center gap-1.5 text-gray-500 hover:text-konecta-navy font-bold ml-auto"
-                          title="Visualizar em tela cheia"
-                        >
-                          <span className="material-symbols-outlined text-[16px]">fullscreen</span>
-                          <span>Tela cheia</span>
                         </button>
                       </div>
 
@@ -710,7 +739,20 @@ export const CommunityDetail: React.FC<CommunityDetailProps> = ({
                         </div>
                       )}
                     </div>
-                  ))
+                    ))}
+                    {(posts.length > visiblePostsCount || hasMorePosts) && (
+                      <div className="pt-2 flex justify-center">
+                        <button
+                          type="button"
+                          onClick={handleLoadMoreCommunityPosts}
+                          disabled={loadingMorePosts}
+                          className="px-6 py-2 rounded-full bg-white border border-gray-200 hover:border-konecta-navy text-xs font-bold text-konecta-navy shadow-xs transition-all disabled:opacity-50"
+                        >
+                          {loadingMorePosts ? 'A carregar...' : 'Carregar mais publicações'}
+                        </button>
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
             </div>

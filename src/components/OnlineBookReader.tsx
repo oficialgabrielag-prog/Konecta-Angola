@@ -21,7 +21,7 @@ import {
   RotateCcw,
   Check,
   Star,
-  Share2,
+  Send,
   Download,
   ExternalLink,
   Award,
@@ -1073,10 +1073,10 @@ export const OnlineBookReader: React.FC<OnlineBookReaderProps> = ({
                             {onShare && (
                               <button
                                 onClick={() => onShare(book)}
-                                className="px-4 py-2.5 rounded-xl bg-white/15 hover:bg-white/25 text-white font-bold text-xs transition-colors cursor-pointer flex items-center gap-2"
+                                className="w-10 h-10 rounded-xl bg-white/15 hover:bg-white/25 text-white transition-colors cursor-pointer flex items-center justify-center"
+                                aria-label="Enviar"
                               >
-                                <Share2 size={14} />
-                                <span>Partilhar</span>
+                                <Send size={16} />
                               </button>
                             )}
 

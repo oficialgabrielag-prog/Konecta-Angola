@@ -6,7 +6,8 @@ import { shareContent } from '../lib/share';
 import { CommentCard } from '../components/CommentCard';
 import { useUI } from '../context/UIContext';
 import { EditPostModal } from '../components/EditPostModal';
-import { Edit2, Trash2 } from 'lucide-react';
+import { Edit2, Trash2, Send } from 'lucide-react';
+import { PinchZoomImage } from '../components/PinchZoomImage';
 
 interface PostDetailProps {
   idea: Idea | any;
@@ -280,17 +281,14 @@ export const PostDetail: React.FC<PostDetailProps> = ({
             </div>
           )}
           {idea.image_url && (
-            <div 
+            <PinchZoomImage
+              src={idea.image_url}
+              alt={idea.title || ''}
+              mode="inline"
               onClick={() => onImageClick && onImageClick(idea.image_url!)}
-              className="w-full aspect-video bg-gray-100 overflow-hidden max-h-[480px] cursor-pointer group relative"
-            >
-              <img src={idea.image_url} alt={idea.title} className="w-full h-full object-cover group-hover:scale-[1.01] transition-transform duration-300" />
-              <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center">
-                <span className="material-symbols-outlined text-white opacity-0 group-hover:opacity-100 transition-opacity bg-black/50 p-2.5 rounded-full backdrop-blur-xs">
-                  fullscreen
-                </span>
-              </div>
-            </div>
+              className="w-full aspect-video bg-gray-100 overflow-hidden max-h-[480px] cursor-pointer relative"
+              imgClassName="w-full h-full object-cover max-h-[480px]"
+            />
           )}
           
           <div className="p-8 lg:p-12">
@@ -415,10 +413,10 @@ export const PostDetail: React.FC<PostDetailProps> = ({
                     thumbnail: idea.image_url || undefined
                   });
                 }}
-                className="flex items-center gap-1.5 text-xs font-bold text-gray-500 hover:text-konecta-navy transition-colors py-1.5 px-3 rounded-lg hover:bg-gray-100"
+                className="flex items-center justify-center w-9 h-9 text-gray-500 hover:text-konecta-navy transition-colors rounded-full bg-gray-100 hover:bg-gray-200 border border-gray-200 active:scale-95"
+                aria-label="Enviar"
               >
-                <span className="material-symbols-outlined text-[18px]">share</span>
-                Partilhar
+                <Send size={17} strokeWidth={2} />
               </button>
             </div>
           </div>

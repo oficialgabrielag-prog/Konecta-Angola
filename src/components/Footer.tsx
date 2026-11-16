@@ -1,5 +1,6 @@
 import React from 'react';
 import { PWAInstallButton } from './PWAComponents';
+import { KonectaCompanyPlatforms } from './KonectaCompanyPlatforms';
 
 export const Footer: React.FC<{ onNavigateTab?: (tab: string) => void }> = ({ onNavigateTab }) => {
   return (
@@ -47,19 +48,7 @@ export const Footer: React.FC<{ onNavigateTab?: (tab: string) => void }> = ({ on
           </div>
         </div>
 
-        <div>
-          <h4 className="font-bold mb-5 uppercase text-xs tracking-widest text-konecta-gold">Ecossistema KONECTA</h4>
-          <nav className="flex flex-col gap-2.5 text-xs opacity-75">
-            <a href="https://cunenevagas.online" target="_blank" rel="noopener noreferrer" className="hover:text-konecta-gold transition-colors flex items-center gap-1.5">
-              <span>CuneneVagas (Empregos & Lojas)</span>
-              <span className="material-symbols-outlined text-[14px]">open_in_new</span>
-            </a>
-            <a href="https://freevdn.netlify.app" target="_blank" rel="noopener noreferrer" className="hover:text-konecta-gold transition-colors flex items-center gap-1.5">
-              <span>VDN — Vai Dar Namoro</span>
-              <span className="material-symbols-outlined text-[14px]">open_in_new</span>
-            </a>
-          </nav>
-        </div>
+        <KonectaCompanyPlatforms variant="footer" />
 
         <div className="space-y-5">
           <h4 className="font-bold mb-5 uppercase text-xs tracking-widest text-konecta-gold">Aplicações</h4>

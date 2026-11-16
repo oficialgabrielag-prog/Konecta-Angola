@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { useUI } from '../context/UIContext';
 import { supabase } from '../lib/supabaseClient';
 import { d1Client } from '../lib/d1Client';
-import { Copy, Share2, MessageSquare, Users, X, Download, Send, Check, Loader2, Search } from 'lucide-react';
+import { Copy, MessageSquare, Users, X, Download, Send, Check, Loader2, Search } from 'lucide-react';
 import { cldReelDownload, cldAvatar } from '../lib/cloudinary';
 
 interface ShareContact {
@@ -422,7 +422,7 @@ export const ShareSheet = ({
                 <img src={thumbnail} className="w-12 h-12 rounded-xl object-cover shadow-xs shrink-0" alt="" />
               ) : (
                 <div className="w-12 h-12 rounded-xl bg-konecta-navy/5 flex items-center justify-center shrink-0">
-                  <Share2 size={20} className="text-konecta-navy/40" />
+                  <Send size={18} className="text-konecta-navy/40" />
                 </div>
               )}
               <div className="flex-1 min-w-0">
@@ -492,7 +492,7 @@ export const ShareSheet = ({
                   className="flex items-center gap-3.5 w-full text-left p-3.5 hover:bg-gray-50 active:scale-[0.98] border border-gray-100 rounded-2xl transition-all font-semibold text-xs text-konecta-navy group"
                 >
                   <div className="w-9 h-9 rounded-xl bg-konecta-navy/5 flex items-center justify-center group-hover:bg-konecta-navy group-hover:text-white transition-colors">
-                    <Share2 size={16} />
+                    <Send size={16} />
                   </div>
                   <span>{t('share.more')}</span>
                 </button>
@@ -629,7 +629,7 @@ export const ShareSheet = ({
                         ) : (
                           <Check size={13} />
                         )}
-                        <span>Partilhar</span>
+                        <span>Enviar</span>
                       </button>
                     </div>
                   ))

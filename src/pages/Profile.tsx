@@ -8,6 +8,7 @@ import { useT } from '../i18n/LanguageContext';
 import { UserBadge } from '../components/UserBadges';
 import { useUI } from '../context/UIContext';
 import { EditPostModal } from '../components/EditPostModal';
+import { PinchZoomImage } from '../components/PinchZoomImage';
 
 interface ProfileProps {
   user: any;
@@ -463,13 +464,6 @@ export const Profile: React.FC<ProfileProps> = ({
                       </div>
                       <div className="flex items-center gap-1">
                         <button
-                          onClick={() => onOpenFullscreenPost ? onOpenFullscreenPost(post) : (post.image_url && onImageClick?.(post.image_url))}
-                          className="text-gray-400 hover:text-konecta-navy hover:bg-gray-100 p-2 rounded-full transition-all"
-                          title="Visualizar em tela cheia"
-                        >
-                          <span className="material-symbols-outlined text-[20px]">fullscreen</span>
-                        </button>
-                        <button
                           onClick={() => setEditingItem(post)}
                           className="text-gray-400 hover:text-konecta-navy hover:bg-gray-100 p-2 rounded-full transition-all"
                           title="Editar publicação"
@@ -492,23 +486,16 @@ export const Profile: React.FC<ProfileProps> = ({
                       {post.content}
                     </div>
                     {post.image_url && (
-                      <div 
+                      <PinchZoomImage
+                        src={cldImage(post.image_url, { w: 800 }) || post.image_url}
+                        fallbackSrc={post.image_url}
+                        alt=""
+                        mode="inline"
+                        loading="eager"
                         onClick={() => onOpenFullscreenPost ? onOpenFullscreenPost(post) : onImageClick?.(post.image_url!)}
-                        className="mt-5 rounded-2xl overflow-hidden max-h-96 border border-gray-100 bg-gray-50 cursor-pointer group/img relative"
-                      >
-                        <img 
-                          src={cldImage(post.image_url, { w: 800 })} 
-                          className="w-full h-auto max-h-96 object-cover group-hover/img:scale-[1.01] transition-transform duration-300" 
-                          alt="" 
-                          loading="lazy"
-                          decoding="async"
-                        />
-                        <div className="absolute inset-0 bg-black/0 group-hover/img:bg-black/10 transition-colors flex items-center justify-center">
-                          <span className="material-symbols-outlined text-white opacity-0 group-hover/img:opacity-100 transition-opacity bg-black/50 p-2 rounded-full backdrop-blur-xs">
-                            fullscreen
-                          </span>
-                        </div>
-                      </div>
+                        className="mt-5 rounded-2xl overflow-hidden max-h-96 border border-gray-100 bg-gray-50 cursor-pointer relative block w-full"
+                        imgClassName="w-full h-auto max-h-96 object-cover block"
+                      />
                     )}
                     <div className="flex gap-6 mt-6 pt-4 border-t border-gray-50 text-xs text-gray-400 font-bold">
                       <span className="flex items-center gap-1.5">
@@ -548,13 +535,6 @@ export const Profile: React.FC<ProfileProps> = ({
                     </span>
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
-                    <button
-                      onClick={() => onOpenFullscreenPost ? onOpenFullscreenPost(idea) : undefined}
-                      className="text-gray-400 hover:text-konecta-navy hover:bg-gray-100 p-2 rounded-xl transition-colors"
-                      title="Visualizar em tela cheia"
-                    >
-                      <span className="material-symbols-outlined text-[20px]">fullscreen</span>
-                    </button>
                     <button
                       onClick={() => setEditingItem(idea)}
                       className="text-gray-400 hover:text-konecta-navy hover:bg-gray-100 p-2 rounded-xl transition-colors"

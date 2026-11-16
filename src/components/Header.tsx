@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useT } from '../context/LanguageContext';
 import { motion, AnimatePresence } from 'motion/react';
+import { KonectaCompanyPlatforms } from './KonectaCompanyPlatforms';
 
 interface HeaderProps {
   currentTab: string;
@@ -12,6 +13,7 @@ interface HeaderProps {
   unreadMessagesCount?: number;
   variant?: 'default' | 'overlay';
   onReplayIntro?: () => void;
+  hideOnMobile?: boolean;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -23,6 +25,7 @@ export const Header: React.FC<HeaderProps> = ({
   unreadCount = 0,
   unreadMessagesCount = 0,
   variant = 'default',
+  hideOnMobile = false,
 }) => {
   const { t } = useT();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -53,7 +56,9 @@ export const Header: React.FC<HeaderProps> = ({
   return (
     <>
       <header
-        className={`pt-safe px-4 sm:px-8 lg:px-12 h-14 sm:h-16 flex justify-between items-center transition-colors ${
+        className={`pt-safe px-4 sm:px-8 lg:px-12 h-14 sm:h-16 justify-between items-center transition-colors ${
+          hideOnMobile ? 'hidden lg:flex' : 'flex'
+        } ${
           isOverlay
             ? 'fixed top-0 left-0 right-0 z-50 bg-gradient-to-b from-black/80 via-black/40 to-transparent border-none text-white'
             : 'border-b border-black/[0.06] bg-white/92 sticky top-0 z-50 backdrop-blur-2xl'
@@ -342,6 +347,8 @@ export const Header: React.FC<HeaderProps> = ({
                   </button>
                 ))}
               </div>
+
+              <KonectaCompanyPlatforms variant="drawer" />
 
               <div className="mt-4 pt-3 border-t border-gray-100 flex items-center justify-between gap-3 text-xs">
                 <div className="flex items-center gap-3">

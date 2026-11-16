@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Heart, MessageCircle, Bookmark, Share2, Maximize2, Minimize2, Edit2, Trash2, Send } from 'lucide-react';
+import { X, Heart, MessageCircle, Bookmark, Edit2, Trash2, Send } from 'lucide-react';
+import { PinchZoomImage } from './PinchZoomImage';
 import { Post, Idea, CommentItem } from '../types';
 import { d1Client } from '../lib/d1Client';
 import { useUI } from '../context/UIContext';
@@ -38,7 +39,6 @@ export const FullscreenPostModal: React.FC<FullscreenPostModalProps> = ({
   const [newComment, setNewComment] = useState('');
   const [submittingComment, setSubmittingComment] = useState(false);
   const [replyTo, setReplyTo] = useState<{ id: string; name: string } | null>(null);
-  const [isNativeFullscreen, setIsNativeFullscreen] = useState(false);
 
   useEffect(() => {
     if (!post) return;
@@ -173,18 +173,6 @@ export const FullscreenPostModal: React.FC<FullscreenPostModalProps> = ({
     }
   };
 
-  const toggleNativeFullscreen = () => {
-    if (!document.fullscreenElement) {
-      document.documentElement.requestFullscreen().catch(() => {});
-      setIsNativeFullscreen(true);
-    } else {
-      if (document.exitFullscreen) {
-        document.exitFullscreen().catch(() => {});
-        setIsNativeFullscreen(false);
-      }
-    }
-  };
-
   if (!isOpen || !post) return null;
 
   const isOwner = currentUser?.id === post.user_id || currentUser?.id === post.author_id;
@@ -208,35 +196,29 @@ export const FullscreenPostModal: React.FC<FullscreenPostModalProps> = ({
           className="relative w-full h-full max-w-7xl max-h-screen flex flex-col lg:flex-row bg-slate-950 text-white overflow-hidden"
           onClick={(e) => e.stopPropagation()}
         >
-          {/* Top Bar for Mobile & Desktop Controls */}
-          <div className="absolute top-4 right-4 z-50 flex items-center gap-2">
-            <button
-              onClick={toggleNativeFullscreen}
-              className="p-2.5 rounded-full bg-black/60 hover:bg-black/90 text-white border border-white/20 transition-all backdrop-blur-md"
-              title={isNativeFullscreen ? "Sair do ecrã inteiro" : "Ecrã inteiro do navegador"}
-            >
-              {isNativeFullscreen ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
-            </button>
+          {/* Top Bar Close Control */}
+          <div className="absolute top-[max(0.75rem,env(safe-area-inset-top))] right-4 z-50 flex items-center gap-2">
             <button
               onClick={onClose}
               className="p-2.5 rounded-full bg-black/60 hover:bg-black/90 text-white border border-white/20 transition-all backdrop-blur-md"
-              title="Fechar (ESC)"
+              aria-label="Fechar"
             >
               <X size={20} />
             </button>
           </div>
 
           {/* LEFT COLUMN: Media Section (if image exists) or Highlighted Text */}
-          <div className={`flex-1 flex items-center justify-center bg-black/80 relative min-h-[300px] lg:min-h-full overflow-hidden ${!post.image_url ? 'p-8 lg:p-16' : ''}`}>
+          <div className={`flex-1 flex items-center justify-center bg-black/80 relative min-h-[260px] lg:min-h-full overflow-hidden ${!post.image_url ? 'p-8 lg:p-16' : ''}`}>
             {post.image_url ? (
-              <div className="w-full h-full flex items-center justify-center p-2 sm:p-6">
-                <img
-                  src={cldImage(post.image_url, { w: 1600 })}
-                  alt="Post em tela cheia"
-                  className="max-w-full max-h-[85vh] object-contain rounded-xl shadow-2xl"
-                  loading="eager"
-                />
-              </div>
+              <PinchZoomImage
+                src={cldImage(post.image_url, { w: 1600 }) || post.image_url}
+                fallbackSrc={post.image_url}
+                alt="Publicação"
+                mode="viewer"
+                loading="eager"
+                className="w-full h-full flex items-center justify-center p-2 sm:p-6 overflow-hidden"
+                imgClassName="max-w-full max-h-[85vh] object-contain rounded-xl shadow-2xl"
+              />
             ) : (
               <div className="max-w-xl text-center space-y-6">
                 <div className="w-16 h-16 rounded-full bg-konecta-gold/10 border border-konecta-gold/30 mx-auto flex items-center justify-center text-konecta-gold">
@@ -436,10 +418,10 @@ export const FullscreenPostModal: React.FC<FullscreenPostModalProps> = ({
                       thumbnail: post.image_url
                     });
                   }}
-                  className="flex items-center gap-1.5 text-xs font-bold text-gray-400 hover:text-white transition-colors p-1.5"
+                  className="flex items-center justify-center text-gray-400 hover:text-white transition-colors p-2 rounded-full hover:bg-white/10"
+                  aria-label="Enviar"
                 >
-                  <Share2 size={16} />
-                  <span>Partilhar</span>
+                  <Send size={18} strokeWidth={2} />
                 </button>
               </div>
 

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Heart, MessageCircle, Bookmark, Share2, Plus, Volume2, VolumeX, X, MoreVertical } from "lucide-react";
+import { Heart, MessageCircle, Bookmark, Send, Plus, Volume2, VolumeX, X, MoreVertical } from "lucide-react";
 import { Reel, CommentItem, MusicTrack } from '../types';
 import { d1Client } from '../lib/d1Client';
 import { uploadMediaToCloudinary, cldVideo, cldVideoPoster, cldAvatar } from '../lib/cloudinary';
@@ -472,7 +472,7 @@ export const Reels: React.FC<ReelsProps> = ({ user, onOpenAuth, onSelectUser, in
         ) : reels.length === 0 ? (
           <div className="h-full w-full flex flex-col items-center justify-center p-8 text-center space-y-6">
             <div className="w-24 h-24 rounded-full bg-gray-900 flex items-center justify-center border border-gray-800">
-              <Share2 size={40} className="text-gray-700" />
+              <Send size={36} className="text-gray-700" />
             </div>
             <div>
               <h3 className="text-xl font-black uppercase text-white mb-2">{t('reels.empty_title')}</h3>
@@ -675,11 +675,11 @@ export const Reels: React.FC<ReelsProps> = ({ user, onOpenAuth, onSelectUser, in
                   <button 
                     onClick={(e) => handleShare(reel, e)} 
                     className="flex flex-col items-center group gap-1"
+                    aria-label="Enviar"
                   >
                     <div className="w-12 h-12 rounded-full bg-black/25 backdrop-blur-md border border-white/10 flex items-center justify-center group-hover:bg-black/40 transition-all">
-                      <Share2 size={24} strokeWidth={2} className="text-white" />
+                      <Send size={23} strokeWidth={2} className="text-white" />
                     </div>
-                    <span className="text-white text-[9px] font-black uppercase tracking-widest drop-shadow-lg">{t('menu.share')}</span>
                   </button>
 
                   <button 

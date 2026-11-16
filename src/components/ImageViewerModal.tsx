@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import { X } from 'lucide-react';
+import { PinchZoomImage } from './PinchZoomImage';
 
 interface ImageViewerModalProps {
   imageUrl: string | null;
@@ -11,22 +13,18 @@ interface ImageViewerModalProps {
 export const ImageViewerModal: React.FC<ImageViewerModalProps> = ({ imageUrl, images, initialIndex = 0, onClose }) => {
   const imageList = images && images.length > 0 ? images : (imageUrl ? [imageUrl] : []);
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
-  const [scale, setScale] = useState(1);
 
   useEffect(() => {
     setCurrentIndex(initialIndex);
-    setScale(1);
   }, [imageUrl, initialIndex]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
       if (e.key === 'ArrowLeft' && imageList.length > 1) {
-        setScale(1);
         setCurrentIndex(prev => (prev > 0 ? prev - 1 : imageList.length - 1));
       }
       if (e.key === 'ArrowRight' && imageList.length > 1) {
-        setScale(1);
         setCurrentIndex(prev => (prev < imageList.length - 1 ? prev + 1 : 0));
       }
     };
@@ -38,104 +36,71 @@ export const ImageViewerModal: React.FC<ImageViewerModalProps> = ({ imageUrl, im
 
   const currentImg = imageList[currentIndex];
 
-  const handleZoomIn = () => setScale(prev => Math.min(prev + 0.5, 3));
-  const handleZoomOut = () => setScale(prev => Math.max(prev - 0.5, 0.8));
-  const handleResetZoom = () => setScale(1);
-
   const handlePrev = (e: React.MouseEvent) => {
     e.stopPropagation();
-    setScale(1);
     setCurrentIndex(prev => (prev > 0 ? prev - 1 : imageList.length - 1));
   };
 
   const handleNext = (e: React.MouseEvent) => {
     e.stopPropagation();
-    setScale(1);
     setCurrentIndex(prev => (prev < imageList.length - 1 ? prev + 1 : 0));
   };
 
   return (
     <AnimatePresence>
-      <div 
-        className="fixed inset-0 z-50 flex items-center justify-center bg-black/95 backdrop-blur-md p-4"
+      <div
+        className="fixed inset-0 z-50 flex items-center justify-center bg-black/95 backdrop-blur-md p-2 sm:p-4"
         onClick={onClose}
       >
         <motion.div
-          initial={{ opacity: 0, scale: 0.9 }}
+          initial={{ opacity: 0, scale: 0.94 }}
           animate={{ opacity: 1, scale: 1 }}
-          exit={{ opacity: 0, scale: 0.9 }}
-          className="relative max-w-6xl max-h-[92vh] w-full h-full flex flex-col items-center justify-center"
+          exit={{ opacity: 0, scale: 0.94 }}
+          className="relative max-w-6xl max-h-[94vh] w-full h-full flex flex-col items-center justify-center"
           onClick={(e) => e.stopPropagation()}
         >
-          {/* Top Controls */}
-          <div className="absolute top-[max(0.75rem,env(safe-area-inset-top))] right-3 sm:top-4 sm:right-4 z-50 flex items-center gap-1.5 bg-black/60 p-1.5 rounded-full border border-white/15 backdrop-blur-md">
-            <button
-              type="button"
-              onClick={handleZoomIn}
-              className="p-2 rounded-full hover:bg-white/20 text-white transition-all active:scale-90"
-              aria-label="Aumentar"
-            >
-              <span className="material-symbols-outlined text-xl">zoom_in</span>
-            </button>
-            <button
-              type="button"
-              onClick={handleZoomOut}
-              className="p-2 rounded-full hover:bg-white/20 text-white transition-all active:scale-90"
-              aria-label="Diminuir"
-            >
-              <span className="material-symbols-outlined text-xl">zoom_out</span>
-            </button>
-            {scale !== 1 && (
-              <button
-                type="button"
-                onClick={handleResetZoom}
-                className="px-2.5 py-1 text-xs font-bold text-konecta-gold rounded-full hover:bg-white/20 transition-all active:scale-90"
-              >
-                100%
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={onClose}
-              className="p-2 rounded-full hover:bg-white/20 text-white transition-all active:scale-90"
-              aria-label="Fechar"
-            >
-              <span className="material-symbols-outlined text-xl">close</span>
-            </button>
-          </div>
+          {/* Close Button Only (No zoom icons) */}
+          <button
+            type="button"
+            onClick={onClose}
+            className="absolute top-[max(0.75rem,env(safe-area-inset-top))] right-3 sm:top-4 sm:right-4 z-50 w-10 h-10 rounded-full bg-black/60 hover:bg-black/90 text-white border border-white/15 backdrop-blur-md flex items-center justify-center transition-all active:scale-90"
+            aria-label="Fechar"
+          >
+            <X size={20} />
+          </button>
 
           {/* Previous / Next Buttons */}
           {imageList.length > 1 && (
             <>
               <button
+                type="button"
                 onClick={handlePrev}
-                className="absolute left-2 sm:left-6 top-1/2 -translate-y-1/2 z-50 p-3 rounded-full bg-black/60 hover:bg-black/90 text-white border border-white/20 backdrop-blur-md transition-all"
-                title="Anterior"
+                className="absolute left-2 sm:left-6 top-1/2 -translate-y-1/2 z-50 p-2.5 rounded-full bg-black/60 hover:bg-black/90 text-white border border-white/20 backdrop-blur-md transition-all"
+                aria-label="Anterior"
               >
                 <span className="material-symbols-outlined text-2xl">chevron_left</span>
               </button>
               <button
+                type="button"
                 onClick={handleNext}
-                className="absolute right-2 sm:right-6 top-1/2 -translate-y-1/2 z-50 p-3 rounded-full bg-black/60 hover:bg-black/90 text-white border border-white/20 backdrop-blur-md transition-all"
-                title="Seguinte"
+                className="absolute right-2 sm:right-6 top-1/2 -translate-y-1/2 z-50 p-2.5 rounded-full bg-black/60 hover:bg-black/90 text-white border border-white/20 backdrop-blur-md transition-all"
+                aria-label="Seguinte"
               >
                 <span className="material-symbols-outlined text-2xl">chevron_right</span>
               </button>
             </>
           )}
 
-          {/* Main Image Container */}
-          <div className="w-full h-full flex items-center justify-center overflow-hidden cursor-grab active:cursor-grabbing">
-            <motion.img
-              key={currentImg}
-              src={currentImg}
-              alt="Fotografia em ecrã completo"
-              animate={{ scale }}
-              transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-              onDoubleClick={() => setScale(prev => (prev === 1 ? 2 : 1))}
-              className="max-w-full max-h-[85vh] object-contain rounded-2xl shadow-2xl select-none"
-            />
-          </div>
+          {/* Pinch-to-Zoom Photo Stage */}
+          <PinchZoomImage
+            key={currentImg}
+            src={currentImg}
+            alt="Fotografia"
+            mode="viewer"
+            loading="eager"
+            className="w-full h-full flex items-center justify-center overflow-hidden"
+            imgClassName="max-w-full max-h-[86vh] object-contain rounded-2xl shadow-2xl"
+          />
 
           {/* Indicator */}
           {imageList.length > 1 && (

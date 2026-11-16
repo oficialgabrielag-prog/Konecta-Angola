@@ -341,8 +341,9 @@ export const Projects: React.FC<ProjectsProps> = ({
                           authorName: idea.profiles?.full_name || t('dashboard.default_user_name')
                         })}
                         className="text-gray-400 hover:text-konecta-gold transition-colors"
+                        aria-label="Enviar"
                       >
-                        <span className="material-symbols-outlined">share</span>
+                        <span className="material-symbols-outlined text-[19px]">send</span>
                       </button>
                       <button
                         onClick={() => onSelectIdea && onSelectIdea(idea.id)}

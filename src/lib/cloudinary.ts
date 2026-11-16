@@ -283,8 +283,25 @@ export async function uploadToCloudinary(
 
 const UPLOAD_MARK = '/upload/';
 
+function normalizeUrl(url?: string | null): string | undefined {
+  if (!url || typeof url !== 'string') return undefined;
+  const trimmed = url.trim();
+  if (!trimmed) return undefined;
+  if (trimmed.startsWith('http://res.cloudinary.com/')) {
+    return trimmed.replace('http://res.cloudinary.com/', 'https://res.cloudinary.com/');
+  }
+  return trimmed;
+}
+
 function isCloudinaryUrl(url?: string | null): url is string {
-  return !!url && /^https?:\/\/res\.cloudinary\.com\//.test(url) && url.includes(UPLOAD_MARK);
+  const normalized = normalizeUrl(url);
+  return !!normalized && /^https:\/\/res\.cloudinary\.com\//.test(normalized) && normalized.includes(UPLOAD_MARK);
+}
+
+function isCloudinaryImageUrl(url?: string | null): url is string {
+  if (!isCloudinaryUrl(url)) return false;
+  if (url.includes('/raw/upload/') || url.includes('/video/upload/')) return false;
+  return true;
 }
 
 /** Já tem transformações? (depois de /upload/ não começa por v123/ nem pelo id) */
@@ -309,8 +326,9 @@ export interface ImageOptions {
 
 /** Imagem otimizada: formato e qualidade automáticos, sem ampliar. */
 export function cldImage(url: string | null | undefined, opts: ImageOptions): string | undefined {
-  if (!url) return undefined;
-  if (!isCloudinaryUrl(url) || hasTransformation(url)) return url;
+  const clean = normalizeUrl(url);
+  if (!clean) return undefined;
+  if (!isCloudinaryImageUrl(clean) || hasTransformation(clean)) return clean;
   const width = Math.min(Math.round(opts.w * 2), 2560);
   let t: string;
   if (opts.crop === 'fill' && opts.h) {
@@ -319,7 +337,7 @@ export function cldImage(url: string | null | undefined, opts: ImageOptions): st
   } else {
     t = `c_limit,w_${width}`;
   }
-  return inject(url, `${t}/f_auto/q_auto`);
+  return inject(clean, `${t}/f_auto/q_auto`);
 }
 
 /** Lista de tamanhos para <img srcSet>. */
@@ -327,18 +345,20 @@ export function cldSrcSet(
   url: string | null | undefined,
   widths: number[] = [320, 480, 640, 828, 1080, 1440]
 ): string {
-  if (!url || !isCloudinaryUrl(url) || hasTransformation(url)) return '';
+  const clean = normalizeUrl(url);
+  if (!clean || !isCloudinaryImageUrl(clean) || hasTransformation(clean)) return '';
   return widths
-    .map((w) => `${inject(url, `c_limit,w_${w}/f_auto/q_auto`)} ${w}w`)
+    .map((w) => `${inject(clean, `c_limit,w_${w}/f_auto/q_auto`)} ${w}w`)
     .join(', ');
 }
 
 /** Foto de perfil redonda (o recorte acompanha o rosto). */
 export function cldAvatar(url: string | null | undefined, size = 48): string | undefined {
-  if (!url) return undefined;
-  if (!isCloudinaryUrl(url) || hasTransformation(url)) return url;
+  const clean = normalizeUrl(url);
+  if (!clean) return undefined;
+  if (!isCloudinaryImageUrl(clean) || hasTransformation(clean)) return clean;
   const px = Math.min(size * 2, 512);
-  return inject(url, `c_fill,g_face,h_${px},w_${px}/f_auto/q_auto`);
+  return inject(clean, `c_fill,g_face,h_${px},w_${px}/f_auto/q_auto`);
 }
 
 /** Capa com proporção fixa. */
@@ -347,15 +367,17 @@ export function cldCover(
   w: number,
   ratio: '16:9' | '4:3' | '1:1' | '3:4' = '16:9'
 ): string | undefined {
-  if (!url) return undefined;
-  if (!isCloudinaryUrl(url) || hasTransformation(url)) return url;
-  return inject(url, `ar_${ratio},c_fill,g_auto,w_${Math.min(w * 2, 2560)}/f_auto/q_auto`);
+  const clean = normalizeUrl(url);
+  if (!clean) return undefined;
+  if (!isCloudinaryImageUrl(clean) || hasTransformation(clean)) return clean;
+  return inject(clean, `ar_${ratio},c_fill,g_auto,w_${Math.min(w * 2, 2560)}/f_auto/q_auto`);
 }
 
 /** Miniatura minúscula e desfocada para mostrar enquanto a imagem carrega. */
 export function cldBlurPlaceholder(url: string | null | undefined): string {
-  if (!isCloudinaryUrl(url) || hasTransformation(url)) return '';
-  return inject(url, 'c_limit,w_24/e_blur:800/q_auto:low');
+  const clean = normalizeUrl(url);
+  if (!clean || !isCloudinaryImageUrl(clean) || hasTransformation(clean)) return '';
+  return inject(clean, 'c_limit,w_24/e_blur:800/q_auto:low');
 }
 
 /** Vídeo para reprodução: largura máxima 720 px e qualidade automática (mantém .mp4). */

@@ -17,7 +17,6 @@ import {
   CheckCircle2,
   AlertCircle,
   Loader2,
-  Share2,
   Download,
   ExternalLink,
   MessageSquare,
@@ -875,9 +874,9 @@ export const DigitalLibrary: React.FC<DigitalLibraryProps> = ({ user, onOpenAuth
                       thumbnail: selectedBook.cover_url || undefined
                     })}
                     className="p-2.5 rounded-xl border border-gray-200 text-gray-500 hover:text-konecta-navy hover:bg-gray-50 transition-colors cursor-pointer"
-                    title="Partilhar Obra"
+                    aria-label="Enviar"
                   >
-                    <Share2 size={18} />
+                    <Send size={18} />
                   </button>
                   <button
                     onClick={() => setSelectedBook(null)}

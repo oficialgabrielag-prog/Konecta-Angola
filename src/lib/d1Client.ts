@@ -445,32 +445,98 @@ export const d1Client: any = {
   },
 
   posts: {
-    async list(limit = 30, userId?: string, communityId?: string): Promise<any> {
+    async list(
+      limit = 30,
+      userId?: string,
+      communityId?: string,
+      offset = 0,
+      scope?: 'all' | 'network' | 'communities'
+    ): Promise<any> {
       const { data: { user } } = await supabase.auth.getUser();
       const currentUserId = user?.id;
 
-      let query = supabase
-        .from('posts')
-        .select('*, post_media(*), post_comments(*), post_reactions(*), communities(*)')
-        .order('created_at', { ascending: false })
-        .limit(limit);
+      const statusOrFilter = currentUserId
+        ? `status.is.null,and(status.neq.removed,status.neq.review),and(status.eq.review,author_id.eq.${currentUserId})`
+        : `status.is.null,and(status.neq.removed,status.neq.review)`;
 
-      if (userId) {
-        query = query.eq('author_id', userId);
+      const applyCommonFilters = (q: any, useDbStatusFilter: boolean) => {
+        let next = q
+          .order('created_at', { ascending: false })
+          .range(offset, offset + limit - 1);
+
+        if (useDbStatusFilter) {
+          next = next.or(statusOrFilter);
+        }
+        if (userId) {
+          next = next.eq('author_id', userId);
+        }
+        if (communityId) {
+          next = next.eq('community_id', communityId);
+        } else if (scope === 'network') {
+          next = next.is('community_id', null);
+        } else if (scope === 'communities') {
+          next = next.not('community_id', 'is', null);
+        }
+        return next;
+      };
+
+      let postRows: any[] | null = null;
+      let queryError: any = null;
+
+      // Primary query with full relations & DB-level status filter before range
+      const primary = await applyCommonFilters(
+        supabase
+          .from('posts')
+          .select('*, post_media(*), post_comments(*), post_reactions(*), communities(*)'),
+        true
+      );
+
+      if (!primary.error && primary.data) {
+        postRows = primary.data;
+      } else {
+        queryError = primary.error;
+        // Fallback 1: without communities/comments/reactions joins in case a join RLS/schema issue occurs
+        const fallback1 = await applyCommonFilters(
+          supabase.from('posts').select('*, post_media(*)'),
+          true
+        );
+
+        if (!fallback1.error && fallback1.data) {
+          postRows = fallback1.data;
+          queryError = null;
+        } else {
+          // Fallback 2: include post_media without .or status filter + generous window + JS filtering
+          let fallback2Query = supabase
+            .from('posts')
+            .select('*, post_media(*)')
+            .order('created_at', { ascending: false })
+            .range(offset, offset + Math.max(limit * 2, 60) - 1);
+
+          if (userId) fallback2Query = fallback2Query.eq('author_id', userId);
+          if (communityId) fallback2Query = fallback2Query.eq('community_id', communityId);
+          else if (scope === 'network') fallback2Query = fallback2Query.is('community_id', null);
+          else if (scope === 'communities') fallback2Query = fallback2Query.not('community_id', 'is', null);
+
+          const fallback2 = await fallback2Query;
+          if (!fallback2.error && fallback2.data) {
+            postRows = fallback2.data;
+            queryError = null;
+          } else {
+            queryError = fallback2.error || queryError;
+          }
+        }
       }
-      if (communityId) {
-        query = query.eq('community_id', communityId);
-      }
 
-      const { data: postRows, error } = await query;
-      if (error || !postRows) return { data: wrapArray([]), error };
+      if (!postRows) return { data: wrapArray([]), error: queryError };
 
-      // Filter out removed posts, and hide review posts from other users
-      const visiblePosts = postRows.filter(p => {
-        if (p.status === 'removed') return false;
-        if (p.status === 'review' && p.author_id !== currentUserId) return false;
-        return true;
-      });
+      // Safety filter in JS as well
+      const visiblePosts = postRows
+        .filter(p => {
+          if (p.status === 'removed') return false;
+          if (p.status === 'review' && p.author_id !== currentUserId) return false;
+          return true;
+        })
+        .slice(0, limit);
 
       // Fetch profiles using user_id
       const authorIds = Array.from(new Set(visiblePosts.map(p => p.author_id).filter(Boolean)));
@@ -487,28 +553,80 @@ export const d1Client: any = {
         });
       }
 
-      const formatted = visiblePosts.map(p => ({
-        id: p.id,
-        author_id: p.author_id,
-        user_id: p.author_id,
-        content: p.body,
-        body: p.body,
-        community_id: p.community_id,
-        communities: p.communities,
-        visibility: p.visibility,
-        status: p.status,
-        image_url: p.post_media?.[0]?.media_url || null,
-        likes_count: p.post_reactions?.length || 0,
-        comments_count: (p.post_comments || []).filter((c: any) => c.status !== 'removed').length,
-        created_at: p.created_at,
-        profiles: profilesMap[p.author_id] || {
-          id: p.author_id,
-          user_id: p.author_id,
-          full_name: 'Inovador Konecta',
-          display_name: 'Inovador Konecta',
-          avatar_url: null
+      // If communities weren't joined (fallback path), hydrate community info
+      const missingCommunityIds = Array.from(
+        new Set(visiblePosts.filter(p => p.community_id && !p.communities).map(p => p.community_id))
+      );
+      const communitiesMap: Record<string, any> = {};
+      if (missingCommunityIds.length > 0) {
+        const { data: comms } = await supabase
+          .from('communities')
+          .select('*')
+          .in('id', missingCommunityIds);
+        (comms || []).forEach(c => {
+          communitiesMap[c.id] = c;
+        });
+      }
+
+      // Hydrate post_media directly for any post where nested embed returned empty
+      const missingMediaIds = new Set<string>();
+      visiblePosts.forEach(p => {
+        if (!Array.isArray(p.post_media) || p.post_media.length === 0) {
+          missingMediaIds.add(p.id);
+          if (p.shared_from_type === 'post' && p.shared_from_id) {
+            missingMediaIds.add(p.shared_from_id);
+          }
         }
-      }));
+      });
+
+      const directMediaMap: Record<string, any[]> = {};
+      if (missingMediaIds.size > 0) {
+        const { data: extraMedia } = await supabase
+          .from('post_media')
+          .select('*')
+          .in('post_id', Array.from(missingMediaIds));
+        (extraMedia || []).forEach(m => {
+          if (!directMediaMap[m.post_id]) directMediaMap[m.post_id] = [];
+          directMediaMap[m.post_id].push(m);
+        });
+      }
+
+      const formatted = visiblePosts.map(p => {
+        const rawMedia =
+          Array.isArray(p.post_media) && p.post_media.length > 0
+            ? p.post_media
+            : directMediaMap[p.id] ||
+              (p.shared_from_type === 'post' && p.shared_from_id ? directMediaMap[p.shared_from_id] : []) ||
+              [];
+        const sortedMedia = [...rawMedia].sort((a: any, b: any) => (a.position ?? 0) - (b.position ?? 0));
+        const firstMediaUrl = sortedMedia[0]?.media_url || sortedMedia[0]?.url || p.image_url || null;
+
+        return {
+          id: p.id,
+          author_id: p.author_id,
+          user_id: p.author_id,
+          content: p.body,
+          body: p.body,
+          community_id: p.community_id,
+          communities: p.communities || (p.community_id ? communitiesMap[p.community_id] || null : null),
+          visibility: p.visibility,
+          status: p.status,
+          image_url: firstMediaUrl,
+          post_reactions: p.post_reactions || [],
+          likes_count: p.post_reactions?.length ?? p.likes_count ?? 0,
+          comments_count: Array.isArray(p.post_comments)
+            ? p.post_comments.filter((c: any) => c.status !== 'removed').length
+            : (p.comments_count ?? 0),
+          created_at: p.created_at,
+          profiles: profilesMap[p.author_id] || {
+            id: p.author_id,
+            user_id: p.author_id,
+            full_name: 'Inovador Konecta',
+            display_name: 'Inovador Konecta',
+            avatar_url: null
+          }
+        };
+      });
 
       return { data: wrapArray(formatted), error: null };
     },
@@ -657,6 +775,13 @@ export const d1Client: any = {
         if (prof) profile = { ...prof, id: prof.user_id, full_name: prof.display_name };
       }
 
+      let rawMedia = Array.isArray(p.post_media) ? p.post_media : [];
+      if (rawMedia.length === 0) {
+        const { data: extraMedia } = await supabase.from('post_media').select('*').eq('post_id', p.id);
+        if (extraMedia && extraMedia.length > 0) rawMedia = extraMedia;
+      }
+      const sortedMedia = [...rawMedia].sort((a: any, b: any) => (a.position ?? 0) - (b.position ?? 0));
+
       const formatted = {
         id: p.id,
         author_id: p.author_id,
@@ -667,7 +792,7 @@ export const d1Client: any = {
         communities: p.communities,
         visibility: p.visibility,
         status: p.status,
-        image_url: p.post_media?.[0]?.media_url || null,
+        image_url: sortedMedia[0]?.media_url || sortedMedia[0]?.url || null,
         likes_count: p.post_reactions?.length || 0,
         comments_count: (p.post_comments || []).filter((c: any) => c.status !== 'removed').length,
         created_at: p.created_at,
@@ -1369,6 +1494,7 @@ export const d1Client: any = {
         description: item.description,
         category: item.category || 'Inovação',
         status: item.status || 'open',
+        image_url: item.image_url || item.cover_url || null,
         user_id: item.author_id,
         author_id: item.author_id,
         votes_count: item.idea_votes?.length || 0,

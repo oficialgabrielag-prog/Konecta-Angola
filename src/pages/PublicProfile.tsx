@@ -197,9 +197,9 @@ export const PublicProfile: React.FC<PublicProfileProps> = ({
                   if (res.message && res.copied) alert(res.message);
                 }}
                 className="w-10 h-10 rounded-full border border-gray-200 hover:border-konecta-navy flex items-center justify-center text-konecta-navy transition-colors bg-white shadow-xs"
-                title={t('profile.share_profile')}
+                aria-label="Enviar"
               >
-                <span className="material-symbols-outlined text-[18px]">share</span>
+                <span className="material-symbols-outlined text-[18px]">send</span>
               </button>
             </div>
           </div>

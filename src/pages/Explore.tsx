@@ -8,6 +8,7 @@ import { ContentMenu } from '../components/ContentMenu';
 import { ReelPreviewCard } from '../components/ReelPreviewCard';
 import { cldAvatar, cldCover, cldImage, cldSrcSet, cldBlurPlaceholder } from '../lib/cloudinary';
 import { Play } from 'lucide-react';
+import { PinchZoomImage } from '../components/PinchZoomImage';
 
 interface ExploreProps {
   ideas: Idea[];
@@ -110,7 +111,7 @@ export const Explore: React.FC<ExploreProps> = ({
         if (activeTab === 'for_you') {
           const [ideasRes, postsRes, profsRes, commsRes, reelsRes] = await Promise.all([
             d1Client.ideas.list(20),
-            d1Client.posts.list(20),
+            d1Client.posts.list(30),
             d1Client.profiles.list(15),
             d1Client.communities.list(),
             d1Client.reels.list(15)
@@ -128,8 +129,8 @@ export const Explore: React.FC<ExploreProps> = ({
           tabCache.current['for_you'] = { ideas, posts, profiles: profs, communities: comms, reels };
         } else if (activeTab === 'ideas') {
           const [ideasRes, postsRes] = await Promise.all([
-            d1Client.ideas.list(40),
-            d1Client.posts.list(40)
+            d1Client.ideas.list(60),
+            d1Client.posts.list(60)
           ]);
           const ideas = ideasRes.data?.data || ideasRes.data || [];
           const posts = postsRes.data?.data || postsRes.data || [];
@@ -411,10 +412,18 @@ export const Explore: React.FC<ExploreProps> = ({
                   <span className="material-symbols-outlined text-konecta-gold text-lg">article</span>
                   {t('explore.publications_ideas')}
                 </h3>
+                {activeTab === 'for_you' && (filteredPosts.length > 6 || filteredIdeas.length > 6) && (
+                  <button
+                    onClick={() => setActiveTab('ideas')}
+                    className="text-xs font-bold text-konecta-gold hover:text-konecta-navy transition-colors"
+                  >
+                    Ver tudo
+                  </button>
+                )}
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {/* Community Posts */}
-                {filteredPosts.slice(0, activeTab === 'for_you' ? 3 : Math.floor(visibleCount / 2)).map((post) => (
+                {filteredPosts.slice(0, activeTab === 'for_you' ? 6 : visibleCount).map((post) => (
                   <div
                     key={`post-${post.id}`}
                     className="p-5 bg-white rounded-2xl border border-gray-100 shadow-xs hover:border-gray-200 transition-all space-y-2.5 flex flex-col justify-between"
@@ -468,35 +477,23 @@ export const Explore: React.FC<ExploreProps> = ({
                         {post.body || post.content}
                       </p>
                       {post.image_url && (
-                        <div
+                        <PinchZoomImage
+                          src={cldImage(post.image_url, { w: 800 }) || post.image_url}
+                          fallbackSrc={post.image_url}
+                          alt=""
+                          mode="inline"
+                          loading="eager"
                           onClick={() => onOpenFullscreenPost ? onOpenFullscreenPost(post) : onSelectPost(post as any)}
-                          className="cursor-pointer overflow-hidden rounded-xl mt-2 relative group/img"
-                        >
-                          <img 
-                            src={cldImage(post.image_url, { w: 800 })} 
-                            alt="" 
-                            className="w-full max-h-64 object-cover rounded-xl group-hover/img:scale-102 transition-transform duration-300" 
-                            loading="lazy"
-                            decoding="async"
-                          />
-                        </div>
+                          className="cursor-pointer overflow-hidden rounded-xl mt-2 relative block w-full"
+                          imgClassName="w-full h-auto max-h-64 object-cover rounded-xl block"
+                        />
                       )}
-                    </div>
-
-                    <div className="flex items-center justify-between pt-2 border-t border-gray-100 text-xs text-gray-500">
-                      <button
-                        onClick={() => onOpenFullscreenPost ? onOpenFullscreenPost(post) : onSelectPost(post as any)}
-                        className="flex items-center gap-1.5 font-bold hover:text-konecta-navy transition-colors text-xs"
-                      >
-                        <span className="material-symbols-outlined text-sm">fullscreen</span>
-                        <span>Ver em tela cheia</span>
-                      </button>
                     </div>
                   </div>
                 ))}
 
                 {/* Ideas */}
-                {filteredIdeas.slice(0, activeTab === 'for_you' ? 3 : Math.floor(visibleCount / 2)).map((idea) => (
+                {filteredIdeas.slice(0, activeTab === 'for_you' ? 4 : visibleCount).map((idea) => (
                   <div
                     key={`idea-${idea.id}`}
                     onClick={() => onSelectPost(idea)}
@@ -534,10 +531,25 @@ export const Explore: React.FC<ExploreProps> = ({
                 ))}
               </div>
 
-              {activeTab === 'ideas' && (filteredIdeas.length + filteredPosts.length) > visibleCount && (
+              {activeTab === 'ideas' && (filteredPosts.length > visibleCount || filteredIdeas.length > visibleCount || postsData.length >= 60) && (
                 <div className="text-center pt-2">
                   <button
-                    onClick={() => setVisibleCount(prev => prev + 20)}
+                    onClick={async () => {
+                      const nextVisible = visibleCount + 20;
+                      setVisibleCount(nextVisible);
+                      if (nextVisible > postsData.length && postsData.length >= 60) {
+                        try {
+                          const res = await d1Client.posts.list(40, undefined, undefined, postsData.length);
+                          const more = res.data?.data || res.data || [];
+                          if (more.length > 0) {
+                            setPostsData((prev: Post[]) => {
+                              const ids = new Set(prev.map(p => p.id));
+                              return [...prev, ...more.filter((p: Post) => !ids.has(p.id))];
+                            });
+                          }
+                        } catch {}
+                      }
+                    }}
                     className="btn-primary py-2 px-6 text-xs rounded-full"
                   >
                     {t('explore.more_publications')}

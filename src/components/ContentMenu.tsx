@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useT } from '../context/LanguageContext';
 import { useUI } from '../context/UIContext';
-import { MoreVertical, Edit2, Trash2, Flag, Ban, Share2, Copy } from 'lucide-react';
+import { MoreVertical, Edit2, Trash2, Flag, Ban, Send, Copy } from 'lucide-react';
 
 export const ContentMenu = ({ 
   targetId, 
@@ -116,8 +116,8 @@ export const ContentMenu = ({
             className="flex items-center gap-2.5 w-full text-left px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50 rounded-xl transition-colors" 
             onClick={() => { onShare(); setIsOpen(false); }}
           >
-            <Share2 size={14} className="text-gray-400" />
-            <span>{t('menu.share')}</span>
+            <Send size={14} className="text-gray-400" />
+            <span>Enviar</span>
           </button>
           <button 
             className="flex items-center gap-2.5 w-full text-left px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50 rounded-xl transition-colors" 
