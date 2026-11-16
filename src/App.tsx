@@ -301,44 +301,47 @@ export default function App() {
 
   // Realtime notification channel
   useEffect(() => {
-    if (!user) return;
-
     const scheduleDataRefresh = () => {
       if (realtimeRefreshTimerRef.current) return;
       realtimeRefreshTimerRef.current = setTimeout(() => {
         realtimeRefreshTimerRef.current = null;
         fetchInitialData();
-      }, 1500);
+      }, 800);
     };
 
-    fetchNotifications();
-    const unsubscribeNotif = KonectaRealtimeService.subscribe('notifications', (payload: any) => {
-      if (payload.new && payload.new.user_id === user.id) {
-        fetchNotifications();
-        if (payload.new.title) {
-          setActiveToast({ title: payload.new.title, body: payload.new.body });
-          setTimeout(() => setActiveToast(null), 4500);
+    let unsubscribeNotif: (() => void) | undefined;
+    if (user) {
+      fetchNotifications();
+      unsubscribeNotif = KonectaRealtimeService.subscribe('notifications', (payload: any) => {
+        if (payload.new && payload.new.user_id === user.id) {
+          fetchNotifications();
+          if (payload.new.title) {
+            setActiveToast({ title: payload.new.title, body: payload.new.body });
+            setTimeout(() => setActiveToast(null), 4500);
+          }
         }
-      }
-    });
+      });
+    }
 
     const unsubscribeIdeas = KonectaRealtimeService.subscribe('ideas', scheduleDataRefresh);
     const unsubscribeProjects = KonectaRealtimeService.subscribe('projects', scheduleDataRefresh);
     const unsubscribeChallenges = KonectaRealtimeService.subscribe('challenges', scheduleDataRefresh);
     const unsubscribeProfiles = KonectaRealtimeService.subscribe('profiles', scheduleDataRefresh);
     const unsubscribePosts = KonectaRealtimeService.subscribe('posts', scheduleDataRefresh);
+    const unsubscribePostMedia = KonectaRealtimeService.subscribe('post_media', scheduleDataRefresh);
 
     return () => {
       if (realtimeRefreshTimerRef.current) {
         clearTimeout(realtimeRefreshTimerRef.current);
         realtimeRefreshTimerRef.current = null;
       }
-      unsubscribeNotif();
+      if (unsubscribeNotif) unsubscribeNotif();
       unsubscribeIdeas();
       unsubscribeProjects();
       unsubscribeChallenges();
       unsubscribeProfiles();
       unsubscribePosts();
+      unsubscribePostMedia();
     };
   }, [user]);
 
